@@ -1,0 +1,61 @@
+jarvis:
+  name: "JARVIS"
+  wake_word: "hey jarvis"
+  language: "auto"
+
+audio:
+  input_device_index: null
+  sample_rate: 16000
+  chunk_size: 1024
+  silence_threshold: 500
+  silence_duration_ms: 1500
+
+stt:
+  model: "large-v3"       # "small" on RPi
+  device: "cuda"          # "cpu" on RPi
+  compute_type: "float16" # "int8" on RPi
+  language: null          # auto-detect
+
+tts:
+  engine: "xtts"          # "piper" on RPi
+  voice_profile: "jarvis"
+  speed: 1.0
+  pitch_shift: 0
+  piper_model: "en_US-lessac-medium"
+
+wake_word:
+  model_path: "wake_word/jarvis.onnx"
+  threshold: 0.5
+  vad_threshold: 0.5
+
+claude:
+  model: "claude-sonnet-4-6"
+  max_tokens: 300
+  temperature: 0.7
+  max_history_turns: 10
+
+agents:
+  orchestrator_model: "claude-opus-4-5"
+  subagent_model: "claude-sonnet-4-6"
+  orchestrator_max_tokens: 150
+  chat_max_tokens: 300
+  action_max_tokens: 100
+  skip_orchestrator_on_clear_intent: true
+  history_turns_for_chat: 10
+  history_turns_for_orchestrator: 3
+
+pc_control:
+  enabled: true
+  platform: "auto"
+
+smart_home:
+  enabled: false
+
+api:
+  ws_port: 8765
+  http_port: 8766
+  cors_origins: ["http://localhost:5173"]
+
+logging:
+  level: "INFO"
+  file: "logs/jarvis.log"

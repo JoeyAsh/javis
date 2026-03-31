@@ -1,0 +1,17 @@
+version: "3.9"
+services:
+  jarvis:
+    build:
+      context: .
+      dockerfile: Dockerfile.rpi
+    env_file: .env
+    volumes:
+      - ./config:/app/config
+      - ./voices:/app/voices
+      - ./logs:/app/logs
+    devices:
+      - /dev/snd:/dev/snd
+    environment:
+      - JARVIS_PLATFORM=rpi
+    network_mode: host
+    restart: unless-stopped

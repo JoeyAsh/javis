@@ -1,0 +1,18 @@
+version: "3.9"
+services:
+  jarvis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    volumes:
+      - ./config:/app/config
+      - ./voices:/app/voices
+      - ./logs:/app/logs
+      - ./wake_word:/app/wake_word
+    devices:
+      - /dev/snd:/dev/snd
+    environment:
+      - PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native
+    network_mode: host
+    restart: unless-stopped

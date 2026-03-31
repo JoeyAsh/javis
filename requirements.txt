@@ -1,0 +1,24 @@
+anthropic
+faster-whisper
+TTS
+openWakeWord
+pyaudio
+sounddevice
+soundfile
+numpy
+scipy
+pydub
+pyautogui
+pycaw; sys_platform=="win32"
+psutil
+httpx
+requests
+websockets
+aiohttp
+python-dotenv
+PyYAML
+loguru
+pytest
+pytest-asyncio
+black
+ruff

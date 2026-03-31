@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(find D:/Repos/JARVIS -name *.py -o -name *.ts -o -name *.tsx -o -name *.json -o -name Dockerfile* -o -name docker-compose* -o -name README.md)",
+      "Bash(python scripts/download_voices.py)",
+      "Bash(python3 D:/Repos/JARVIS/scripts/download_voices.py)",
+      "Bash(py D:/Repos/JARVIS/scripts/download_voices.py)",
+      "Bash(where python3.exe)",
+      "Bash(where python.exe)",
+      "Bash(ls /c/Python*)",
+      "Read(//c/Users/zentr/AppData/Local/Programs/**)",
+      "Read(//c/Users/zentr/miniconda3/**)",
+      "Read(//c//**)",
+      "Read(//c/Users/zentr/**)",
+      "Bash(winget install:*)",
+      "Bash(python3.11 scripts/download_voices.py)",
+      "Bash(/c/Users/zentr/AppData/Local/Programs/Python/Python311/python.exe scripts/download_voices.py)",
+      "Bash(/c/Users/zentr/AppData/Local/Programs/Python/Python311/python.exe -m pip install numpy scipy --quiet)"
     ]
   }
 }

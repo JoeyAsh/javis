@@ -47,6 +47,21 @@ voices/*.wav
 wake_word/*.onnx
 output_test.wav
 
+# ML model caches
+models/
+*.bin
+*.onnx
+*.pt
+*.pth
+*.ckpt
+
+# faster-whisper / HuggingFace cache
+.cache/
+huggingface/
+
+# Coqui TTS cache
+tts_models/
+
 # Test artifacts
 .pytest_cache/
 .coverage
@@ -56,3 +71,12 @@ htmlcov/
 # MyPy / Ruff / Black caches
 .mypy_cache/
 .ruff_cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# Scripts output
+scripts/__pycache__/

@@ -7,17 +7,17 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.brain.agents.base import AgentResult, BaseAgent
-from src.brain.agents.chat_agent import ChatAgent
-from src.brain.agents.pc_agent import PcAgent
-from src.brain.agents.search_agent import SearchAgent
-from src.brain.agents.smart_home_agent import SmartHomeAgent
-from src.brain.agents.system_agent import SystemAgent
-from src.brain.claude_client import ClaudeClient
-from src.brain.intent_parser import Intent, IntentResult
-from src.brain.memory import ConversationMemory
-from src.utils.config_loader import get_config
-from src.utils.logger import get_logger
+from brain.agents.base import AgentResult, BaseAgent
+from brain.agents.chat_agent import ChatAgent
+from brain.agents.pc_agent import PcAgent
+from brain.agents.search_agent import SearchAgent
+from brain.agents.smart_home_agent import SmartHomeAgent
+from brain.agents.system_agent import SystemAgent
+from brain.claude_client import ClaudeClient
+from brain.intent_parser import Intent, IntentResult
+from brain.memory import ConversationMemory
+from utils.config_loader import get_config
+from utils.logger import get_logger
 
 logger = get_logger("orchestrator")
 

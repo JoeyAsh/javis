@@ -13,8 +13,8 @@ from typing import Any
 import psutil
 from aiohttp import web
 
-from src.brain.memory import ConversationMemory
-from src.utils.logger import get_logger
+from brain.memory import ConversationMemory
+from utils.logger import get_logger
 
 logger = get_logger("ws_server")
 

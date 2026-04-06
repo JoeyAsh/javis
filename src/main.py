@@ -12,21 +12,21 @@ from typing import Any
 import numpy as np
 from dotenv import load_dotenv
 
-from src.api.ws_server import (
+from api.ws_server import (
     broadcast_state,
     broadcast_transcript,
     start_ws_server,
 )
-from src.audio.microphone import Microphone, create_microphone
-from src.audio.stt import SpeechToText, create_stt_engine
-from src.audio.tts import TTSEngine, create_tts_engine
-from src.audio.wake_word import WakeWordDetector, create_wake_word_detector
-from src.brain.claude_client import create_claude_client
-from src.brain.intent_parser import IntentParser, get_intent_parser
-from src.brain.memory import ConversationMemory
-from src.brain.orchestrator import Orchestrator
-from src.utils.config_loader import get_config
-from src.utils.logger import get_logger, setup_logger
+from audio.microphone import Microphone, create_microphone
+from audio.stt import SpeechToText, create_stt_engine
+from audio.tts import TTSEngine, create_tts_engine
+from audio.wake_word import WakeWordDetector, create_wake_word_detector
+from brain.claude_client import create_claude_client
+from brain.intent_parser import IntentParser, get_intent_parser
+from brain.memory import ConversationMemory
+from brain.orchestrator import Orchestrator
+from utils.config_loader import get_config
+from utils.logger import get_logger, setup_logger
 
 logger = get_logger("main")
 

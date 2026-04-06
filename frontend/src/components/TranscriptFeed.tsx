@@ -52,3 +52,5 @@ export function TranscriptFeed({ transcript }: TranscriptFeedProps) {
     </div>
   );
 }
+
+export default TranscriptFeed;

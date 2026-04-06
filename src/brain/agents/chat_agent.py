@@ -2,11 +2,11 @@
 
 from typing import Any
 
-from src.brain.agents.base import AgentResult, BaseAgent
-from src.brain.claude_client import ClaudeClient
-from src.brain.memory import ConversationMemory
-from src.utils.config_loader import get_config
-from src.utils.logger import get_logger
+from brain.agents.base import AgentResult, BaseAgent
+from brain.claude_client import ClaudeClient
+from brain.memory import ConversationMemory
+from utils.config_loader import get_config
+from utils.logger import get_logger
 
 logger = get_logger("agent.chat")
 

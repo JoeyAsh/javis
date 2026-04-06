@@ -1,6 +1,7 @@
 anthropic
 faster-whisper
-TTS
+piper-tts
+# TTS  # Coqui XTTS — requires Microsoft C++ Build Tools + PyTorch. Uncomment to enable voice cloning.
 openWakeWord
 pyaudio
 sounddevice

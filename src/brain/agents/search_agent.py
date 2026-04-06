@@ -2,10 +2,10 @@
 
 from typing import Any
 
-from src.actions.web_search import execute_web_search
-from src.brain.agents.base import AgentResult, BaseAgent
-from src.brain.claude_client import ClaudeClient
-from src.utils.logger import get_logger
+from actions.web_search import execute_web_search
+from brain.agents.base import AgentResult, BaseAgent
+from brain.claude_client import ClaudeClient
+from utils.logger import get_logger
 
 logger = get_logger("agent.search")
 

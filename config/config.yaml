@@ -11,13 +11,13 @@ audio:
   silence_duration_ms: 1500
 
 stt:
-  model: "large-v3"       # "small" on RPi
-  device: "cuda"          # "cpu" on RPi
-  compute_type: "float16" # "int8" on RPi
+  model: "small"          # "large-v3" if you have a CUDA GPU
+  device: "cpu"           # "cuda" if you have a CUDA GPU
+  compute_type: "int8"    # "float16" for CUDA
   language: null          # auto-detect
 
 tts:
-  engine: "xtts"          # "piper" on RPi
+  engine: "piper"         # "xtts" for voice cloning (requires C++ Build Tools + PyTorch)
   voice_profile: "jarvis"
   speed: 1.0
   pitch_shift: 0

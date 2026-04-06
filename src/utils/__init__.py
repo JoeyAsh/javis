@@ -1,7 +1,7 @@
 """Utility modules for JARVIS."""
 
-from src.utils.config_loader import ConfigLoader, get_config
-from src.utils.logger import get_logger, setup_logger
+from utils.config_loader import ConfigLoader, get_config
+from utils.logger import get_logger, setup_logger
 
 __all__ = [
     "ConfigLoader",

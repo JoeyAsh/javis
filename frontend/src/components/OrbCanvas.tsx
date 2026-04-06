@@ -11,7 +11,8 @@ interface OrbCanvasProps {
  * Full-screen canvas component displaying the Three.js particle orb.
  */
 export function OrbCanvas({ orbState }: OrbCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Explicit null in generic so type satisfies RefObject<HTMLCanvasElement | null>
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const orbRef = useOrb(canvasRef);
   const analyser = useAudioAnalyser();
 
@@ -37,3 +38,5 @@ export function OrbCanvas({ orbState }: OrbCanvasProps) {
     />
   );
 }
+
+export default OrbCanvas;

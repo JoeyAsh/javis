@@ -10,8 +10,8 @@ from typing import Any
 
 import numpy as np
 
-from src.utils.config_loader import get_config
-from src.utils.logger import get_logger
+from utils.config_loader import get_config
+from utils.logger import get_logger
 
 logger = get_logger("stt")
 

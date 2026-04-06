@@ -16,7 +16,26 @@
       "Bash(winget install:*)",
       "Bash(python3.11 scripts/download_voices.py)",
       "Bash(/c/Users/zentr/AppData/Local/Programs/Python/Python311/python.exe scripts/download_voices.py)",
-      "Bash(/c/Users/zentr/AppData/Local/Programs/Python/Python311/python.exe -m pip install numpy scipy --quiet)"
+      "Bash(/c/Users/zentr/AppData/Local/Programs/Python/Python311/python.exe -m pip install numpy scipy --quiet)",
+      "Bash(/c/Users/zentr/AppData/Local/Programs/Python/Python311/python.exe -m pip install -r requirements.txt)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/**)",
+      "Read(//c/Program Files/Microsoft Visual Studio/**)",
+      "Bash(\"/c/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/vs_installer.exe\" modify --installPath \"C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\2022\\\\BuildTools\" --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --quiet --norestart 2>&1)",
+      "Bash(/c/Users/zentr/AppData/Local/Programs/Python/Python311/python.exe src/main.py)",
+      "Bash(xargs sed:*)",
+      "Bash(/c/Users/zentr/AppData/Local/Programs/Python/Python311/python.exe -c \":*)",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(/c/Users/zentr/AppData/Local/Programs/Python/Python311/python.exe -c \"from piper import PiperVoice; import inspect; print\\([m for m in dir\\(PiperVoice\\) if not m.startswith\\('_'\\)]\\)\")",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(ls /d/Repos/JARVIS/frontend/src/*.d.ts)",
+      "Bash(timeout 12 npm run dev)",
+      "Bash(python:*)",
+      "Bash(npm run:*)",
+      "Bash(taskkill /F /IM python.exe)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(ls .env*)",
+      "Bash(git add:*)"
     ]
   }
 }

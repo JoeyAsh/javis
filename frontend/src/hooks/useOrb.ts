@@ -5,7 +5,7 @@ import { Orb } from '../lib/orb';
  * Hook to create and manage the Three.js orb instance.
  */
 export function useOrb(
-  canvasRef: RefObject<HTMLCanvasElement>
+  canvasRef: RefObject<HTMLCanvasElement | null>
 ): RefObject<Orb | null> {
   const orbRef = useRef<Orb | null>(null);
 

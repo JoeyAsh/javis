@@ -2,11 +2,11 @@
 
 from typing import Any
 
-from src.actions.smart_home import execute_home_action
-from src.brain.agents.base import AgentResult, BaseAgent
-from src.brain.claude_client import ClaudeClient
-from src.utils.config_loader import get_config
-from src.utils.logger import get_logger
+from actions.smart_home import execute_home_action
+from brain.agents.base import AgentResult, BaseAgent
+from brain.claude_client import ClaudeClient
+from utils.config_loader import get_config
+from utils.logger import get_logger
 
 logger = get_logger("agent.smart_home")
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from src.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger("intent_parser")
 

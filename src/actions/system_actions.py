@@ -6,9 +6,9 @@ Provides high-level system action functions used by the system agent.
 from pathlib import Path
 from typing import Any
 
-from src.brain.memory import ConversationMemory
-from src.utils.config_loader import get_config
-from src.utils.logger import get_logger
+from brain.memory import ConversationMemory
+from utils.config_loader import get_config
+from utils.logger import get_logger
 
 logger = get_logger("system_actions")
 

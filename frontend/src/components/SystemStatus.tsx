@@ -15,7 +15,7 @@ export function SystemStatus({ systemStats, connected }: SystemStatusProps) {
         <div
           className="w-2 h-2 rounded-full"
           style={{
-            backgroundColor: connected ? '#4ca8e8' : '#ef4444',
+            backgroundColor: connected ? 'var(--accent)' : '#ef4444',
           }}
         />
         <span
@@ -75,3 +75,5 @@ export function SystemStatus({ systemStats, connected }: SystemStatusProps) {
     </div>
   );
 }
+
+export default SystemStatus;

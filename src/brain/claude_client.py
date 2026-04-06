@@ -6,8 +6,8 @@ Wraps the Anthropic Python SDK with JARVIS personality and error handling.
 import asyncio
 from typing import Any
 
-from src.utils.config_loader import get_config
-from src.utils.logger import get_logger
+from utils.config_loader import get_config
+from utils.logger import get_logger
 
 logger = get_logger("claude_client")
 

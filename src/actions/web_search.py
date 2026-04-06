@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from src.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger("web_search")
 

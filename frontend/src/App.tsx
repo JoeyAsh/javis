@@ -1,4 +1,5 @@
 import { OrbCanvas } from './components/OrbCanvas';
+import { OrbErrorBoundary } from './components/OrbErrorBoundary';
 import { StatusBar } from './components/StatusBar';
 import { TranscriptFeed } from './components/TranscriptFeed';
 import { VoiceSelector } from './components/VoiceSelector';
@@ -8,7 +9,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 /**
  * Main JARVIS application component.
  */
-function App() {
+export function App() {
   const { orbState, transcript, systemStats, send, connected } = useWebSocket();
 
   return (
@@ -16,8 +17,10 @@ function App() {
       className="min-h-screen w-screen overflow-hidden"
       style={{ backgroundColor: 'var(--bg)' }}
     >
-      {/* Three.js Orb Canvas - fullscreen background */}
-      <OrbCanvas orbState={orbState} />
+      {/* Three.js Orb Canvas - fullscreen background, isolated from HUD */}
+      <OrbErrorBoundary>
+        <OrbCanvas orbState={orbState} />
+      </OrbErrorBoundary>
 
       {/* HUD Overlays */}
       <SystemStatus systemStats={systemStats} connected={connected} />

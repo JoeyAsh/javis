@@ -54,3 +54,5 @@ export function StatusBar({ orbState, language = 'EN' }: StatusBarProps) {
     </div>
   );
 }
+
+export default StatusBar;

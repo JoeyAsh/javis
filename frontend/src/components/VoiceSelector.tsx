@@ -81,3 +81,5 @@ export function VoiceSelector({ send }: VoiceSelectorProps) {
     </div>
   );
 }
+
+export default VoiceSelector;

@@ -16,8 +16,8 @@ import sounddevice as sd
 import soundfile as sf
 from scipy import signal
 
-from src.utils.config_loader import get_config
-from src.utils.logger import get_logger
+from utils.config_loader import get_config
+from utils.logger import get_logger
 
 logger = get_logger("tts")
 
@@ -356,20 +356,25 @@ class PiperEngine(TTSEngine):
         loop = asyncio.get_event_loop()
 
         def generate() -> tuple[np.ndarray, int]:
-            # Synthesize to WAV bytes
-            wav_buffer = io.BytesIO()
+            import wave
+            import tempfile, os
 
-            for audio_bytes in self._voice.synthesize_stream_raw(text):
-                wav_buffer.write(audio_bytes)
+            # synthesize_wav needs a wave.Wave_write-compatible file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
 
-            wav_buffer.seek(0)
+            try:
+                with wave.open(tmp_path, "wb") as wav_file:
+                    self._voice.synthesize_wav(text, wav_file)
 
-            # Convert raw PCM to numpy array
-            audio_data = np.frombuffer(wav_buffer.read(), dtype=np.int16)
-            audio_data = audio_data.astype(np.float32) / 32768.0
+                with wave.open(tmp_path, "rb") as wav_file:
+                    sample_rate = wav_file.getframerate()
+                    frames = wav_file.readframes(wav_file.getnframes())
 
-            # Piper typically uses 22050 Hz
-            sample_rate = self._voice.config.sample_rate
+                audio_data = np.frombuffer(frames, dtype=np.int16)
+                audio_data = audio_data.astype(np.float32) / 32768.0
+            finally:
+                os.unlink(tmp_path)
 
             return audio_data, sample_rate
 

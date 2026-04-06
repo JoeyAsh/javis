@@ -13,8 +13,8 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
-from src.utils.config_loader import get_config
-from src.utils.logger import get_logger
+from utils.config_loader import get_config
+from utils.logger import get_logger
 
 logger = get_logger("wake_word")
 

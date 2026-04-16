@@ -29,7 +29,6 @@ export function useWebSocket(): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelayRef = useRef(RECONNECT_DELAY_INITIAL);
-  const didConnectRef = useRef(false);
 
   const connect = useCallback(() => {
     // StrictMode guard: only one connection at a time

@@ -14,6 +14,13 @@ import type { OrbState } from '../types';
 export interface Orb {
   setState(s: OrbState): void;
   setAnalyser(a: AnalyserNode | null): void;
+  /**
+   * Dev preview: when set to a non-null state, the engine synthesises
+   * internal bass/mid amplitude patterns appropriate for that state so the
+   * visualisation reacts even without a live audio source. Passing `null`
+   * restores normal (analyser-driven) behaviour.
+   */
+  setMockMode(m: OrbState | null): void;
   destroy(): void;
 }
 
@@ -59,15 +66,26 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   /** Per-particle brightness multiplier in [0.7, 1.0] for subtle colour variation. */
   const brightness = new Float32Array(N);
 
+  /**
+   * Per-particle preferred radius fraction in (0, 1]. The shell attractor
+   * pulls each particle toward `rFrac * renderRadius` rather than a single
+   * shell, which keeps the cloud volumetric (looks like an orb, not a bubble).
+   * Weighted with sqrt to bias particles toward the outer layers for a denser
+   * visible surface while still filling the interior.
+   */
+  const rFrac = new Float32Array(N);
+
   for (let i = 0; i < N; i++) {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
-    const r = Math.pow(Math.random(), 0.5) * 25;
+    const frac = 0.35 + Math.pow(Math.random(), 0.5) * 0.65; // [0.35, 1.0]
+    const r = frac * 25;
     pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
     pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     pos[i * 3 + 2] = r * Math.cos(phi);
     phase[i] = Math.random() * 1000;
     brightness[i] = 0.7 + Math.random() * 0.3; // range [0.7, 1.0]
+    rFrac[i] = frac;
   }
 
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -182,12 +200,31 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   let analyser: AnalyserNode | null = null;
   let freqData = new Uint8Array(64);
   let bass = 0, mid = 0;
+  /** Low-pass smoothed amplitude driver for speaking scale (prevents snap/overshoot). */
+  let smoothedAmp = 0;
+
+  // ── Dev mock mode ──
+  // When set to a non-null state, the engine synthesises internal bass/mid
+  // values so the visualisation looks alive even without real audio input.
+  // Primary use: the HUD's dev-menu test buttons — so the user can preview
+  // how each state looks with representative motion/amplitude.
+  let mockMode: OrbState | null = null;
 
   const clock = new THREE.Clock();
 
   // Lerp rate constants — centralised for easy tweaking.
   const LERP_RATE = 0.012;
   const COLOR_LERP = 0.008;
+  /** Soft-clip via tanh — keeps amplitude bounded in [0, 1). */
+  const softClip = (x: number): number => Math.tanh(x);
+  /**
+   * Upper bound for orb radius in world units so the rendered orb never
+   * exceeds ~65 % of the smaller viewport dimension. Derived from the camera
+   * FoV + z distance: visible world half-height at z=0 ≈ tan(22.5°) * 80 ≈
+   * 33.14. Target 65 % of viewport height ≈ 0.325 * 33.14 * 2 = ~21.5 radius.
+   * We pick 21 for a 63 % cap, which leaves small safety headroom.
+   */
+  const MAX_RENDER_RADIUS = 27;
 
   function animate() {
     if (destroyed) return;
@@ -196,16 +233,22 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
 
     switch (state) {
       case 'idle':
-        targetRadius = 28; targetSpeed = 0.2; targetBright = 0.5; targetSize = 0.55;
+        // Loose-sphere sweet spot — sits just under MAX_RENDER_RADIUS so the
+        // cloud looks generous without clipping.
+        targetRadius = 19; targetSpeed = 0.28; targetBright = 0.5; targetSize = 0.55;
         targetLineAmount = 0.15; targetElectronRate = 0; break;
       case 'listening':
-        targetRadius = 22; targetSpeed = 0.3; targetBright = 0.65; targetSize = 0.6;
-        targetLineAmount = 0.4; targetElectronRate = 0; break;
+        // "Attentive / receiving" — wider shell, slow drift, sparse web.
+        // Breathing pulse applied post-lerp on renderRadius (see below).
+        targetRadius = 18; targetSpeed = 0.22; targetBright = 0.7; targetSize = 0.7;
+        targetLineAmount = 0.22; targetElectronRate = 0; break;
       case 'thinking':
-        targetRadius = 16; targetSpeed = 0.5; targetBright = 0.7; targetSize = 0.5;
-        targetLineAmount = 1.0; targetElectronRate = 0.015; break;
+        // "Computing" — tight dense core, fast spin, many connections + electrons.
+        targetRadius = 12; targetSpeed = 0.85; targetBright = 0.78; targetSize = 0.45;
+        targetLineAmount = 1.4; targetElectronRate = 0.03; break;
       case 'speaking':
-        targetRadius = 18; targetSpeed = 0.2; targetBright = 0.7; targetSize = 0.6;
+        // Baseline small; audio amplitude punches outward up to MAX_RENDER_RADIUS.
+        targetRadius = 18; targetSpeed = 0.35; targetBright = 0.72; targetSize = 0.6;
         targetLineAmount = 0.8; targetElectronRate = 0; break;
     }
 
@@ -230,7 +273,28 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
 
     // Audio
     bass = 0; mid = 0;
-    if (analyser) {
+    if (mockMode !== null) {
+      // Synthesise plausible bass/mid envelopes so the visualisation reads
+      // correctly even without a live audio source (dev-menu preview).
+      if (mockMode === 'speaking') {
+        // Speech envelope: slow syllable rhythm × faster voicing × occasional bursts.
+        const slow = 0.55 + 0.45 * Math.sin(t * 3.1 + Math.sin(t * 0.6) * 2.0);
+        const fast = 0.6 + 0.4 * Math.sin(t * 13.5 + Math.sin(t * 2.3));
+        const burst = Math.max(0, Math.sin(t * 0.9) - 0.55) * 0.9;
+        const env = Math.max(0, Math.min(1, slow * fast + burst));
+        bass = env * 0.95;
+        mid = Math.max(0, Math.min(1, env * 0.75 + Math.sin(t * 18) * 0.08 + 0.05));
+      } else if (mockMode === 'listening') {
+        // Attentive low ambient — quiet background with occasional blips.
+        bass = 0.04 + Math.max(0, Math.sin(t * 1.3) - 0.6) * 0.15;
+        mid = 0.03 + Math.max(0, Math.sin(t * 2.1) - 0.7) * 0.1;
+      } else if (mockMode === 'thinking') {
+        // Thinking doesn't consume mic; fake subtle internal "activity".
+        bass = 0.02 + (Math.sin(t * 5.0) * 0.5 + 0.5) * 0.04;
+        mid = 0.02 + (Math.sin(t * 7.0) * 0.5 + 0.5) * 0.03;
+      }
+      // 'idle' → stays at 0 (default above).
+    } else if (analyser) {
       analyser.getByteFrequencyData(freqData);
       let bSum = 0, mSum = 0;
       for (let i = 0; i < 8; i++) bSum += freqData[i];
@@ -238,10 +302,15 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
       bass = bSum / (8 * 255); mid = mSum / (16 * 255);
     }
 
+    // Low-pass smoothed amplitude — α ≈ 0.18 on the raw (bass + mid) mix.
+    // Soft-clipped with tanh so even very loud peaks stay bounded in [0, 1).
+    const rawAmp = softClip(bass * 1.4 + mid * 0.6);
+    smoothedAmp += (rawAmp - smoothedAmp) * 0.18;
+
     // Depth Z breathing — increased spring damping (0.96) and reduced force (0.005).
     let zTarget = Math.sin(t * 0.12) * 8;
     if (state === 'thinking') zTarget = Math.sin(t * 0.3) * 15 + Math.sin(t * 0.9) * 6;
-    else if (state === 'speaking') zTarget = Math.sin(t * 0.15) * 6 - bass * 10;
+    else if (state === 'speaking') zTarget = Math.sin(t * 0.15) * 6 - smoothedAmp * 6;
     cloudZVel += (zTarget - cloudZ) * 0.005;
     cloudZVel *= 0.96;
     cloudZ += cloudZVel;
@@ -263,6 +332,18 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     const p = geo.getAttribute('position') as THREE.BufferAttribute;
     const a = p.array as Float32Array;
 
+    // Hard clamp on the shell radius so the speaking/bass push cannot grow
+    // the orb past ~85 % of the viewport. smoothedAmp already in [0, 1).
+    // Listening adds a slow breathing pulse on top of the baseline for an
+    // "attentive / receiving" character — purely radial, no amplitude.
+    let radiusModifier = 0;
+    if (state === 'speaking') radiusModifier = smoothedAmp * 9.0;
+    else if (state === 'listening') radiusModifier = Math.sin(t * 0.7) * 1.6;
+    const renderRadius = Math.min(currentRadius + radiusModifier, MAX_RENDER_RADIUS);
+
+    // Brownian jitter strength — tiny but enough to keep the cloud alive at idle.
+    const jitter = state === 'idle' ? 0.003 : 0.0015;
+
     for (let i = 0; i < N; i++) {
       const i3 = i * 3;
       const x = a[i3], y = a[i3 + 1], z = a[i3 + 2];
@@ -276,26 +357,59 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
       vel[i3 + 1] += Math.cos(t * 0.025 + px * 1.7 + z * 0.1) * 0.00056 * currentSpeed;
       vel[i3 + 2] += Math.sin(t * 0.022 + px * 0.9 + x * 0.1) * 0.00056 * currentSpeed;
 
+      // Brownian jitter — uniformly random kick so the cloud never stalls.
+      vel[i3]     += (Math.random() - 0.5) * jitter;
+      vel[i3 + 1] += (Math.random() - 0.5) * jitter;
+      vel[i3 + 2] += (Math.random() - 0.5) * jitter;
+
       const dist = Math.sqrt(x * x + y * y + z * z) || 0.01;
-      const pull = Math.max(0, dist - currentRadius) * 0.002 + 0.0003;
-      vel[i3] -= (x / dist) * pull;
+
+      // Volumetric shell attractor: each particle has its own preferred
+      // radius fraction (rFrac[i]) so the cloud stays volumetric rather than
+      // collapsing to a bubble. Pulls from BOTH sides, replacing the constant
+      // inward bias that previously collapsed the orb to a point.
+      const targetR = rFrac[i] * renderRadius;
+      const shellError = dist - targetR;
+      const pull = shellError * 0.0022;
+      vel[i3]     -= (x / dist) * pull;
       vel[i3 + 1] -= (y / dist) * pull;
       vel[i3 + 2] -= (z / dist) * pull;
 
       if (bass > 0.05) {
-        vel[i3]     += (x / dist) * bass * 0.02;
-        vel[i3 + 1] += (y / dist) * bass * 0.02;
-        vel[i3 + 2] += (z / dist) * bass * 0.02;
+        // Clamp to smoothedAmp so loud transients don't blast particles outward.
+        // Heavier push in speaking to make amplitude visualisation pop.
+        const bassKick =
+          state === 'speaking' ? smoothedAmp * 0.028 : smoothedAmp * 0.012;
+        vel[i3]     += (x / dist) * bassKick;
+        vel[i3 + 1] += (y / dist) * bassKick;
+        vel[i3 + 2] += (z / dist) * bassKick;
       }
       if (state === 'speaking' && mid > 0.1) {
-        const pulse = Math.sin(t * 8 + px);
-        vel[i3]     += (x / dist) * mid * 0.012 * pulse;
-        vel[i3 + 1] += (y / dist) * mid * 0.012 * pulse;
+        // Per-particle sinusoidal pulse mapped onto shell — creates visible
+        // "voicing texture" ripples across the surface.
+        const pulse = Math.sin(t * 9 + px * 1.3);
+        const midKick = smoothedAmp * 0.018 * pulse;
+        vel[i3]     += (x / dist) * midKick;
+        vel[i3 + 1] += (y / dist) * midKick;
+        vel[i3 + 2] += (z / dist) * midKick * 0.6;
       }
 
       // Reduced damping: 0.992 → 0.985 (particles glide more, less jittery).
       vel[i3] *= 0.985; vel[i3 + 1] *= 0.985; vel[i3 + 2] *= 0.985;
       a[i3] += vel[i3]; a[i3 + 1] += vel[i3 + 1]; a[i3 + 2] += vel[i3 + 2];
+
+      // Hard-clamp particle position so runaway velocities can never escape
+      // the MAX_RENDER_RADIUS envelope (safety net against transients).
+      const newDist = Math.sqrt(
+        a[i3] * a[i3] + a[i3 + 1] * a[i3 + 1] + a[i3 + 2] * a[i3 + 2]
+      );
+      const hardCap = MAX_RENDER_RADIUS * 1.15;
+      if (newDist > hardCap) {
+        const k = hardCap / newDist;
+        a[i3] *= k; a[i3 + 1] *= k; a[i3 + 2] *= k;
+        // Damp radial velocity component at the boundary.
+        vel[i3] *= 0.5; vel[i3 + 1] *= 0.5; vel[i3 + 2] *= 0.5;
+      }
     }
     p.needsUpdate = true;
 
@@ -304,7 +418,7 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
       const lp = lineGeo.getAttribute('position') as THREE.BufferAttribute;
       const la = lp.array as Float32Array;
       let lineCount = 0;
-      const maxDist = lineDistance * (1 + bass * 0.5);
+      const maxDist = lineDistance * (1 + smoothedAmp * 0.4);
       const maxDistSq = maxDist * maxDist;
       const step = Math.max(1, Math.floor(N / 600));
 
@@ -381,7 +495,9 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     // PointsMaterial uses a single opacity for all particles; we modulate by
     // a small sinusoidal shimmer driven by time and the stored per-particle
     // brightness values so different particles visually pulse at different rates.
-    const baseOpacity = currentBright + bass * 0.08;
+    // Use smoothedAmp (soft-clipped, LP-filtered) instead of raw bass so loud
+    // transients don't cause opacity/size overshoot.
+    const baseOpacity = currentBright + smoothedAmp * 0.08;
     // Shimmer: blend base opacity with a per-frame average of brightness offsets
     let shimmerSum = 0;
     for (let i = 0; i < N; i++) {
@@ -390,12 +506,37 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     const shimmerAvg = shimmerSum / N; // stays close to ~0.87
     // Apply idle breathing pulse to opacity and size.
     mat.opacity = baseOpacity * shimmerAvg * idleBreath;
-    mat.size = (currentSize + bass * 0.05) * idleBreath;
+    mat.size = (currentSize + smoothedAmp * 0.04) * idleBreath;
 
-    // ── Core particles heartbeat pulse ~~
-    // Slow sine (period 3 s) modulates core size ±15%.
-    const corePulse = 1.0 + 0.15 * Math.sin((t / 3.0) * Math.PI * 2);
-    coreMat.size = 1.2 * corePulse;
+    // ── Core particles per-state heartbeat ──
+    // Each state gets its own size / opacity / pulse signature so the centre
+    // reads as part of the state rather than static bright dots.
+    //  - idle:      dim, barely-there breathing
+    //  - listening: muted, slow wider pulse (attentive)
+    //  - thinking:  tight bright with fast computation rhythm
+    //  - speaking:  bright, amplitude-coupled pulse
+    let coreSizeBase: number, coreOpacity: number;
+    let corePulsePeriod: number, corePulseAmt: number;
+    switch (state) {
+      case 'idle':
+        coreSizeBase = 0.65; coreOpacity = 0.28;
+        corePulsePeriod = 4.0; corePulseAmt = 0.04; break;
+      case 'listening':
+        coreSizeBase = 0.85; coreOpacity = 0.45;
+        corePulsePeriod = 2.6; corePulseAmt = 0.18; break;
+      case 'thinking':
+        coreSizeBase = 1.1; coreOpacity = 0.85;
+        corePulsePeriod = 1.1; corePulseAmt = 0.28; break;
+      case 'speaking':
+        // Amplitude boosts both brightness and size for visible speech rhythm.
+        coreSizeBase = 1.15 + smoothedAmp * 0.6;
+        coreOpacity = 0.8 + smoothedAmp * 0.15;
+        corePulsePeriod = 2.4; corePulseAmt = 0.18; break;
+    }
+    const corePulse =
+      1.0 + corePulseAmt * Math.sin((t / corePulsePeriod) * Math.PI * 2);
+    coreMat.size = coreSizeBase * corePulse;
+    coreMat.opacity = coreOpacity;
 
     if (state === 'thinking') {
       mat.color.lerp(new THREE.Color(0x6ec4ff), COLOR_LERP);
@@ -435,6 +576,7 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
       analyser = a;
       if (a) freqData = new Uint8Array(a.frequencyBinCount);
     },
+    setMockMode(m: OrbState | null) { mockMode = m; },
     destroy() {
       destroyed = true;
       window.removeEventListener('resize', onResize);

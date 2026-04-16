@@ -1,0 +1,61 @@
+import type { MailMessage } from '../types';
+
+const now = Date.now();
+const ago = (min: number): string => new Date(now - min * 60_000).toISOString();
+
+export const mailMock: MailMessage[] = [
+  {
+    id: 'mail-1',
+    sender: 'Elena Vogt (CTO)',
+    subject: 'Re: Q2 Roadmap — HUD Milestones',
+    preview: 'Looks solid. Couple of concerns on the proactive scheduler — can we sync tomorrow?',
+    receivedAt: ago(8),
+    isVip: true,
+    unread: true,
+  },
+  {
+    id: 'mail-2',
+    sender: 'GitHub',
+    subject: '[jarvis] Review requested on PR #142',
+    preview: 'feature/fish-audio-rebuild — TTS buffering fixes, 6 files changed.',
+    receivedAt: ago(22),
+    isVip: false,
+    unread: true,
+  },
+  {
+    id: 'mail-3',
+    sender: 'Marco Reinhardt',
+    subject: 'Mittagessen am Donnerstag?',
+    preview: 'Hey Johannes, hast du um 13:00 beim Italiener Zeit?',
+    receivedAt: ago(47),
+    isVip: false,
+    unread: true,
+  },
+  {
+    id: 'mail-4',
+    sender: 'AWS Billing',
+    subject: 'Your April 2026 invoice is available',
+    preview: 'Total due: $214.33. Charges driven primarily by EC2 us-east-1.',
+    receivedAt: ago(92),
+    isVip: false,
+    unread: true,
+  },
+  {
+    id: 'mail-5',
+    sender: 'Linear',
+    subject: 'JARVIS-214 assigned to you',
+    preview: '"Wire LightsPanel to Govee cloud API" — priority: High.',
+    receivedAt: ago(140),
+    isVip: false,
+    unread: true,
+  },
+  {
+    id: 'mail-6',
+    sender: 'Claudia Brandt',
+    subject: 'Vertrag v3 — Anmerkungen',
+    preview: 'Anbei die Änderungen in Rot. §4.2 brauche ich bis Freitag unterschrieben.',
+    receivedAt: ago(210),
+    isVip: false,
+    unread: true,
+  },
+];

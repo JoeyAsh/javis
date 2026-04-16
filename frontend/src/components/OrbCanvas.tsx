@@ -5,12 +5,17 @@ import type { OrbState } from '../types';
 interface OrbCanvasProps {
   orbState: OrbState;
   analyser: AnalyserNode | null;
+  /**
+   * When set (dev-menu override), the orb synthesises internal amplitude
+   * patterns appropriate for that state instead of reading the analyser.
+   */
+  mockMode?: OrbState | null;
 }
 
 /**
  * Full-screen canvas component displaying the Three.js particle orb.
  */
-export function OrbCanvas({ orbState, analyser }: OrbCanvasProps) {
+export function OrbCanvas({ orbState, analyser, mockMode = null }: OrbCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const orbRef = useOrb(canvasRef);
 
@@ -21,6 +26,10 @@ export function OrbCanvas({ orbState, analyser }: OrbCanvasProps) {
   useEffect(() => {
     orbRef.current?.setAnalyser(analyser);
   }, [analyser, orbRef]);
+
+  useEffect(() => {
+    orbRef.current?.setMockMode(mockMode);
+  }, [mockMode, orbRef]);
 
   return (
     <canvas

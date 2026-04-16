@@ -113,3 +113,59 @@ proactive:
       enabled: false
       after_hour: 23
       voice: true
+
+voice:
+  # Latency targets
+  first_audio_target_ms: 1000
+  p90_latency_target_ms: 2000
+
+  # Streaming
+  sentence_split_min_chars: 20
+  sentence_split_max_wait_ms: 500
+  tts_queue_size: 3
+
+  # Barge-in
+  barge_in_enabled: true
+  barge_in_sensitivity_ms: 150
+
+  # Backchannels
+  backchannels_enabled: true
+  backchannel_silence_threshold_ms: 1200
+  backchannel_volume: 0.3
+  backchannel_min_interval_seconds: 3
+
+  # Fillers
+  thinking_filler_enabled: true
+  thinking_filler_delay_ms: 800
+
+  # Quick ack
+  quick_ack_enabled: true
+  quick_ack_target_ms: 400
+
+  # Prosody
+  prosody_context_aware: true
+
+  # Disfluencies (opt-in)
+  natural_disfluencies: false
+  disfluency_rate: 0.1
+  disfluency_phrases:
+    de: ["also", "nun"]
+    en: ["well", "so"]
+
+  # Response length
+  default_response_sentences: 2
+  detail_mode_sentences: 5
+
+  # Token efficiency
+  system_prompt_max_tokens: 500
+  history_full_turns: 5
+  history_summarized_turns: 10
+  response_cache_ttl_seconds: 60
+  response_cache_max_size: 100
+
+  # Turn detection
+  silence_threshold_ms: 800
+  use_prosodic_hints: false
+
+  # Phrase cache
+  cache_directory: "data/voice_cache"

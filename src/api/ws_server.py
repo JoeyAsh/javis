@@ -217,10 +217,6 @@ async def start_ws_server(
     ws_app.router.add_get("/", websocket_handler)
     ws_app.router.add_get("/ws", websocket_handler)
 
-    # Create aiohttp application for HTTP
-    http_app = web.Application()
-    http_app.router.add_get("/voices", voices_handler)
-
     # Add CORS headers
     @web.middleware
     async def cors_middleware(request: web.Request, handler: Any) -> web.Response:
@@ -237,7 +233,8 @@ async def start_ws_server(
 
         return response
 
-    http_app.middlewares.append(cors_middleware)
+    # Create aiohttp application for HTTP (middleware must be added before routes)
+    http_app = web.Application(middlewares=[cors_middleware])
     http_app.router.add_get("/voices", voices_handler)
 
     # Start WebSocket server

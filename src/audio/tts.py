@@ -28,33 +28,35 @@ class TTSEngine(ABC):
     def __init__(self) -> None:
         """Initialize the TTS engine."""
         self._speaking = False
-        self._queue: asyncio.Queue[str] = asyncio.Queue()
+        self._queue: asyncio.Queue[tuple[str, str | None]] = asyncio.Queue()
         self._stop_event = asyncio.Event()
         self._current_stream: sd.OutputStream | None = None
 
     @abstractmethod
-    async def _synthesize(self, text: str) -> tuple[np.ndarray, int]:
+    async def _synthesize(self, text: str, language: str | None = None) -> tuple[np.ndarray, int]:
         """Synthesize text to audio data.
 
         Args:
             text: Text to synthesize
+            language: Language code (e.g. 'de', 'en'). None for auto-detect.
 
         Returns:
             Tuple of (audio_data as numpy array, sample_rate)
         """
         pass
 
-    async def speak(self, text: str) -> None:
-        """Speak the given text. Queues if already speaking.
+    async def speak(self, text: str, language: str | None = None) -> None:
+        """Speak the given text and wait until finished.
 
         Args:
             text: Text to speak
+            language: Language code (e.g. 'de', 'en'). None for auto-detect.
         """
-        await self._queue.put(text)
+        await self._queue.put((text, language))
 
         if not self._speaking:
             self._speaking = True
-            asyncio.create_task(self._process_queue())
+            await self._process_queue()
 
     async def _process_queue(self) -> None:
         """Process the speech queue."""
@@ -70,11 +72,11 @@ class TTSEngine(ABC):
                     self._stop_event.clear()
                     break
 
-                text = await self._queue.get()
-                logger.debug(f"Synthesizing: {text[:50]}...")
+                text, language = await self._queue.get()
+                logger.debug(f"Synthesizing (lang={language}): {text[:50]}...")
 
                 try:
-                    audio_data, sample_rate = await self._synthesize(text)
+                    audio_data, sample_rate = await self._synthesize(text, language)
                     await self._play_audio(audio_data, sample_rate)
                 except Exception as e:
                     logger.error(f"TTS synthesis error: {e}")
@@ -228,11 +230,12 @@ class XTTSEngine(TTSEngine):
 
         return result.astype(np.float32)
 
-    async def _synthesize(self, text: str) -> tuple[np.ndarray, int]:
+    async def _synthesize(self, text: str, language: str | None = None) -> tuple[np.ndarray, int]:
         """Synthesize text using XTTS-v2.
 
         Args:
             text: Text to synthesize
+            language: Language code (e.g. 'de', 'en')
 
         Returns:
             Tuple of (audio_data, sample_rate)
@@ -243,20 +246,22 @@ class XTTSEngine(TTSEngine):
         loop = asyncio.get_event_loop()
 
         def generate() -> tuple[np.ndarray, int]:
-            # Detect language from text (simple heuristic)
-            german_chars = set("äöüßÄÖÜ")
-            language = "de" if any(c in text for c in german_chars) else "en"
+            # Use provided language or detect from text
+            lang = language
+            if not lang:
+                german_chars = set("äöüßÄÖÜ")
+                lang = "de" if any(c in text for c in german_chars) else "en"
 
             if self._voice_path:
                 wav = self._model.tts(
                     text=text,
                     speaker_wav=str(self._voice_path),
-                    language=language,
+                    language=lang,
                     speed=self.speed,
                 )
             else:
                 # Use default speaker if no voice profile
-                wav = self._model.tts(text=text, language=language, speed=self.speed)
+                wav = self._model.tts(text=text, language=lang, speed=self.speed)
 
             audio_data = np.array(wav, dtype=np.float32)
             return audio_data, 24000  # XTTS uses 24kHz
@@ -280,92 +285,155 @@ class XTTSEngine(TTSEngine):
 
 
 class PiperEngine(TTSEngine):
-    """Piper TTS engine for CPU-efficient synthesis on Raspberry Pi."""
+    """Piper TTS engine with automatic language detection."""
+
+    # Language-to-model mapping
+    LANGUAGE_MODELS: dict[str, str] = {
+        "de": "de_DE-thorsten-high",
+        "en": "en_GB-alan-medium",
+    }
+    DEFAULT_LANGUAGE = "de"
 
     def __init__(
         self,
-        model_name: str = "en_US-lessac-medium",
+        model_name: str = "de_DE-thorsten-high",
         speed: float = 1.0,
     ) -> None:
         """Initialize Piper engine.
 
         Args:
-            model_name: Piper model name
+            model_name: Default Piper model name
             speed: Speech speed multiplier
         """
         super().__init__()
         self.model_name = model_name
         self.speed = speed
-        self._voice: Any = None
+        self._voices: dict[str, Any] = {}
+        self._data_dir = Path.home() / ".local" / "share" / "piper-voices"
+
+    def _load_voice(self, model_name: str) -> Any:
+        """Load a single Piper voice model.
+
+        Args:
+            model_name: Model name to load
+
+        Returns:
+            PiperVoice instance or None
+        """
+        from piper import PiperVoice
+
+        model_path = self._data_dir / f"{model_name}.onnx"
+        config_path = self._data_dir / f"{model_name}.onnx.json"
+
+        if model_path.exists():
+            voice = PiperVoice.load(str(model_path), str(config_path))
+            logger.info(f"Piper model loaded: {model_name}")
+            return voice
+        else:
+            logger.warning(f"Piper model not found: {model_path}")
+            return None
 
     async def initialize(self) -> None:
-        """Load the Piper model."""
+        """Load all available Piper voice models."""
         loop = asyncio.get_event_loop()
 
-        def load_model() -> Any:
+        def load_models() -> dict[str, Any]:
             try:
-                from piper import PiperVoice
+                voices: dict[str, Any] = {}
+                self._data_dir.mkdir(parents=True, exist_ok=True)
 
-                logger.info(f"Loading Piper model: {self.model_name}")
+                # Load language-specific models
+                for lang, model in self.LANGUAGE_MODELS.items():
+                    voice = self._load_voice(model)
+                    if voice:
+                        voices[lang] = voice
 
-                # Piper models are typically downloaded to ~/.local/share/piper-voices
-                # or we can download them on demand
-                data_dir = Path.home() / ".local" / "share" / "piper-voices"
-                data_dir.mkdir(parents=True, exist_ok=True)
+                # Load default model as fallback
+                if not voices:
+                    voice = self._load_voice(self.model_name)
+                    if voice:
+                        voices["default"] = voice
 
-                model_path = data_dir / f"{self.model_name}.onnx"
-                config_path = data_dir / f"{self.model_name}.onnx.json"
+                if not voices:
+                    logger.error("No Piper voices available")
 
-                if model_path.exists():
-                    voice = PiperVoice.load(str(model_path), str(config_path))
-                    logger.info(f"Piper model loaded: {self.model_name}")
-                    return voice
-                else:
-                    logger.warning(
-                        f"Piper model not found: {model_path}. "
-                        "Run scripts/download_voices.py to download."
-                    )
-                    return None
+                return voices
 
             except ImportError:
                 logger.error("piper-tts not installed. Run: pip install piper-tts")
                 raise
             except Exception as e:
-                logger.error(f"Failed to load Piper model: {e}")
+                logger.error(f"Failed to load Piper models: {e}")
                 raise
 
-        self._voice = await loop.run_in_executor(None, load_model)
+        self._voices = await loop.run_in_executor(None, load_models)
 
-    async def _synthesize(self, text: str) -> tuple[np.ndarray, int]:
-        """Synthesize text using Piper.
+    def _detect_language(self, text: str) -> str:
+        """Detect language of text using simple heuristics.
+
+        Args:
+            text: Text to analyze
+
+        Returns:
+            Language code ('de' or 'en')
+        """
+        german_indicators = set("äöüßÄÖÜ")
+        german_words = {
+            "ich", "du", "er", "sie", "wir", "ihr", "das", "ist", "und",
+            "der", "die", "den", "dem", "ein", "eine", "nicht", "habe",
+            "bitte", "danke", "wie", "was", "wer", "wo", "warum", "kann",
+            "sind", "haben", "werden", "guten", "morgen", "abend", "tag",
+            "ja", "nein", "auch", "aber", "oder", "wenn", "dass", "mit",
+            "auf", "für", "von", "zu", "aus", "bei", "nach", "über",
+        }
+
+        # Check for German-specific characters
+        if any(c in text for c in german_indicators):
+            return "de"
+
+        # Check for German words
+        words = set(text.lower().split())
+        german_count = len(words & german_words)
+        if german_count >= 2 or (german_count >= 1 and len(words) <= 4):
+            return "de"
+
+        return "en"
+
+    async def _synthesize(self, text: str, language: str | None = None) -> tuple[np.ndarray, int]:
+        """Synthesize text using Piper with language selection.
 
         Args:
             text: Text to synthesize
+            language: Language code from STT. Falls back to text-based detection.
 
         Returns:
             Tuple of (audio_data, sample_rate)
         """
-        if self._voice is None:
+        if not self._voices:
             await self.initialize()
 
-        if self._voice is None:
-            # Fallback: return silence
-            logger.error("Piper voice not available")
+        if not self._voices:
+            logger.error("No Piper voices available")
             return np.zeros(16000, dtype=np.float32), 16000
+
+        # Use explicit language if provided, otherwise auto-detect from text
+        lang = language if language and language in self._voices else self._detect_language(text)
+        voice = self._voices.get(lang) or next(iter(self._voices.values()))
+        logger.info(f"TTS: language={lang}, text={text[:60]}...")
 
         loop = asyncio.get_event_loop()
 
         def generate() -> tuple[np.ndarray, int]:
+            import os
+            import tempfile
             import wave
-            import tempfile, os
 
-            # synthesize_wav needs a wave.Wave_write-compatible file
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp_path = tmp.name
 
             try:
                 with wave.open(tmp_path, "wb") as wav_file:
-                    self._voice.synthesize_wav(text, wav_file)
+                    voice.synthesize_wav(text, wav_file)
 
                 with wave.open(tmp_path, "rb") as wav_file:
                     sample_rate = wav_file.getframerate()
@@ -384,11 +452,12 @@ class PiperEngine(TTSEngine):
 class MockTTSEngine(TTSEngine):
     """Mock TTS engine for testing without audio output."""
 
-    async def _synthesize(self, text: str) -> tuple[np.ndarray, int]:
+    async def _synthesize(self, text: str, language: str | None = None) -> tuple[np.ndarray, int]:
         """Return silence for testing.
 
         Args:
             text: Text to synthesize (logged only)
+            language: Ignored in mock engine
 
         Returns:
             Tuple of (silence, sample_rate)

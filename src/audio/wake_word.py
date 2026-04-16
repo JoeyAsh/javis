@@ -60,9 +60,6 @@ class WakeWordDetector:
 
                 logger.info("Loading OpenWakeWord model...")
 
-                # Download default models if needed
-                openwakeword.utils.download_models()
-
                 if self.model_path and Path(self.model_path).exists():
                     model = Model(
                         wakeword_models=[self.model_path],
@@ -70,12 +67,17 @@ class WakeWordDetector:
                     )
                     logger.info(f"Loaded custom wake word model: {self.model_path}")
                 else:
-                    # Use built-in "hey jarvis" model
-                    model = Model(
-                        wakeword_models=["hey_jarvis"],
-                        vad_threshold=self.vad_threshold,
+                    if self.model_path:
+                        logger.warning(
+                            f"Custom model not found: {self.model_path}, "
+                            "falling back to built-in 'hey_jarvis'"
+                        )
+                    # Use built-in "hey_jarvis" model (bundled with openwakeword)
+                    model = Model(vad_threshold=self.vad_threshold)
+                    logger.info(
+                        f"Loaded built-in wake word models: "
+                        f"{list(model.models.keys())}"
                     )
-                    logger.info("Loaded built-in 'hey_jarvis' wake word model")
 
                 return model
 
@@ -189,10 +191,10 @@ class WakeWordDetector:
             # Get predictions
             prediction = self._model.predict(chunk_int16)
 
-            # Check if any wake word exceeds threshold
+            # Check if "hey_jarvis" (or any) wake word exceeds threshold
             for model_name, score in prediction.items():
-                if score > self.threshold:
-                    logger.debug(f"Wake word detected: {model_name} (score={score:.3f})")
+                if "jarvis" in model_name and score > self.threshold:
+                    logger.info(f"Wake word detected: {model_name} (score={score:.3f})")
                     return True
 
             return False

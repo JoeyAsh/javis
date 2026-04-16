@@ -21,7 +21,7 @@ tts:
   voice_profile: "jarvis"
   speed: 1.0
   pitch_shift: 0
-  piper_model: "en_US-lessac-medium"
+  piper_model: "de_DE-thorsten-high"  # Auto-switches to en_GB-alan-medium for English
 
 wake_word:
   model_path: "wake_word/jarvis.onnx"

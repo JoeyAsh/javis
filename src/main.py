@@ -70,9 +70,6 @@ class JarvisAssistant:
         logger.info("Loading TTS engine...")
         self.tts_engine = await create_tts_engine()
 
-        # Speak startup message
-        await self.tts_engine.speak("JARVIS online. All systems nominal.")
-
         # Initialize STT engine
         logger.info("Loading STT engine...")
         self.stt_engine = await create_stt_engine()
@@ -117,6 +114,9 @@ class JarvisAssistant:
 
         # Calculate samples for silence duration
         silence_samples = int(silence_duration_ms * sample_rate / 1000)
+
+        # Speak startup message before microphone starts (to avoid audio feedback)
+        await self.tts_engine.speak("JARVIS online. Alle Systeme betriebsbereit.", language="de")
 
         # Start microphone
         await self.microphone.start()
@@ -172,10 +172,16 @@ class JarvisAssistant:
                     intent_result=intent_result,
                 )
 
+                # Stop microphone to prevent audio feedback
+                await self.microphone.stop()
+
                 # Speak response
                 await broadcast_state("speaking")
-                await self.tts_engine.speak(agent_result.spoken_response)
                 await broadcast_transcript("jarvis", agent_result.spoken_response)
+                await self.tts_engine.speak(agent_result.spoken_response, language=result.language)
+
+                # Restart microphone after speaking
+                await self.microphone.start()
 
                 # Add to memory
                 self.memory.add_turn(
@@ -223,39 +229,66 @@ class JarvisAssistant:
     ) -> np.ndarray | None:
         """Record audio until silence is detected.
 
+        Uses adaptive silence detection: first measures ambient noise level,
+        then waits for speech to start, then detects when speech ends.
+
         Args:
-            threshold: Silence threshold (RMS amplitude)
+            threshold: Silence threshold (RMS amplitude, scaled to int16 range)
             silence_samples: Number of silent samples to trigger stop
 
         Returns:
             Recorded audio data or None
         """
         chunks: list[np.ndarray] = []
-        silent_chunks = 0
         total_silent_samples = 0
+        speech_detected = False
+        chunk_count = 0
 
-        chunk_size = self.config.get("audio.chunk_size", 1024)
+        # Calibrate: measure ambient noise from first few chunks
+        ambient_rms_values: list[float] = []
+        calibration_chunks = 5
 
         async for chunk in self.microphone.stream_audio():
             if self._shutdown_event.is_set():
                 return None
 
-            chunks.append(chunk.flatten())
+            flat = chunk.flatten()
+            chunks.append(flat)
+            chunk_count += 1
 
-            # Calculate RMS amplitude
-            rms = np.sqrt(np.mean(chunk**2)) * 32768  # Scale to int16 range
+            # Calculate RMS amplitude (scaled to int16 range)
+            rms = np.sqrt(np.mean(chunk**2)) * 32768
 
-            if rms < threshold:
-                total_silent_samples += len(chunk.flatten())
-                if total_silent_samples >= silence_samples:
-                    break
-            else:
+            # Calibrate ambient noise from first chunks
+            if chunk_count <= calibration_chunks:
+                ambient_rms_values.append(rms)
+                if chunk_count == calibration_chunks:
+                    ambient_rms = np.mean(ambient_rms_values)
+                    # Set threshold above ambient noise (at least 1.5x ambient or config value)
+                    threshold = max(threshold, ambient_rms * 1.5 + 100)
+                    logger.debug(
+                        f"Ambient RMS: {ambient_rms:.0f}, "
+                        f"silence threshold: {threshold:.0f}"
+                    )
+                continue
+
+            if rms >= threshold:
+                speech_detected = True
                 total_silent_samples = 0
+            elif speech_detected:
+                # Only count silence after speech has been detected
+                total_silent_samples += len(flat)
+                if total_silent_samples >= silence_samples:
+                    logger.debug(
+                        f"Silence detected after {chunk_count} chunks, "
+                        f"stopping recording"
+                    )
+                    break
 
-            # Safety limit: max 30 seconds of recording
+            # Safety limit: max 15 seconds of recording
             total_samples = sum(len(c) for c in chunks)
-            if total_samples > 30 * 16000:
-                logger.warning("Recording exceeded 30 seconds, stopping")
+            if total_samples > 15 * 16000:
+                logger.warning("Recording exceeded 15 seconds, stopping")
                 break
 
         if not chunks:
@@ -270,7 +303,9 @@ class JarvisAssistant:
         self._shutdown_event.set()
 
         if self.tts_engine:
-            await self.tts_engine.speak("Shutting down. Goodbye, sir.")
+            await self.tts_engine.speak(
+                "Systeme werden heruntergefahren. Auf Wiedersehen, Sir.", language="de"
+            )
 
         logger.info("JARVIS shutdown complete")
 

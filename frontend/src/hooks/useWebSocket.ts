@@ -32,6 +32,11 @@ export function useWebSocket(): UseWebSocketReturn {
   const reconnectTimeoutRef = useRef<number | null>(null);
 
   const connect = useCallback(() => {
+    // Prevent duplicate connections (React StrictMode runs effects twice)
+    if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
+      return;
+    }
+
     // Determine WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
@@ -54,6 +59,7 @@ export function useWebSocket(): UseWebSocketReturn {
 
     ws.onclose = () => {
       setConnected(false);
+      wsRef.current = null;
       console.log('WebSocket disconnected, reconnecting...');
 
       // Auto-reconnect
@@ -108,6 +114,7 @@ export function useWebSocket(): UseWebSocketReturn {
       }
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
   }, [connect]);

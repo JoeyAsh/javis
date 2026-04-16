@@ -36,11 +36,28 @@ export interface SystemMetricsPayload {
   disk?: number;
 }
 
+export interface TranscriptPayload {
+  role: 'user' | 'jarvis';
+  text: string;
+}
+
+/** Server-emitted notification — shape mirrors {@link HudNotification}. */
+export interface NotificationPayload {
+  id: string;
+  severity: 'info' | 'warning' | 'urgent';
+  title: string;
+  detail?: string;
+  /** ISO timestamp — server sets emit time if client doesn't. */
+  timestamp?: string;
+}
+
 export type WsIncoming =
   | { type: 'audio'; data: string; text: string }
   | { type: 'status'; state: OrbState }
   | { type: 'text'; text: string }
-  | { type: 'system'; payload: SystemMetricsPayload };
+  | { type: 'system'; payload: SystemMetricsPayload }
+  | { type: 'transcript'; payload: TranscriptPayload }
+  | { type: 'notification'; payload: NotificationPayload };
 
 export type WsOutgoing =
   | { type: 'transcript'; text: string; isFinal: boolean }

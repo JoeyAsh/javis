@@ -2,9 +2,11 @@ import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { notificationsMock } from '../../mock/notificationsMock';
 import { useMockTicker } from '../../mock/useMockTicker';
+import { useNotifications } from '../../hooks/useNotifications';
 import type { HudNotification, NotificationSeverity, PanelMode } from '../../types';
 
 export interface NotificationsPanelProps {
+  /** Optional override — short-circuits the live subscription. */
   notifications?: HudNotification[];
   paused?: boolean;
   mode?: PanelMode;
@@ -145,17 +147,22 @@ function NotificationsExpanded({
 }
 
 export function NotificationsPanel({
-  notifications = notificationsMock,
+  notifications,
   paused = false,
   mode = 'expanded',
 }: NotificationsPanelProps): ReactElement {
-  const tick = useMockTicker(4000, paused);
+  const { notifications: live, isLive } = useNotifications();
+  const source: HudNotification[] =
+    notifications !== undefined ? notifications : isLive ? live : notificationsMock;
 
+  // Rotate the mock source for liveliness; keep live notifications stable
+  // (they already arrive in time order, so rotation would obscure recency).
+  const tick = useMockTicker(4000, paused || isLive);
   const rotated = useMemo<HudNotification[]>(() => {
-    if (notifications.length === 0) return notifications;
-    const offset = tick % notifications.length;
-    return [...notifications.slice(offset), ...notifications.slice(0, offset)];
-  }, [notifications, tick]);
+    if (isLive || source.length === 0) return source;
+    const offset = tick % source.length;
+    return [...source.slice(offset), ...source.slice(0, offset)];
+  }, [source, tick, isLive]);
 
   return mode === 'compact' ? (
     <NotificationsCompact notifications={rotated} />

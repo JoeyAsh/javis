@@ -97,6 +97,40 @@ async def broadcast_transcript(role: str, text: str) -> None:
     await _broadcast(message)
 
 
+async def broadcast_notification(
+    notification_id: str,
+    severity: str,
+    title: str,
+    detail: str = "",
+    timestamp: str | None = None,
+) -> None:
+    """Broadcast a HUD notification to all connected clients.
+
+    Args:
+        notification_id: Stable id (used for client-side dedup).
+        severity: One of ``info`` / ``warning`` / ``urgent``.
+        title: Short headline shown prominently.
+        detail: Optional longer body text.
+        timestamp: ISO-8601 UTC; if ``None`` the server stamps it.
+    """
+    from datetime import datetime, timezone
+
+    ts = timestamp or datetime.now(timezone.utc).isoformat()
+    message = json.dumps(
+        {
+            "type": "notification",
+            "payload": {
+                "id": notification_id,
+                "severity": severity,
+                "title": title,
+                "detail": detail,
+                "timestamp": ts,
+            },
+        }
+    )
+    await _broadcast(message)
+
+
 def _format_uptime(seconds: float) -> str:
     """Format uptime as ``HH:MM:SS`` (no cap on hours)."""
     total = max(int(seconds), 0)

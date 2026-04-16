@@ -72,6 +72,12 @@ openclaw:
   session_id: "jarvis-main"
   thinking_level: "normal"  # "none" | "normal" | "high"
   timeout_seconds: 30
+  # Model used by OpenClaw's agent runtime (replaces the direct Anthropic
+  # SDK path). The OpenClaw gateway owns auth via `claude login` — JARVIS
+  # just tells it which model to invoke. Valid values follow OpenClaw's
+  # `<provider>/<model-id>` convention (e.g. "claude-cli/claude-opus-4-7",
+  # "anthropic/claude-sonnet-4-6"). Leave blank to use OpenClaw's default.
+  agent_model: "claude-cli/claude-opus-4-7"
 
 persona:
   enabled: true

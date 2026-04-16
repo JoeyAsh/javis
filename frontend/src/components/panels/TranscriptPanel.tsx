@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { ReactElement } from 'react';
 import { transcriptMock } from '../../mock/transcriptMock';
+import { useTranscripts } from '../../hooks/useTranscripts';
 import type { TranscriptTurn, PanelMode } from '../../types';
 
 export interface TranscriptPanelProps {
+  /** Optional override — when provided, short-circuits the live subscription. */
   turns?: TranscriptTurn[];
   mode?: PanelMode;
 }
@@ -111,13 +113,16 @@ function TranscriptExpanded({ turns }: { turns: TranscriptTurn[] }): ReactElemen
 }
 
 export function TranscriptPanel({
-  turns = transcriptMock,
+  turns,
   mode = 'expanded',
 }: TranscriptPanelProps): ReactElement {
+  const { turns: liveTurns, isLive } = useTranscripts();
+  const effectiveTurns: TranscriptTurn[] =
+    turns !== undefined ? turns : isLive ? liveTurns : transcriptMock;
   return mode === 'compact' ? (
-    <TranscriptCompact turns={turns} />
+    <TranscriptCompact turns={effectiveTurns} />
   ) : (
-    <TranscriptExpanded turns={turns} />
+    <TranscriptExpanded turns={effectiveTurns} />
   );
 }
 

@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import type {
+  NotificationPayload,
   OrbState,
   SystemMetricsPayload,
+  TranscriptPayload,
   WsIncoming,
   WsOutgoing,
 } from '../types';
 
 export type SystemMetricsListener = (payload: SystemMetricsPayload) => void;
+export type TranscriptListener = (payload: TranscriptPayload) => void;
+export type NotificationListener = (payload: NotificationPayload) => void;
 
 export interface UseWebSocketReturn {
   orbState: OrbState;
@@ -24,11 +28,17 @@ export interface UseWebSocketReturn {
    * tying their cadence to the React re-render cycle.
    */
   subscribeSystem: (listener: SystemMetricsListener) => () => void;
+  /** Subscribe to `type: 'transcript'` payloads. */
+  subscribeTranscripts: (listener: TranscriptListener) => () => void;
+  /** Subscribe to `type: 'notification'` payloads. */
+  subscribeNotifications: (listener: NotificationListener) => () => void;
 }
 
-// Module-level subscriber registry so any consumer calling the singleton
-// `useWebSocket` sees the same stream of system payloads.
+// Module-level subscriber registries — any consumer of the singleton
+// useWebSocket sees the same stream of payloads.
 const systemListeners = new Set<SystemMetricsListener>();
+const transcriptListeners = new Set<TranscriptListener>();
+const notificationListeners = new Set<NotificationListener>();
 
 function emitSystem(payload: SystemMetricsPayload): void {
   systemListeners.forEach((listener) => {
@@ -36,6 +46,26 @@ function emitSystem(payload: SystemMetricsPayload): void {
       listener(payload);
     } catch (err) {
       console.error('[ws] system listener threw', err);
+    }
+  });
+}
+
+function emitTranscript(payload: TranscriptPayload): void {
+  transcriptListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] transcript listener threw', err);
+    }
+  });
+}
+
+function emitNotification(payload: NotificationPayload): void {
+  notificationListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] notification listener threw', err);
     }
   });
 }
@@ -112,6 +142,12 @@ export function useWebSocket(): UseWebSocketReturn {
           case 'system':
             emitSystem(msg.payload);
             break;
+          case 'transcript':
+            emitTranscript(msg.payload);
+            break;
+          case 'notification':
+            emitNotification(msg.payload);
+            break;
         }
       } catch (err) {
         console.error('[ws] parse error', err);
@@ -159,6 +195,26 @@ export function useWebSocket(): UseWebSocketReturn {
     [],
   );
 
+  const subscribeTranscripts = useCallback(
+    (listener: TranscriptListener): (() => void) => {
+      transcriptListeners.add(listener);
+      return () => {
+        transcriptListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
+  const subscribeNotifications = useCallback(
+    (listener: NotificationListener): (() => void) => {
+      notificationListeners.add(listener);
+      return () => {
+        notificationListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
   return {
     orbState,
     setOrbState,
@@ -168,13 +224,14 @@ export function useWebSocket(): UseWebSocketReturn {
     connected,
     wsRef,
     subscribeSystem,
+    subscribeTranscripts,
+    subscribeNotifications,
   };
 }
 
 /**
- * Standalone subscription helper for consumers that don't need the full
- * `useWebSocket` surface. Backed by the same module-level registry so
- * order of hook instantiation does not matter.
+ * Standalone subscription helpers — backed by the same module-level
+ * registries so hook-instantiation order does not matter.
  */
 export function subscribeSystemMetrics(
   listener: SystemMetricsListener,
@@ -182,5 +239,23 @@ export function subscribeSystemMetrics(
   systemListeners.add(listener);
   return () => {
     systemListeners.delete(listener);
+  };
+}
+
+export function subscribeTranscriptStream(
+  listener: TranscriptListener,
+): () => void {
+  transcriptListeners.add(listener);
+  return () => {
+    transcriptListeners.delete(listener);
+  };
+}
+
+export function subscribeNotificationStream(
+  listener: NotificationListener,
+): () => void {
+  notificationListeners.add(listener);
+  return () => {
+    notificationListeners.delete(listener);
   };
 }

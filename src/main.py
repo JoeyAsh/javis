@@ -121,28 +121,17 @@ async def main() -> None:
             start_ws_server(api_config, memory, None)
         )
 
-        # Startup heartbeat — proves the proactive → WS → HUD pipe end to
-        # end. Re-emits every 15 s for the first minute so a browser that
-        # connects late still sees it. Dev-only affordance; real
-        # interjections flow through the scheduler once triggers publish.
-        async def _startup_ping() -> None:
-            for i in range(4):
-                await asyncio.sleep(15.0 if i > 0 else 6.0)
-                await broadcast_notification(
-                    notification_id=f"startup-ok-{i}",
-                    severity="info",
-                    title="JARVIS online",
-                    detail=(
-                        "Voice-Pipeline, OpenClaw-Gateway und HUD verbunden."
-                    ),
-                )
-
-        ping_task = asyncio.create_task(_startup_ping())
+        # Note: the startup "JARVIS online" notification is now emitted
+        # per-connection inside ws_server.websocket_handler (stable id
+        # means client-side dedup handles reconnects gracefully). Nothing
+        # to schedule here.
+        ping_task: asyncio.Task[None] | None = None
 
         # Wait until a shutdown signal is received
         await shutdown_event.wait()
 
-        ping_task.cancel()
+        if ping_task is not None:
+            ping_task.cancel()
         ws_task.cancel()
         try:
             await ws_task

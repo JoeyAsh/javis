@@ -35,6 +35,20 @@ logger = get_logger("ws_server")
 # Store connected WebSocket clients
 _connected_clients: set[web.WebSocketResponse] = set()
 
+# Event set the first time *any* client connects in this process lifetime.
+# Stays set for the remainder of the process so consumers that await it
+# after the fact still resolve immediately.
+_first_client_event: asyncio.Event = asyncio.Event()
+
+
+def first_client_event() -> asyncio.Event:
+    """Return the event signalling the first-ever client connect.
+
+    Lazily returns a fresh Event on the current loop if the module-level
+    one was created on a different loop (e.g. across test runs).
+    """
+    return _first_client_event
+
 # Shared pipeline components (set in start_ws_server)
 _memory: ConversationMemory | None = None
 _tts_engine: Any = None  # kept for legacy set_voice_profile support
@@ -127,6 +141,10 @@ async def broadcast_notification(
                 "timestamp": ts,
             },
         }
+    )
+    logger.info(
+        f"Broadcast notification id={notification_id} sev={severity} "
+        f"title='{title}' to {len(_connected_clients)} clients"
     )
     await _broadcast(message)
 
@@ -525,6 +543,33 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     # Send initial state
     await ws.send_str(json.dumps({"type": "status", "state": "idle"}))
     await broadcast_system_metrics()
+
+    # Per-client "welcome" notification — stable id ensures the frontend
+    # dedups across reconnects within the same session, yet a fresh
+    # browser tab always sees the HUD pipe is live.
+    from datetime import datetime, timezone
+
+    await ws.send_str(
+        json.dumps(
+            {
+                "type": "notification",
+                "payload": {
+                    "id": "startup-ok",
+                    "severity": "info",
+                    "title": "JARVIS online",
+                    "detail": (
+                        "Voice-Pipeline, OpenClaw-Gateway und HUD verbunden."
+                    ),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            }
+        )
+    )
+
+    # Mark the first-client event so other subsystems (scheduler, tests)
+    # can still observe "at least one client has been here".
+    if not _first_client_event.is_set():
+        _first_client_event.set()
 
     try:
         async for msg in ws:

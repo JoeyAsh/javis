@@ -72,3 +72,44 @@ openclaw:
   session_id: "jarvis-main"
   thinking_level: "normal"  # "none" | "normal" | "high"
   timeout_seconds: 30
+
+persona:
+  enabled: true
+  salutation_mode: "random"  # "random" | "fixed"
+  salutation_pool:
+    - "Sir"
+    - "Johannes"
+  salutation_weights: [0.5, 0.5]  # must sum to 1.0
+  salutation_seed: null  # optional: integer seed for reproducibility
+  salutation_override: null  # set to force specific salutation
+  style: "jarvis"
+  language_style:
+    en: british_formal
+    de: formal_sie
+
+proactive:
+  enabled: true
+  interjection_cooldown_seconds: 300  # 5 minutes between interjections
+  triggers:
+    meeting_reminder:
+      enabled: true
+      advance_minutes: 10
+      voice: true
+    dirty_repo:
+      enabled: true
+      idle_hours: 2
+      voice: false  # notification only
+    system_alert:
+      enabled: true
+      cpu_threshold: 85
+      ram_threshold: 90
+      disk_threshold: 95
+      voice: true
+    vip_mail:
+      enabled: true
+      sender_whitelist: []
+      voice: true
+    late_night_reminder:
+      enabled: false
+      after_hour: 23
+      voice: true

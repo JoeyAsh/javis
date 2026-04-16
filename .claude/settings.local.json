@@ -35,7 +35,9 @@
       "Bash(taskkill /F /IM python.exe)",
       "Bash(taskkill /F /IM node.exe)",
       "Bash(ls .env*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ]
   }
 }

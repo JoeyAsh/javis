@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import psutil
 from aiohttp import web
 
+from api.system_metrics import SystemMetrics, SystemMetricsCollector
 from audio.fish_tts import FishTTSClient, FishTTSError, strip_markdown_for_tts
 from audio.stt import SpeechToText, create_stt_engine
 from audio.wake_word import WakeWordDetector, create_wake_word_detector
@@ -45,6 +45,11 @@ _orchestrator: Orchestrator | None = None
 _intent_parser: IntentParser | None = None
 
 _start_time: float = time.time()
+
+# System metrics collector + last snapshot (used for initial per-connection push)
+_metrics_collector: SystemMetricsCollector | None = None
+_metrics_task: asyncio.Task[None] | None = None
+_last_metrics: SystemMetrics | None = None
 
 # Per-connection state key — stored on the ws object via a dict keyed by ws id
 _connection_state: dict[int, dict[str, Any]] = {}
@@ -92,27 +97,61 @@ async def broadcast_transcript(role: str, text: str) -> None:
     await _broadcast(message)
 
 
-async def broadcast_system_metrics() -> None:
-    """Broadcast system metrics to all connected clients."""
-    uptime_seconds = int(time.time() - _start_time)
-    hours, remainder = divmod(uptime_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
+def _format_uptime(seconds: float) -> str:
+    """Format uptime as ``HH:MM:SS`` (no cap on hours)."""
+    total = max(int(seconds), 0)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
-    if hours > 0:
-        uptime_str = f"{hours}h {minutes}m"
-    elif minutes > 0:
-        uptime_str = f"{minutes}m {seconds}s"
-    else:
-        uptime_str = f"{seconds}s"
 
-    message = json.dumps({
-        "type": "system",
-        "payload": {
-            "cpu": psutil.cpu_percent(interval=None),
-            "mem": psutil.virtual_memory().percent,
-            "uptime": uptime_str,
-        },
-    })
+def _metrics_to_payload(metrics: SystemMetrics) -> dict[str, Any]:
+    """Build the outbound WebSocket payload for a metrics snapshot.
+
+    Keeps the legacy ``cpu``/``mem``/``uptime`` fields so existing
+    consumers don't break, and adds the extended fields alongside.
+    """
+    return {
+        # Legacy fields — preserved for backward compatibility.
+        "cpu": metrics.cpu_percent,
+        "mem": metrics.ram_percent,
+        "uptime": _format_uptime(metrics.uptime_seconds),
+        # Extended fields.
+        "gpu": metrics.gpu_percent,
+        "cpu_temp": metrics.cpu_temp_c,
+        "net_up": metrics.net_up_mbps,
+        "net_down": metrics.net_down_mbps,
+        "disk": metrics.disk_percent,
+    }
+
+
+async def broadcast_system_metrics(metrics: SystemMetrics | None = None) -> None:
+    """Broadcast a system metrics snapshot to all connected clients.
+
+    If ``metrics`` is ``None``, the most recent snapshot captured by the
+    background collector is used (or a fresh ad-hoc one if none exists
+    yet, e.g. on initial client connect before the first tick).
+    """
+    global _last_metrics
+
+    snapshot = metrics
+    if snapshot is None:
+        snapshot = _last_metrics
+    if snapshot is None and _metrics_collector is not None:
+        try:
+            snapshot = await _metrics_collector.snapshot()
+            _last_metrics = snapshot
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Ad-hoc metrics snapshot failed: {exc}")
+            snapshot = None
+
+    if snapshot is None:
+        return
+
+    _last_metrics = snapshot
+    message = json.dumps(
+        {"type": "system", "payload": _metrics_to_payload(snapshot)}
+    )
     await _broadcast(message)
 
 
@@ -141,14 +180,11 @@ async def _broadcast(message: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _system_metrics_loop() -> None:
-    """Background task to broadcast system metrics every 5 seconds."""
-    while True:
-        try:
-            await broadcast_system_metrics()
-        except Exception as e:
-            logger.error(f"Error broadcasting system metrics: {e}")
-        await asyncio.sleep(5)
+async def _on_metrics_snapshot(metrics: SystemMetrics) -> None:
+    """Collector callback — broadcast each fresh snapshot to clients."""
+    global _last_metrics
+    _last_metrics = metrics
+    await broadcast_system_metrics(metrics)
 
 
 # ---------------------------------------------------------------------------
@@ -531,6 +567,7 @@ async def start_ws_server(
     global _memory, _tts_engine, _fish_tts, _stt_engine, _wake_word_detector
     global _orchestrator, _intent_parser, _start_time
     global _silence_threshold, _silence_duration_ms, _sample_rate
+    global _metrics_collector, _metrics_task
 
     from dotenv import load_dotenv
 
@@ -623,9 +660,38 @@ async def start_ws_server(
     await http_site.start()
     logger.info(f"HTTP server started on port {http_port}")
 
-    # Background metrics broadcast
-    asyncio.create_task(_system_metrics_loop())
+    # Background metrics broadcast — 2 s interval via SystemMetricsCollector.
+    _metrics_collector = SystemMetricsCollector(interval_seconds=2.0)
+    _metrics_task = asyncio.create_task(
+        _metrics_collector.run(_on_metrics_snapshot)
+    )
 
-    # Keep running
-    while True:
-        await asyncio.sleep(3600)
+    # Keep running until cancelled (e.g. SIGINT from main.py).
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        logger.info("WebSocket server cancelled — shutting down...")
+        raise
+    finally:
+        # Clean teardown of the metrics collector.
+        if _metrics_collector is not None:
+            await _metrics_collector.stop()
+        if _metrics_task is not None and not _metrics_task.done():
+            _metrics_task.cancel()
+            try:
+                await _metrics_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        _metrics_collector = None
+        _metrics_task = None
+
+        # Tear down aiohttp runners.
+        try:
+            await ws_runner.cleanup()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"ws_runner cleanup failed: {exc}")
+        try:
+            await http_runner.cleanup()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"http_runner cleanup failed: {exc}")

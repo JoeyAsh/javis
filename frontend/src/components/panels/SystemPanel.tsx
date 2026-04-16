@@ -2,12 +2,25 @@ import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { systemMock } from '../../mock/systemMock';
 import { useMockTicker, seededRand } from '../../mock/useMockTicker';
+import { useSystemMetrics } from '../../hooks/useSystemMetrics';
+import type { SystemMetricsLive, MetricHistories } from '../../hooks/useSystemMetrics';
 import type { SystemMetric, PanelMode } from '../../types';
 
 export interface SystemPanelProps {
   metrics?: SystemMetric[];
   paused?: boolean;
   mode?: PanelMode;
+}
+
+// Sparkline tile record — shared between mock and live render paths.
+interface SparkTile {
+  id: SystemMetric['id'];
+  label: string;
+  unit: string;
+  current: number | null;
+  history: number[];
+  secondary?: number;
+  secondaryLabel?: string;
 }
 
 function driftHistory(base: number[], tick: number, seedBase: number): number[] {
@@ -21,6 +34,9 @@ function Sparkline({ values, color }: { values: number[]; color: string }): Reac
   const { path, fill } = useMemo(() => {
     const w = 100;
     const h = 24;
+    if (values.length === 0) {
+      return { path: '', fill: '' };
+    }
     const max = Math.max(...values, 1);
     const step = w / Math.max(values.length - 1, 1);
     const pts = values.map((v, i) => {
@@ -39,13 +55,13 @@ function Sparkline({ values, color }: { values: number[]; color: string }): Reac
       preserveAspectRatio="none"
       style={{ width: '100%', height: 24, display: 'block' }}
     >
-      <path d={fill} fill={color} opacity={0.15} />
-      <path d={path} fill="none" stroke={color} strokeWidth={1.2} />
+      {path && <path d={fill} fill={color} opacity={0.15} />}
+      {path && <path d={path} fill="none" stroke={color} strokeWidth={1.2} />}
     </svg>
   );
 }
 
-function useLiveMetrics(metrics: SystemMetric[], paused: boolean): SystemMetric[] {
+function useLiveMockMetrics(metrics: SystemMetric[], paused: boolean): SystemMetric[] {
   const tick = useMockTicker(1500, paused);
   return useMemo<SystemMetric[]>(
     () =>
@@ -64,23 +80,91 @@ function useLiveMetrics(metrics: SystemMetric[], paused: boolean): SystemMetric[
   );
 }
 
-function SystemCompact({ metrics }: { metrics: SystemMetric[] }): ReactElement {
-  const cpu = metrics.find((m) => m.id === 'cpu');
-  const ram = metrics.find((m) => m.id === 'ram');
-  const net = metrics.find((m) => m.id === 'net');
+function liveToTiles(
+  current: SystemMetricsLive,
+  history: MetricHistories,
+): SparkTile[] {
+  return [
+    {
+      id: 'cpu',
+      label: 'CPU',
+      unit: '%',
+      current: current.cpu,
+      history: history.cpu,
+    },
+    {
+      id: 'ram',
+      label: 'RAM',
+      unit: '%',
+      current: current.ram,
+      history: history.ram,
+    },
+    {
+      id: 'gpu',
+      label: 'GPU',
+      unit: '%',
+      current: current.gpu,
+      history: history.gpu,
+    },
+    {
+      id: 'cpuTemp',
+      label: 'CPU TEMP',
+      unit: '°C',
+      current: current.cpuTemp,
+      history: history.cpuTemp,
+    },
+    {
+      id: 'net',
+      label: 'NET',
+      unit: 'Mb/s',
+      current: current.netDown,
+      history: history.netDown,
+      secondary: current.netUp,
+      secondaryLabel: 'UP',
+    },
+    {
+      id: 'disk',
+      label: 'DISK',
+      unit: '%',
+      current: current.disk,
+      history: history.disk,
+    },
+  ];
+}
+
+function mockToTiles(metrics: SystemMetric[]): SparkTile[] {
+  return metrics.map((m) => ({
+    id: m.id,
+    label: m.label,
+    unit: m.unit,
+    current: m.current,
+    history: m.history,
+    secondary: m.secondary,
+    secondaryLabel: m.secondaryLabel,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Compact view
+// ---------------------------------------------------------------------------
+
+function SystemCompact({ tiles }: { tiles: SparkTile[] }): ReactElement {
+  const cpu = tiles.find((t) => t.id === 'cpu');
+  const ram = tiles.find((t) => t.id === 'ram');
+  const net = tiles.find((t) => t.id === 'net');
   return (
     <>
       <div className="window-compact-row" style={{ gap: 10, fontSize: 11 }}>
         <span>
           <span className="mono-small" style={{ marginRight: 4 }}>CPU</span>
           <span style={{ color: 'var(--accent-bright)' }}>
-            {cpu ? `${cpu.current.toFixed(0)}%` : '—'}
+            {cpu?.current != null ? `${cpu.current.toFixed(0)}%` : '—'}
           </span>
         </span>
         <span>
           <span className="mono-small" style={{ marginRight: 4 }}>RAM</span>
           <span style={{ color: 'var(--accent-bright)' }}>
-            {ram ? `${ram.current.toFixed(0)}%` : '—'}
+            {ram?.current != null ? `${ram.current.toFixed(0)}%` : '—'}
           </span>
         </span>
       </div>
@@ -91,7 +175,7 @@ function SystemCompact({ metrics }: { metrics: SystemMetric[] }): ReactElement {
             {(net.secondary ?? 0).toFixed(1)}↑
           </span>
           <span style={{ color: 'var(--accent-bright)' }}>
-            {net.current.toFixed(1)}↓
+            {(net.current ?? 0).toFixed(1)}↓
           </span>
           <span className="mono-small">Mb/s</span>
         </div>
@@ -100,7 +184,11 @@ function SystemCompact({ metrics }: { metrics: SystemMetric[] }): ReactElement {
   );
 }
 
-function SystemExpanded({ metrics }: { metrics: SystemMetric[] }): ReactElement {
+// ---------------------------------------------------------------------------
+// Expanded view
+// ---------------------------------------------------------------------------
+
+function SystemExpanded({ tiles }: { tiles: SparkTile[] }): ReactElement {
   return (
     <div
       style={{
@@ -109,14 +197,49 @@ function SystemExpanded({ metrics }: { metrics: SystemMetric[] }): ReactElement 
         gap: 10,
       }}
     >
-      {metrics.map((m) => {
+      {tiles.map((t) => {
+        if (t.current === null) {
+          return (
+            <div key={t.id}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  justifyContent: 'space-between',
+                  marginBottom: 2,
+                }}
+              >
+                <span className="mono-small" style={{ letterSpacing: 1 }}>
+                  {t.label}
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  n/a
+                </span>
+              </div>
+              <div
+                style={{
+                  height: 24,
+                  borderBottom: '1px dashed var(--border)',
+                  opacity: 0.4,
+                }}
+              />
+            </div>
+          );
+        }
+
         const warn =
-          (m.id === 'cpu' && m.current > 85) ||
-          (m.id === 'cpuTemp' && m.current > 80) ||
-          (m.id === 'ram' && m.current > 90);
+          (t.id === 'cpu' && t.current > 85) ||
+          (t.id === 'cpuTemp' && t.current > 80) ||
+          (t.id === 'ram' && t.current > 90);
         const color = warn ? 'var(--warning)' : 'var(--accent-bright)';
         return (
-          <div key={m.id}>
+          <div key={t.id}>
             <div
               style={{
                 display: 'flex',
@@ -126,7 +249,7 @@ function SystemExpanded({ metrics }: { metrics: SystemMetric[] }): ReactElement 
               }}
             >
               <span className="mono-small" style={{ letterSpacing: 1 }}>
-                {m.label}
+                {t.label}
               </span>
               <span
                 style={{
@@ -135,14 +258,14 @@ function SystemExpanded({ metrics }: { metrics: SystemMetric[] }): ReactElement 
                   fontWeight: 500,
                 }}
               >
-                {m.current.toFixed(m.id === 'net' ? 1 : 0)}
+                {t.current.toFixed(t.id === 'net' ? 1 : 0)}
                 <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 2 }}>
-                  {m.unit}
+                  {t.unit}
                 </span>
               </span>
             </div>
-            <Sparkline values={m.history} color={color} />
-            {m.secondary !== undefined && (
+            <Sparkline values={t.history} color={color} />
+            {t.secondary !== undefined && (
               <div
                 style={{
                   fontSize: 9,
@@ -151,7 +274,7 @@ function SystemExpanded({ metrics }: { metrics: SystemMetric[] }): ReactElement 
                   marginTop: 2,
                 }}
               >
-                {m.secondaryLabel} {m.secondary.toFixed(1)}
+                {t.secondaryLabel} {t.secondary.toFixed(1)}
               </div>
             )}
           </div>
@@ -161,13 +284,30 @@ function SystemExpanded({ metrics }: { metrics: SystemMetric[] }): ReactElement 
   );
 }
 
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
 export function SystemPanel({
   metrics = systemMock,
   paused = false,
   mode = 'expanded',
 }: SystemPanelProps): ReactElement {
-  const live = useLiveMetrics(metrics, paused);
-  return mode === 'compact' ? <SystemCompact metrics={live} /> : <SystemExpanded metrics={live} />;
+  const { current, history, isLive } = useSystemMetrics();
+  const mockTiles = useLiveMockMetrics(metrics, paused);
+
+  const tiles: SparkTile[] = useMemo(() => {
+    if (isLive && current) {
+      return liveToTiles(current, history);
+    }
+    return mockToTiles(mockTiles);
+  }, [isLive, current, history, mockTiles]);
+
+  return mode === 'compact' ? (
+    <SystemCompact tiles={tiles} />
+  ) : (
+    <SystemExpanded tiles={tiles} />
+  );
 }
 
 export default SystemPanel;

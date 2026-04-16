@@ -17,11 +17,30 @@ export type PanelMode = 'compact' | 'expanded';
 
 // ============ Existing WS ============
 
+/**
+ * Live system metrics payload from the backend.
+ *
+ * `cpu`, `mem`, `uptime` are required (legacy-compatible). The remaining
+ * fields are surfaced by the new {@link SystemMetricsCollector} and may
+ * be `null` if the host doesn't expose that sensor (e.g. `gpu` on an
+ * AMD-only box, or `cpu_temp` in a container without /sys access).
+ */
+export interface SystemMetricsPayload {
+  cpu: number;
+  mem: number;
+  uptime: string;
+  gpu?: number | null;
+  cpu_temp?: number | null;
+  net_up?: number;
+  net_down?: number;
+  disk?: number;
+}
+
 export type WsIncoming =
   | { type: 'audio'; data: string; text: string }
   | { type: 'status'; state: OrbState }
   | { type: 'text'; text: string }
-  | { type: 'system'; payload: { cpu: number; mem: number; uptime: string } };
+  | { type: 'system'; payload: SystemMetricsPayload };
 
 export type WsOutgoing =
   | { type: 'transcript'; text: string; isFinal: boolean }

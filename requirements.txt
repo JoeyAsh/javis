@@ -6,6 +6,7 @@ python-dotenv
 PyYAML
 loguru
 psutil
+GPUtil
 
 # Audio / Voice pipeline
 faster-whisper

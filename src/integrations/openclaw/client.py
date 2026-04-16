@@ -166,30 +166,25 @@ class OpenClawClient:
             return False
 
     async def is_healthy(self) -> bool:
-        """Check if OpenClaw gateway is running and healthy.
+        """Check if OpenClaw gateway is running and reachable.
 
-        Uses 'openclaw doctor' command to verify system health.
+        Pings the gateway HTTP endpoint directly instead of shelling out to
+        `openclaw doctor` — doctor runs full diagnostics (slow, seconds-long)
+        while a simple HTTP HEAD / GET returns immediately. The gateway
+        returns HTTP 200 on the root path when it is up.
 
         Returns:
-            True if gateway is healthy.
+            True if the gateway responds with HTTP 200 within 2 s.
         """
         if not self._enabled:
             return False
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "openclaw",
-                "doctor",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            await asyncio.wait_for(proc.wait(), timeout=10)
-            return proc.returncode == 0
-        except FileNotFoundError:
-            logger.warning("OpenClaw CLI not found")
-            return False
-        except asyncio.TimeoutError:
-            logger.warning("OpenClaw doctor timed out")
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                response = await client.get(self._gateway_url)
+                return response.status_code == 200
+        except httpx.RequestError as e:
+            logger.debug(f"OpenClaw gateway unreachable: {e}")
             return False
         except Exception as e:
             logger.warning(f"OpenClaw health check failed: {e}")

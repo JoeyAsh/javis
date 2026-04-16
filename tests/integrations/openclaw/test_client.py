@@ -79,50 +79,65 @@ class TestHealthCheck:
     """Tests for health check functionality."""
 
     @pytest.mark.asyncio
-    async def test_is_healthy_returns_true_on_success(self, openclaw_config):
-        """Test health check returns True when doctor succeeds."""
+    async def test_is_healthy_returns_true_on_200(self, openclaw_config):
+        """Health check returns True when gateway HTTP endpoint returns 200."""
         client = OpenClawClient(openclaw_config)
 
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_proc = AsyncMock()
-            mock_proc.returncode = 0
-            mock_proc.wait = AsyncMock(return_value=0)
-            mock_exec.return_value = mock_proc
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_http = AsyncMock()
+        mock_http.__aenter__.return_value = mock_http
+        mock_http.__aexit__.return_value = False
+        mock_http.get = AsyncMock(return_value=mock_response)
 
+        with patch(
+            "integrations.openclaw.client.httpx.AsyncClient", return_value=mock_http
+        ):
             result = await client.is_healthy()
 
-            assert result is True
+        assert result is True
 
     @pytest.mark.asyncio
-    async def test_is_healthy_returns_false_on_failure(self, openclaw_config):
-        """Test health check returns False when doctor fails."""
+    async def test_is_healthy_returns_false_on_non_200(self, openclaw_config):
+        """Health check returns False when gateway returns non-200."""
         client = OpenClawClient(openclaw_config)
 
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_proc = AsyncMock()
-            mock_proc.returncode = 1
-            mock_proc.wait = AsyncMock(return_value=1)
-            mock_exec.return_value = mock_proc
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_http = AsyncMock()
+        mock_http.__aenter__.return_value = mock_http
+        mock_http.__aexit__.return_value = False
+        mock_http.get = AsyncMock(return_value=mock_response)
 
+        with patch(
+            "integrations.openclaw.client.httpx.AsyncClient", return_value=mock_http
+        ):
             result = await client.is_healthy()
 
-            assert result is False
+        assert result is False
 
     @pytest.mark.asyncio
-    async def test_is_healthy_returns_false_when_cli_not_found(self, openclaw_config):
-        """Test health check returns False when CLI not found."""
+    async def test_is_healthy_returns_false_on_connection_error(self, openclaw_config):
+        """Health check returns False when gateway is unreachable."""
+        import httpx
+
         client = OpenClawClient(openclaw_config)
 
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_exec.side_effect = FileNotFoundError()
+        mock_http = AsyncMock()
+        mock_http.__aenter__.return_value = mock_http
+        mock_http.__aexit__.return_value = False
+        mock_http.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
+        with patch(
+            "integrations.openclaw.client.httpx.AsyncClient", return_value=mock_http
+        ):
             result = await client.is_healthy()
 
-            assert result is False
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_is_healthy_returns_false_when_disabled(self, disabled_config):
-        """Test health check returns False when disabled."""
+        """Health check returns False when disabled (short-circuits)."""
         client = OpenClawClient(disabled_config)
 
         result = await client.is_healthy()

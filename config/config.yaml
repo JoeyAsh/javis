@@ -53,3 +53,12 @@ api:
 logging:
   level: "DEBUG"
   file: "logs/jarvis.log"
+
+memory:
+  enabled: true
+  db_path: "data/jarvis.db"
+  backup:
+    enabled: true
+    directory: "data/backups"
+    keep_days: 14
+    schedule: "0 3 * * *"  # 3 AM daily (cron format)

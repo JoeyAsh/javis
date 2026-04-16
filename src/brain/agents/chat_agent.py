@@ -4,7 +4,7 @@ from typing import Any
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.claude_client import ClaudeClient
-from brain.memory import ConversationMemory
+from brain.memory_legacy import ConversationMemory
 from utils.config_loader import get_config
 from utils.logger import get_logger
 

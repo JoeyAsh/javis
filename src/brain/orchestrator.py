@@ -15,7 +15,7 @@ from brain.agents.smart_home_agent import SmartHomeAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
 from brain.intent_parser import Intent, IntentResult
-from brain.memory import ConversationMemory
+from brain.memory_legacy import ConversationMemory
 from utils.config_loader import get_config
 from utils.logger import get_logger
 

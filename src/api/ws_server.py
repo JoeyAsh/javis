@@ -21,7 +21,7 @@ from aiohttp import web
 from audio.fish_tts import FishTTSClient, FishTTSError, strip_markdown_for_tts
 from audio.stt import SpeechToText, create_stt_engine
 from audio.wake_word import WakeWordDetector, create_wake_word_detector
-from brain.memory import ConversationMemory
+from brain.memory_legacy import ConversationMemory
 from brain.intent_parser import IntentParser, get_intent_parser
 from brain.orchestrator import Orchestrator
 from utils.logger import get_logger
@@ -566,7 +566,7 @@ async def start_ws_server(
 
     if _memory is None:
         claude_config = cfg.get_section("claude")
-        from brain.memory import ConversationMemory as _CM
+        from brain.memory_legacy import ConversationMemory as _CM
 
         _memory = _CM(max_turns=claude_config.get("max_history_turns", 10))
 

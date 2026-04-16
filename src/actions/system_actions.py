@@ -6,7 +6,7 @@ Provides high-level system action functions used by the system agent.
 from pathlib import Path
 from typing import Any
 
-from brain.memory import ConversationMemory
+from brain.memory_legacy import ConversationMemory
 from utils.config_loader import get_config
 from utils.logger import get_logger
 

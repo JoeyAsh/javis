@@ -1,16 +1,20 @@
 """Brain modules for JARVIS - LLM integration and intent handling."""
 
 from brain.claude_client import ClaudeClient
-from brain.memory import ConversationMemory
-from brain.intent_parser import IntentParser, Intent, IntentResult
+from brain.intent_parser import Intent, IntentParser, IntentResult
+from brain.memory import ConversationTurn, Event, MemoryStore
+from brain.memory_legacy import ConversationMemory  # Deprecated
 from brain.orchestrator import Orchestrator, OrchestratorDecision
 
 __all__ = [
     "ClaudeClient",
-    "ConversationMemory",
-    "IntentParser",
+    "ConversationMemory",  # Deprecated - use MemoryStore
+    "ConversationTurn",
+    "Event",
     "Intent",
+    "IntentParser",
     "IntentResult",
+    "MemoryStore",
     "Orchestrator",
     "OrchestratorDecision",
 ]

@@ -1,7 +1,20 @@
-"""Conversation memory for JARVIS.
+"""Conversation memory for JARVIS (LEGACY).
+
+DEPRECATED: This module is deprecated. Use `from brain.memory import MemoryStore`
+for persistent storage. This in-memory implementation is retained only for
+backward compatibility during migration.
 
 Manages conversation history for context in LLM calls.
 """
+
+import warnings
+
+warnings.warn(
+    "brain.memory_legacy.ConversationMemory is deprecated. "
+    "Use brain.memory.MemoryStore for persistent storage instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from dataclasses import dataclass, field
 from datetime import datetime

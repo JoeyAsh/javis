@@ -12,7 +12,7 @@ import sys
 from dotenv import load_dotenv
 
 from api.ws_server import start_ws_server
-from brain.memory import ConversationMemory
+from brain.memory_legacy import ConversationMemory
 from utils.config_loader import get_config
 from utils.logger import get_logger, setup_logger
 

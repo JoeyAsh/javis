@@ -5,7 +5,7 @@ from typing import Any
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.claude_client import ClaudeClient
-from brain.memory import ConversationMemory
+from brain.memory_legacy import ConversationMemory
 from utils.logger import get_logger
 
 logger = get_logger("agent.system")

@@ -7,25 +7,21 @@ audio:
   input_device_index: null
   sample_rate: 16000
   chunk_size: 1024
-  silence_threshold: 500
+  silence_threshold: 300
   silence_duration_ms: 1500
 
 stt:
-  model: "small"          # "large-v3" if you have a CUDA GPU
-  device: "cpu"           # "cuda" if you have a CUDA GPU
-  compute_type: "int8"    # "float16" for CUDA
-  language: null          # auto-detect
+  model: "small"
+  device: "cpu"
+  compute_type: "int8"
+  language: null
 
 tts:
-  engine: "piper"         # "xtts" for voice cloning (requires C++ Build Tools + PyTorch)
-  voice_profile: "jarvis"
-  speed: 1.0
-  pitch_shift: 0
-  piper_model: "de_DE-thorsten-high"  # Auto-switches to en_GB-alan-medium for English
+  engine: "fish"          # Fish Audio cloud TTS
 
 wake_word:
-  model_path: "wake_word/jarvis.onnx"
-  threshold: 0.5
+  model_path: null
+  threshold: 0.3
   vad_threshold: 0.5
 
 claude:
@@ -52,10 +48,8 @@ smart_home:
   enabled: false
 
 api:
-  ws_port: 8765
-  http_port: 8766
   cors_origins: ["http://localhost:5173"]
 
 logging:
-  level: "INFO"
+  level: "DEBUG"
   file: "logs/jarvis.log"

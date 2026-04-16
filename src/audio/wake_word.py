@@ -193,9 +193,12 @@ class WakeWordDetector:
 
             # Check if "hey_jarvis" (or any) wake word exceeds threshold
             for model_name, score in prediction.items():
-                if "jarvis" in model_name and score > self.threshold:
-                    logger.info(f"Wake word detected: {model_name} (score={score:.3f})")
-                    return True
+                if "jarvis" in model_name:
+                    if score > 0.05:
+                        logger.debug(f"Wake word score: {model_name}={score:.3f} (threshold={self.threshold})")
+                    if score > self.threshold:
+                        logger.info(f"Wake word detected: {model_name} (score={score:.3f})")
+                        return True
 
             return False
 

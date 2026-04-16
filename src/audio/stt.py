@@ -30,9 +30,9 @@ class SpeechToText:
 
     def __init__(
         self,
-        model: str = "large-v3",
-        device: str = "cuda",
-        compute_type: str = "float16",
+        model: str = "small",
+        device: str = "cpu",
+        compute_type: str = "int8",
         language: str | None = None,
     ) -> None:
         """Initialize the STT engine.
@@ -86,7 +86,7 @@ class SpeechToText:
         """Transcribe audio to text.
 
         Args:
-            audio_data: Audio data as bytes (16-bit PCM) or numpy array
+            audio_data: Audio data as bytes (16-bit PCM) or numpy array (float32)
 
         Returns:
             TranscriptionResult with text, language, and confidence
@@ -128,7 +128,7 @@ class SpeechToText:
                 total_confidence += segment.avg_logprob
                 segment_count += 1
 
-            text = " ".join(text_parts)
+            text = " ".join(text_parts).strip()
             avg_confidence = (
                 total_confidence / segment_count if segment_count > 0 else 0.0
             )
@@ -140,55 +140,9 @@ class SpeechToText:
             detected_language = info.language if info.language else "en"
 
             logger.debug(
-                f"Transcribed: '{text[:50]}...' "
+                f"Transcribed: '{text[:50]}' "
                 f"(lang={detected_language}, conf={confidence:.2f})"
             )
-
-            return TranscriptionResult(
-                text=text,
-                language=detected_language,
-                confidence=confidence,
-            )
-
-        return await loop.run_in_executor(None, process)
-
-    async def transcribe_file(self, file_path: str) -> TranscriptionResult:
-        """Transcribe audio from a file.
-
-        Args:
-            file_path: Path to audio file (WAV, MP3, etc.)
-
-        Returns:
-            TranscriptionResult with text, language, and confidence
-        """
-        if self._model is None:
-            await self.initialize()
-
-        loop = asyncio.get_event_loop()
-
-        def process() -> TranscriptionResult:
-            segments, info = self._model.transcribe(
-                file_path,
-                language=self.forced_language,
-                beam_size=5,
-                vad_filter=True,
-            )
-
-            text_parts = []
-            total_confidence = 0.0
-            segment_count = 0
-
-            for segment in segments:
-                text_parts.append(segment.text.strip())
-                total_confidence += segment.avg_logprob
-                segment_count += 1
-
-            text = " ".join(text_parts)
-            avg_confidence = (
-                total_confidence / segment_count if segment_count > 0 else 0.0
-            )
-            confidence = min(1.0, max(0.0, 1.0 + avg_confidence))
-            detected_language = info.language if info.language else "en"
 
             return TranscriptionResult(
                 text=text,
@@ -206,16 +160,16 @@ async def create_stt_engine(config: dict[str, Any] | None = None) -> SpeechToTex
         config: Optional STT configuration. If None, loads from global config.
 
     Returns:
-        Configured SpeechToText instance
+        Configured and initialized SpeechToText instance
     """
     if config is None:
         cfg = get_config()
         config = cfg.get_section("stt")
 
     engine = SpeechToText(
-        model=config.get("model", "large-v3"),
-        device=config.get("device", "cuda"),
-        compute_type=config.get("compute_type", "float16"),
+        model=config.get("model", "small"),
+        device=config.get("device", "cpu"),
+        compute_type=config.get("compute_type", "int8"),
         language=config.get("language"),
     )
 

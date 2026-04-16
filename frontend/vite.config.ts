@@ -6,14 +6,15 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      '/jarvis-ws': {
+        target: 'http://localhost:8765',
+        ws: true,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/jarvis-ws/, '/ws'),
+      },
       '/voices': {
         target: 'http://localhost:8766',
         changeOrigin: true,
-      },
-      '/ws': {
-        target: 'ws://localhost:8765',
-        ws: true,
-        rewriteWsOrigin: true,
       },
     },
   },

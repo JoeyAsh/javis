@@ -1,52 +1,107 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+interface UseAudioAnalyserReturn {
+  analyser: AnalyserNode | null;
+  isSpeaking: boolean;
+  enqueue: (base64Mp3: string) => void;
+}
 
 /**
- * Hook to create an AudioContext and AnalyserNode from microphone input.
+ * Hook for decoding and playing back base64 MP3 audio from the backend.
+ * Creates an AnalyserNode connected to playback for orb visualization.
+ * Manages a queue so clips play sequentially.
  */
-export function useAudioAnalyser(): AnalyserNode | null {
+export function useAudioAnalyser(): UseAudioAnalyserReturn {
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
-  useEffect(() => {
-    let audioContext: AudioContext | null = null;
-    let stream: MediaStream | null = null;
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const queueRef = useRef<string[]>([]);
+  const playingRef = useRef(false);
 
-    async function setupAudio() {
-      try {
-        // Request microphone access
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  // Lazily initialize AudioContext (must be after user gesture in some browsers)
+  const getAudioContext = useCallback((): AudioContext => {
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+      const ctx = new AudioContext();
+      const node = ctx.createAnalyser();
+      node.fftSize = 256;
+      node.smoothingTimeConstant = 0.8;
+      node.connect(ctx.destination);
+      audioCtxRef.current = ctx;
+      analyserRef.current = node;
+      setAnalyser(node);
+    }
+    return audioCtxRef.current;
+  }, []);
 
-        // Create audio context
-        audioContext = new AudioContext();
+  const playNext = useCallback(async () => {
+    if (playingRef.current || queueRef.current.length === 0) return;
 
-        // Create analyser node
-        const analyserNode = audioContext.createAnalyser();
-        analyserNode.fftSize = 256;
-        analyserNode.smoothingTimeConstant = 0.8;
+    const base64 = queueRef.current[0];
+    playingRef.current = true;
+    setIsSpeaking(true);
 
-        // Connect microphone to analyser
-        const source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyserNode);
+    try {
+      const ctx = getAudioContext();
 
-        setAnalyser(analyserNode);
-      } catch (error) {
-        console.warn('Could not access microphone for audio visualization:', error);
-        setAnalyser(null);
+      // Resume context if suspended (autoplay policy)
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+
+      // Decode base64 → ArrayBuffer
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+
+      const audioBuffer = await ctx.decodeAudioData(bytes.buffer);
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      // Connect source → analyser (analyser already connected to destination)
+      source.connect(analyserRef.current!);
+
+      source.onended = () => {
+        queueRef.current = queueRef.current.slice(1);
+        playingRef.current = false;
+        if (queueRef.current.length === 0) {
+          setIsSpeaking(false);
+        } else {
+          playNext();
+        }
+      };
+
+      source.start();
+    } catch (err) {
+      console.error('[audio] playback error:', err);
+      queueRef.current = queueRef.current.slice(1);
+      playingRef.current = false;
+      if (queueRef.current.length === 0) {
+        setIsSpeaking(false);
+      } else {
+        playNext();
       }
     }
+  }, [getAudioContext]);
 
-    setupAudio();
+  const enqueue = useCallback(
+    (base64Mp3: string) => {
+      queueRef.current = [...queueRef.current, base64Mp3];
+      playNext();
+    },
+    [playNext]
+  );
 
-    // Cleanup
+  useEffect(() => {
     return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-      if (audioContext) {
-        audioContext.close();
-      }
-      setAnalyser(null);
+      audioCtxRef.current?.close();
+      audioCtxRef.current = null;
+      analyserRef.current = null;
     };
   }, []);
 
-  return analyser;
+  return { analyser, isSpeaking, enqueue };
 }

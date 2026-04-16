@@ -1,104 +1,92 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  OrbState,
-  SystemStats,
-  TranscriptEntry,
-  WsCommand,
-  WsMessage,
-} from '../types';
+import type React from 'react';
+import type { OrbState, WsIncoming, WsOutgoing } from '../types';
 
-interface UseWebSocketReturn {
+export interface UseWebSocketReturn {
   orbState: OrbState;
-  transcript: TranscriptEntry[];
-  systemStats: SystemStats | null;
-  send: (cmd: WsCommand) => void;
+  setOrbState: (state: OrbState) => void;
+  audioQueue: string[];
+  consumeAudio: () => void;
+  sendTranscript: (text: string) => void;
   connected: boolean;
+  /** Raw WebSocket ref — exposed so useMicStream can send binary PCM frames */
+  wsRef: React.RefObject<WebSocket | null>;
 }
 
-const MAX_TRANSCRIPT_ENTRIES = 6;
-const RECONNECT_DELAY = 3000;
+const RECONNECT_DELAY_INITIAL = 1000;
+const RECONNECT_DELAY_MAX = 30000;
 
 /**
  * Hook to manage WebSocket connection to JARVIS backend.
+ * Receives: audio (base64 MP3), status, metrics, text fallback.
+ * Sends: transcript messages from speech recognition.
  */
 export function useWebSocket(): UseWebSocketReturn {
   const [orbState, setOrbState] = useState<OrbState>('idle');
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+  const [audioQueue, setAudioQueue] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const transcriptIdRef = useRef(0);
-  const reconnectTimeoutRef = useRef<number | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectDelayRef = useRef(RECONNECT_DELAY_INITIAL);
+  const didConnectRef = useRef(false);
 
   const connect = useCallback(() => {
-    // Prevent duplicate connections (React StrictMode runs effects twice)
+    // StrictMode guard: only one connection at a time
     if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
       return;
     }
 
-    // Determine WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-
-    // Use /ws path for Vite proxy in development, direct port in production
-    let wsUrl: string;
-    if (import.meta.env.DEV) {
-      wsUrl = `${protocol}//${host}/ws`;
-    } else {
-      // In production, connect directly to backend port
-      wsUrl = `${protocol}//${window.location.hostname}:8765`;
-    }
+    const wsUrl = `${protocol}//${window.location.hostname}:8765`;
 
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       setConnected(true);
-      console.log('WebSocket connected');
+      reconnectDelayRef.current = RECONNECT_DELAY_INITIAL;
     };
 
     ws.onclose = () => {
       setConnected(false);
       wsRef.current = null;
-      console.log('WebSocket disconnected, reconnecting...');
-
-      // Auto-reconnect
-      reconnectTimeoutRef.current = window.setTimeout(() => {
+      const delay = reconnectDelayRef.current;
+      reconnectDelayRef.current = Math.min(delay * 2, RECONNECT_DELAY_MAX);
+      reconnectTimeoutRef.current = setTimeout(() => {
         connect();
-      }, RECONNECT_DELAY);
+      }, delay);
     };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+    ws.onerror = (err) => {
+      console.error('[ws] error', err);
+      ws.close();
     };
 
     ws.onmessage = (event) => {
       try {
-        const message = JSON.parse(event.data) as WsMessage;
-
-        switch (message.type) {
-          case 'state':
-            setOrbState(message.payload);
+        const msg = JSON.parse(event.data as string) as WsIncoming;
+        switch (msg.type) {
+          case 'status':
+            setOrbState(msg.state);
             break;
-
-          case 'transcript':
-            setTranscript((prev) => {
-              const newEntry: TranscriptEntry = {
-                ...message.payload,
-                id: transcriptIdRef.current++,
-              };
-              const updated = [...prev, newEntry];
-              // Keep only the last N entries
-              return updated.slice(-MAX_TRANSCRIPT_ENTRIES);
-            });
+          case 'audio':
+            if (msg.data) {
+              setOrbState('speaking');
+              setAudioQueue((prev) => [...prev, msg.data]);
+            } else {
+              // TTS failed — return to idle
+              setOrbState('idle');
+            }
             break;
-
-          case 'system':
-            setSystemStats(message.payload);
+          case 'text':
+            // Text-only fallback when TTS fails — log and return to idle
+            console.log('[JARVIS]', msg.text);
+            setOrbState('idle');
             break;
+          // system metrics ignored for now
         }
-      } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
+      } catch (err) {
+        console.error('[ws] parse error', err);
       }
     };
 
@@ -111,25 +99,27 @@ export function useWebSocket(): UseWebSocketReturn {
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
       if (wsRef.current) {
+        // Prevent reconnect on cleanup
+        wsRef.current.onclose = null;
         wsRef.current.close();
         wsRef.current = null;
       }
     };
   }, [connect]);
 
-  const send = useCallback((cmd: WsCommand) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(cmd));
+  const consumeAudio = useCallback(() => {
+    setAudioQueue((prev) => prev.slice(1));
+  }, []);
+
+  const sendTranscript = useCallback((text: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg: WsOutgoing = { type: 'transcript', text, isFinal: true };
+      wsRef.current.send(JSON.stringify(msg));
     }
   }, []);
 
-  return {
-    orbState,
-    transcript,
-    systemStats,
-    send,
-    connected,
-  };
+  return { orbState, setOrbState, audioQueue, consumeAudio, sendTranscript, connected, wsRef };
 }

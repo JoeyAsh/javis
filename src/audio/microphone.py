@@ -186,7 +186,7 @@ class Microphone:
         return input_devices
 
 
-async def create_microphone(config: dict[str, Any] | None = None) -> Microphone:
+async def create_microphone(config: dict[str, Any] | None = None) -> "Microphone":
     """Factory function to create microphone.
 
     Args:

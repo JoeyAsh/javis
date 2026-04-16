@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { Orb } from '../lib/orb';
+import { createOrb, type Orb } from '../lib/orb';
 
 /**
  * Hook to create and manage the Three.js orb instance.
@@ -12,10 +12,8 @@ export function useOrb(
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // Create orb instance
-    orbRef.current = new Orb(canvasRef.current);
+    orbRef.current = createOrb(canvasRef.current);
 
-    // Cleanup on unmount
     return () => {
       if (orbRef.current) {
         orbRef.current.destroy();

@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(git pull:*)",
       "Bash(find D:/Repos/JARVIS -name *.py -o -name *.ts -o -name *.tsx -o -name *.json -o -name Dockerfile* -o -name docker-compose* -o -name README.md)",
@@ -35,7 +36,11 @@
       "Bash(taskkill /F /IM python.exe)",
       "Bash(taskkill /F /IM node.exe)",
       "Bash(ls .env*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "WebSearch"
     ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }

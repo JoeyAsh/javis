@@ -1,22 +1,13 @@
 export type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
-export type WsMessage =
-  | { type: 'state'; payload: OrbState }
-  | { type: 'transcript'; payload: { role: 'user' | 'jarvis'; text: string } }
+// Messages received FROM the backend
+export type WsIncoming =
+  | { type: 'audio'; data: string; text: string }
+  | { type: 'status'; state: OrbState }
+  | { type: 'text'; text: string }
   | { type: 'system'; payload: { cpu: number; mem: number; uptime: string } };
 
-export type WsCommand =
-  | { type: 'set_voice'; payload: { profile: string } }
-  | { type: 'reset'; payload: null };
-
-export interface TranscriptEntry {
-  role: 'user' | 'jarvis';
-  text: string;
-  id: number;
-}
-
-export interface SystemStats {
-  cpu: number;
-  mem: number;
-  uptime: string;
-}
+// Messages sent TO the backend
+export type WsOutgoing =
+  | { type: 'transcript'; text: string; isFinal: boolean }
+  | { type: 'reset' };

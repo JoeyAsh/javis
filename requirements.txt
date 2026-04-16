@@ -1,25 +1,28 @@
+# Core
 anthropic
-faster-whisper
-piper-tts
-# TTS  # Coqui XTTS — requires Microsoft C++ Build Tools + PyTorch. Uncomment to enable voice cloning.
-openWakeWord
-pyaudio
-sounddevice
-soundfile
-numpy
-scipy
-pydub
-pyautogui
-pycaw; sys_platform=="win32"
-psutil
 httpx
-requests
-websockets
 aiohttp
 python-dotenv
 PyYAML
 loguru
+psutil
+
+# Audio / Voice pipeline
+faster-whisper
+openWakeWord
+sounddevice
+soundfile
+numpy
+
+# PC control / smart home actions
+pyautogui
+pycaw; sys_platform=="win32"
+requests
+
+# Testing
 pytest
 pytest-asyncio
+
+# Code quality
 black
 ruff

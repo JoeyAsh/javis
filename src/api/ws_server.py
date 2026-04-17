@@ -21,10 +21,12 @@ from api.system_metrics import SystemMetrics, SystemMetricsCollector
 from audio.fish_tts import FishTTSClient, FishTTSError, strip_markdown_for_tts
 from audio.stt import SpeechToText, create_stt_engine
 from audio.wake_word import WakeWordDetector, create_wake_word_detector
+from brain.conversation_mode import ConversationMode
 from brain.memory import MemoryStore
 from brain.memory_legacy import ConversationMemory
 from brain.intent_parser import IntentParser, get_intent_parser
 from brain.orchestrator import Orchestrator
+from brain.salutation import get_salutation
 from integrations.openclaw import OpenClawClient
 from utils.logger import get_logger
 
@@ -61,6 +63,13 @@ _stt_engine: SpeechToText | None = None
 _wake_word_detector: WakeWordDetector | None = None
 _orchestrator: Orchestrator | None = None
 _intent_parser: IntentParser | None = None
+
+# Conversation-mode helper — arm/detect follow-up window + sleep phrases.
+_conversation_mode: ConversationMode | None = None
+
+# Persona config snapshot — read once at startup so the sleep-phrase closing
+# line can pick a salutation without re-reading config per turn.
+_persona_config: dict[str, Any] = {}
 
 _start_time: float = time.time()
 
@@ -132,6 +141,32 @@ async def broadcast_transcript(role: str, text: str) -> None:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"MemoryStore record_event failed: {exc}")
+
+
+async def broadcast_conversation_mode(
+    active: bool,
+    seconds_remaining: float,
+) -> None:
+    """Broadcast the current conversation-mode follow-up state.
+
+    Sent whenever the follow-up window is armed (after a successful voice
+    turn) and again when it expires or is closed by a sleep phrase. The
+    HUD orb uses this to show a subtle pulse + 5 s countdown ring.
+
+    Args:
+        active: ``True`` while the follow-up window is open.
+        seconds_remaining: Seconds left in the window, ``0.0`` when closed.
+    """
+    message = json.dumps(
+        {
+            "type": "conversation_mode",
+            "payload": {
+                "active": active,
+                "seconds_remaining": max(0.0, float(seconds_remaining)),
+            },
+        }
+    )
+    await _broadcast(message)
 
 
 async def broadcast_notification(
@@ -295,18 +330,121 @@ def _pcm_bytes_to_float32(data: bytes) -> np.ndarray:
     return int16.astype(np.float32) / 32768.0
 
 
+async def _close_follow_up_window(conn_id: int, reason: str) -> None:
+    """Close the follow-up window for ``conn_id`` and notify clients.
+
+    Safe to call even if no window is currently armed. Cancels any pending
+    expiry task, resets connection mode to idle, and broadcasts the
+    "conversation_mode inactive" signal to the HUD.
+
+    Args:
+        conn_id: Identifier returned by ``id(ws)``.
+        reason: Short log tag (``"expired"`` / ``"sleep"`` / ``"cleanup"``).
+    """
+    state = _connection_state.get(conn_id)
+    if state is None:
+        return
+
+    timer = state.get("follow_up_timer_task")
+    if timer is not None and not timer.done():
+        timer.cancel()
+    state["follow_up_timer_task"] = None
+
+    if state.get("mode") == "follow_up":
+        state["mode"] = "idle"
+        state["audio_chunks"] = []
+        state["speech_started"] = False
+        state["silent_samples"] = 0
+        state["total_samples"] = 0
+
+    if _conversation_mode is not None:
+        _conversation_mode.end_window()
+
+    logger.debug(f"Follow-up window closed ({reason}) for conn {conn_id}")
+    await broadcast_conversation_mode(active=False, seconds_remaining=0.0)
+
+
+async def _follow_up_expiry_task(conn_id: int, window_seconds: float) -> None:
+    """Sleep for ``window_seconds``, then close the follow-up window.
+
+    Cancelled by ``_process_audio_for_client`` as soon as speech starts
+    inside the window, or by ``_close_follow_up_window`` on a sleep-phrase
+    close. On natural expiry, broadcasts the idle transition so the HUD
+    returns the orb to its baseline pulse.
+    """
+    try:
+        await asyncio.sleep(window_seconds)
+    except asyncio.CancelledError:
+        return
+
+    state = _connection_state.get(conn_id)
+    if state is None or state.get("mode") != "follow_up":
+        return
+
+    logger.info(
+        f"Follow-up window expired after {window_seconds:.1f}s — back to idle"
+    )
+    await _close_follow_up_window(conn_id, "expired")
+    await broadcast_state("idle")
+
+
+async def _arm_follow_up_window(ws: web.WebSocketResponse) -> None:
+    """Arm a follow-up window for the connection behind ``ws``.
+
+    Transitions the connection to the ``follow_up`` mode, starts the
+    expiry timer, broadcasts the state so the HUD keeps pulsing and so
+    ``_process_audio_for_client`` routes incoming audio as a continuation.
+
+    Silently no-ops if conversation mode is disabled or the connection
+    state has vanished (client closed mid-pipeline).
+    """
+    if _conversation_mode is None or not _conversation_mode.enabled:
+        return
+
+    conn_id = id(ws)
+    state = _connection_state.get(conn_id)
+    if state is None:
+        return
+
+    _conversation_mode.begin_window()
+    state["mode"] = "follow_up"
+    state["audio_chunks"] = []
+    state["speech_started"] = False
+    state["silent_samples"] = 0
+    state["total_samples"] = 0
+    state["skip_remaining"] = 0
+
+    # Reset wake-word detector so the next idle transition is clean.
+    if _wake_word_detector is not None:
+        _wake_word_detector.reset()
+
+    window = _conversation_mode.window_seconds
+    logger.info(f"Follow-up window armed for {window:.1f}s")
+    await broadcast_conversation_mode(active=True, seconds_remaining=window)
+    # Keep broadcasting "listening" so the frontend orb stays lit during
+    # the follow-up window (a new wake word is not required inside it).
+    await broadcast_state("listening")
+
+    timer = asyncio.create_task(_follow_up_expiry_task(conn_id, window))
+    state["follow_up_timer_task"] = timer
+
+
 async def _run_voice_pipeline(
     audio_chunks: list[np.ndarray],
     ws: web.WebSocketResponse,
 ) -> None:
     """Run the full STT → LLM → TTS pipeline on collected audio chunks.
 
-    Broadcasts thinking/speaking states and the final MP3 audio.
+    Broadcasts thinking/speaking states and the final MP3 audio. On a
+    successful turn, arms a follow-up window so the user can continue
+    without a new wake word. Natural "sleep" phrases ("danke", "thanks",
+    ...) short-circuit the LLM call and speak a warm closing line instead.
 
     Args:
         audio_chunks: List of float32 audio chunks to transcribe.
         ws: The WebSocket connection that triggered this pipeline run
-            (used only for logging; broadcasts go to all clients).
+            (used for follow-up window arming + logging; audio broadcasts
+            fan out to all clients).
     """
     global _memory, _fish_tts, _stt_engine, _orchestrator, _intent_parser
 
@@ -343,6 +481,55 @@ async def _run_voice_pipeline(
     # Broadcast + archive the user turn immediately — we want the
     # archive to reflect reality even if the downstream LLM call fails.
     await broadcast_transcript("user", result.text)
+
+    # --- Sleep-phrase short-circuit ---------------------------------------
+    # If the user's utterance signals "we're done" ("danke", "thanks", ...),
+    # skip the LLM round-trip entirely, speak a short closing line, and
+    # return to idle WITHOUT arming a new follow-up window.
+    if _conversation_mode is not None and _conversation_mode.detect_sleep_phrase(
+        result.text, result.language
+    ):
+        salutation = get_salutation(_persona_config) if _persona_config else "Sir"
+        closing = _conversation_mode.closing_phrase(result.language, salutation)
+        logger.info(f"Sleep phrase detected — closing with: {closing!r}")
+
+        # Close any currently armed window (guards against a follow-up turn
+        # that ends with "danke" — we end the session cleanly).
+        await _close_follow_up_window(id(ws), "sleep")
+
+        await broadcast_transcript("jarvis", closing)
+        await broadcast_state("speaking")
+
+        if _fish_tts is not None and closing:
+            try:
+                audio_bytes = await _fish_tts.synthesize(strip_markdown_for_tts(closing))
+                audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+                await broadcast_audio(audio_b64, closing)
+                play_duration = max(1.2, len(audio_bytes) / 2000)
+                await asyncio.sleep(play_duration)
+            except FishTTSError as exc:
+                logger.error(f"Fish TTS error during sleep close: {exc}")
+
+        if _memory is not None:
+            _memory.add_turn(role="user", content=result.text, language=result.language)
+            _memory.add_turn(
+                role="assistant", content=closing, language=result.language
+            )
+
+        # Force the connection back to idle — _close_follow_up_window only
+        # resets mode when the previous mode was follow_up, but a sleep
+        # phrase may also arrive on the very first turn (mode=processing).
+        sleep_state = _connection_state.get(id(ws))
+        if sleep_state is not None:
+            sleep_state["mode"] = "idle"
+            sleep_state["audio_chunks"] = []
+            sleep_state["speech_started"] = False
+            sleep_state["silent_samples"] = 0
+            sleep_state["total_samples"] = 0
+
+        await broadcast_state("idle")
+        logger.info("Voice pipeline complete (closed by sleep phrase)")
+        return
 
     # --- Intent classification + orchestration ---
     if _intent_parser is None or _orchestrator is None:
@@ -401,8 +588,16 @@ async def _run_voice_pipeline(
             role="assistant", content=response_text, language=result.language
         )
 
-    await broadcast_state("idle")
-    logger.info("Voice pipeline complete, returning to idle")
+    # --- Arm follow-up window (or go straight to idle) ------------------
+    # After a successful turn, keep the mic open for a short window so the
+    # user can continue speaking without repeating the wake word. Sleep
+    # phrases short-circuit earlier in this function and never reach here.
+    if _conversation_mode is not None and _conversation_mode.enabled:
+        await _arm_follow_up_window(ws)
+        logger.info("Voice pipeline complete, follow-up window armed")
+    else:
+        await broadcast_state("idle")
+        logger.info("Voice pipeline complete, returning to idle")
 
 
 # ---------------------------------------------------------------------------
@@ -417,8 +612,11 @@ async def _process_audio_for_client(
     """Process a single incoming audio chunk for a client connection.
 
     State machine per connection:
-      IDLE      → feed chunk to wake word detector
-      LISTENING → collect chunks until silence, then run pipeline
+      IDLE       → feed chunk to wake word detector
+      LISTENING  → collect chunks until silence, then run pipeline
+      FOLLOW_UP  → same as listening, but with a ``window_seconds`` pre-
+                   speech timeout instead of 5 s — wake word not required.
+                   On speech start the expiry timer is cancelled.
 
     Args:
         ws: The client WebSocket.
@@ -429,7 +627,7 @@ async def _process_audio_for_client(
     if state is None:
         return  # connection cleaned up
 
-    mode = state["mode"]  # "idle" | "listening" | "processing"
+    mode = state["mode"]  # "idle" | "listening" | "follow_up" | "processing"
 
     if mode == "processing":
         # Pipeline is running — drop incoming chunks to avoid re-trigger
@@ -452,10 +650,12 @@ async def _process_audio_for_client(
             _wake_word_detector.reset()
             await broadcast_state("listening")
 
-    elif mode == "listening":
+    elif mode in ("listening", "follow_up"):
         silence_samples = int(_silence_duration_ms * _sample_rate / 1000)
+        is_follow_up = mode == "follow_up"
 
-        # Skip first N chunks after wake word detection
+        # Skip first N chunks after wake word detection (only in listening;
+        # follow_up has no wake-word tail to discard).
         if state["skip_remaining"] > 0:
             state["skip_remaining"] -= 1
             return
@@ -466,6 +666,14 @@ async def _process_audio_for_client(
         state["total_samples"] = total_samples
 
         if rms > _silence_threshold:
+            if is_follow_up and not state["speech_started"]:
+                # First speech inside the follow-up window — cancel the
+                # expiry timer so we don't return to idle mid-utterance.
+                timer = state.get("follow_up_timer_task")
+                if timer is not None and not timer.done():
+                    timer.cancel()
+                state["follow_up_timer_task"] = None
+                logger.info("Follow-up continuation — speech detected in window")
             state["speech_started"] = True
             state["silent_samples"] = 0
         else:
@@ -478,17 +686,30 @@ async def _process_audio_for_client(
             chunks = list(state["audio_chunks"])
             state["audio_chunks"] = []
             asyncio.create_task(_run_voice_pipeline(chunks, ws))
-            # Pipeline will broadcast_state("idle") when done; reset mode here
-            # so new wake word detection can begin immediately after
+            # Pipeline arms the next state (follow_up on success, idle on
+            # sleep-close / failure). Reset intermediate mode here.
             state["mode"] = "idle"
             return
 
-        # Timeout: no speech in 5 s
-        if not state["speech_started"] and total_samples > 5 * _sample_rate:
-            logger.debug("No speech detected in 5 seconds, returning to idle")
-            state["mode"] = "idle"
-            state["audio_chunks"] = []
-            await broadcast_state("idle")
+        # Pre-speech timeout: 5 s in listening, window_seconds in follow_up.
+        pre_speech_timeout_samples = (
+            int((_conversation_mode.window_seconds if _conversation_mode else 18.0)
+                * _sample_rate)
+            if is_follow_up
+            else 5 * _sample_rate
+        )
+        if not state["speech_started"] and total_samples > pre_speech_timeout_samples:
+            if is_follow_up:
+                # The expiry task handles the idle broadcast — here we just
+                # tidy up the state in case the task fired slightly earlier.
+                logger.debug("Follow-up pre-speech timeout — closing window")
+                await _close_follow_up_window(conn_id, "expired")
+                await broadcast_state("idle")
+            else:
+                logger.debug("No speech detected in 5 seconds, returning to idle")
+                state["mode"] = "idle"
+                state["audio_chunks"] = []
+                await broadcast_state("idle")
             return
 
         # Max recording: 15 s
@@ -559,12 +780,15 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     conn_id = id(ws)
     _connected_clients.add(ws)
     _connection_state[conn_id] = {
-        "mode": "idle",  # "idle" | "listening" | "processing"
+        "mode": "idle",  # "idle" | "listening" | "follow_up" | "processing"
         "audio_chunks": [],
         "speech_started": False,
         "silent_samples": 0,
         "total_samples": 0,
         "skip_remaining": 0,
+        # Async task driving the follow-up expiry — cancelled as soon as
+        # speech is detected inside the window or a sleep phrase closes it.
+        "follow_up_timer_task": None,
     }
     if _wake_word_detector:
         _wake_word_detector.reset()
@@ -624,6 +848,9 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 logger.error(f"WebSocket error: {ws.exception()}")
 
     finally:
+        # Cancel any pending follow-up timer so the background task doesn't
+        # fire into a vanished connection.
+        await _close_follow_up_window(conn_id, "cleanup")
         _connected_clients.discard(ws)
         _connection_state.pop(conn_id, None)
         logger.info(f"Client disconnected. Total clients: {len(_connected_clients)}")
@@ -679,6 +906,7 @@ async def start_ws_server(
     global _orchestrator, _intent_parser, _start_time
     global _silence_threshold, _silence_duration_ms, _sample_rate
     global _metrics_collector, _metrics_task
+    global _conversation_mode, _persona_config
 
     from dotenv import load_dotenv
 
@@ -691,6 +919,22 @@ async def start_ws_server(
     _memory = memory
     _tts_engine = tts_engine
     _start_time = time.time()
+
+    # Conversation mode — follow-up window + sleep-phrase detection.
+    voice_config = cfg.get_section("voice") or {}
+    _conversation_mode = ConversationMode.from_config(
+        voice_config.get("conversation_mode")
+    )
+    if _conversation_mode.enabled:
+        logger.info(
+            "Conversation mode enabled — follow-up window: "
+            f"{_conversation_mode.window_seconds:.1f}s"
+        )
+    else:
+        logger.info("Conversation mode disabled — wake word required every turn")
+
+    # Persona snapshot for sleep-phrase closing salutations.
+    _persona_config = cfg.get_section("persona") or {}
 
     # Audio config
     audio_config = cfg.get_section("audio")

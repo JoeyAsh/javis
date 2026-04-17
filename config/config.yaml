@@ -126,6 +126,16 @@ proactive:
       voice: true
 
 voice:
+  # Conversation mode — keep the mic open for a follow-up window after every
+  # voice turn so the user can continue speaking without repeating the wake
+  # word. Natural "sleep" phrases ("danke", "thanks", ...) close the session
+  # with a short closing line. The default phrase lists live in
+  # ``src/brain/conversation_mode.py``; overrides can be added here.
+  conversation_mode:
+    enabled: true
+    follow_up_window_seconds: 18
+    # sleep_phrases / closing_phrases default lists live in code; override here if desired.
+
   # Latency targets
   first_audio_target_ms: 1000
   p90_latency_target_ms: 2000

@@ -102,6 +102,39 @@ else
     echo "JARVIS persona not deployed. Create config/SOUL.md and run this script again."
 fi
 
+# --------------------------------------------------------------------------
+# Config hardening — every key below caused concrete bugs during JARVIS dev;
+# the `openclaw config set` commands are idempotent, so re-runs are safe.
+# --------------------------------------------------------------------------
+
+echo ""
+echo "=== Hardening OpenClaw config for JARVIS ==="
+
+# 1. Gateway must run in local mode, otherwise the daemon exits with code 78
+#    at startup ("gateway.mode is unset; gateway start will be blocked").
+echo "  - gateway.mode = local"
+openclaw config set gateway.mode local >/dev/null
+
+# 2. Default agent model. Without this the gateway falls through to its
+#    internal default (openai/gpt-5.4) and every turn fails with
+#    FailoverError because no OpenAI key is configured.
+DESIRED_MODEL="claude-cli/claude-opus-4-7"
+echo "  - agents.defaults.model = $DESIRED_MODEL"
+openclaw config set agents.defaults.model "$DESIRED_MODEL" >/dev/null
+
+# 3. Disable semantic memory search (needs an embedding provider we don't
+#    configure here). Doctor otherwise prints noisy "no embedding provider
+#    ready" warnings on every run.
+echo "  - agents.defaults.memorySearch.enabled = false"
+openclaw config set agents.defaults.memorySearch.enabled false >/dev/null
+
+# Restart the gateway so the new config takes effect immediately (no-op
+# if the daemon wasn't running).
+if systemctl --user is-active --quiet openclaw-gateway.service 2>/dev/null; then
+    echo "  - restarting openclaw-gateway.service"
+    systemctl --user restart openclaw-gateway.service || true
+fi
+
 # Run diagnostics
 echo ""
 echo "=== Running OpenClaw Diagnostics ==="

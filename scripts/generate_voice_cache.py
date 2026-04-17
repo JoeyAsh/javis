@@ -29,15 +29,20 @@ from utils.logger import get_logger, setup_logger
 
 logger = get_logger("generate_voice_cache")
 
-# Phrases to pre-cache, organized by category
+# Phrases to pre-cache, organized by category.
+#
+# `filler` is the short "Moment..." bridge the voice pipeline plays
+# while the LLM is thinking. These MUST exist as ``filler_<lang>_<slug>.mp3``
+# files in ``data/voice_cache/`` — the backend picks one at random and
+# broadcasts its bytes to the frontend within ~300 ms of STT finishing.
 PHRASES = {
     "ack": {
         "de": ["Klar", "Verstanden", "Gut", "Ja"],
         "en": ["Right", "Got it", "Sure", "Yes"],
     },
     "filler": {
-        "de": ["Moment", "Einen Augenblick", "Lassen Sie mich sehen"],
-        "en": ["One moment", "Let me see", "Just a moment"],
+        "de": ["Moment", "Einen Augenblick", "Gleich", "Klar"],
+        "en": ["Just a moment", "One second", "Right", "Certainly"],
     },
     "backchannel": {
         "de": ["mhm", "ja", "ok", "verstehe"],

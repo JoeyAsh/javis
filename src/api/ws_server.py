@@ -71,6 +71,12 @@ _conversation_mode: ConversationMode | None = None
 # line can pick a salutation without re-reading config per turn.
 _persona_config: dict[str, Any] = {}
 
+# Quick-ack filler cache: {lang: [(text, mp3_bytes), ...]} — loaded once at
+# startup from ``data/voice_cache/filler_<lang>_*.mp3``. Playing pre-cached
+# bytes lets the first audio arrive on the frontend within ~300 ms of STT
+# finishing, even though the real LLM response takes 7–11 s.
+_filler_cache: dict[str, list[tuple[str, bytes]]] = {}
+
 _start_time: float = time.time()
 
 # System metrics collector + last snapshot (used for initial per-connection push)
@@ -330,6 +336,78 @@ def _pcm_bytes_to_float32(data: bytes) -> np.ndarray:
     return int16.astype(np.float32) / 32768.0
 
 
+def _load_filler_cache(cache_dir: Path) -> dict[str, list[tuple[str, bytes]]]:
+    """Load all ``filler_<lang>_*.mp3`` files from ``cache_dir`` into memory.
+
+    Returns a map from language code to a list of ``(display_text, mp3_bytes)``
+    tuples. Missing directory or missing files is a warning, not an error —
+    the pipeline simply skips filler broadcasts in that case.
+    """
+    cache: dict[str, list[tuple[str, bytes]]] = {}
+    if not cache_dir.exists():
+        logger.warning(f"Voice cache directory not found: {cache_dir}")
+        return cache
+
+    for path in sorted(cache_dir.glob("filler_*.mp3")):
+        # Filename form: filler_<lang>_<slug>.mp3 (lang is 2 chars by convention
+        # but we don't hard-code that in case future langs are 3-letter codes).
+        stem = path.stem  # e.g. "filler_de_einen_augenblick"
+        parts = stem.split("_", 2)
+        if len(parts) < 3 or parts[0] != "filler":
+            logger.debug(f"Skipping unrecognised voice cache file: {path.name}")
+            continue
+        lang = parts[1]
+        slug = parts[2]
+        # Human-readable text: replace underscores with spaces, title-case
+        # for the display in the HUD transcript.
+        display = slug.replace("_", " ").strip().capitalize()
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            logger.warning(f"Failed to read {path}: {exc}")
+            continue
+        if not data:
+            logger.warning(f"Filler file is empty, skipping: {path}")
+            continue
+        cache.setdefault(lang, []).append((display, data))
+
+    total = sum(len(v) for v in cache.values())
+    if total == 0:
+        logger.warning(
+            f"No filler MP3s loaded from {cache_dir} — quick-ack fillers disabled"
+        )
+    else:
+        langs = ", ".join(f"{k}={len(v)}" for k, v in cache.items())
+        logger.info(f"Loaded {total} quick-ack fillers ({langs})")
+    return cache
+
+
+async def _broadcast_quick_ack_filler(language: str) -> None:
+    """Broadcast a random pre-cached filler MP3 to all clients.
+
+    Called immediately after STT produces a usable transcript so the
+    frontend has audio to play while the real LLM round-trip is still
+    running. No-op if the cache is empty or the requested language
+    (plus fallback "de") has no entries.
+    """
+    import random
+
+    if not _filler_cache:
+        return
+
+    pool = _filler_cache.get(language)
+    if not pool:
+        # Fallback: prefer DE, then any available language.
+        pool = _filler_cache.get("de") or next(iter(_filler_cache.values()), [])
+    if not pool:
+        return
+
+    text, mp3_bytes = random.choice(pool)
+    audio_b64 = base64.b64encode(mp3_bytes).decode("utf-8")
+    logger.info(f"Filler broadcast: {text!r} ({len(mp3_bytes)} bytes, lang={language})")
+    await broadcast_audio(audio_b64, text)
+
+
 async def _close_follow_up_window(conn_id: int, reason: str) -> None:
     """Close the follow-up window for ``conn_id`` and notify clients.
 
@@ -530,6 +608,13 @@ async def _run_voice_pipeline(
         await broadcast_state("idle")
         logger.info("Voice pipeline complete (closed by sleep phrase)")
         return
+
+    # --- Quick-ack filler -------------------------------------------------
+    # Play a short pre-cached "Moment, ..." so the frontend has audio within
+    # ~300 ms of STT finishing, masking the 7-11 s OpenClaw round-trip. The
+    # real response follows on the existing audio pipeline and the frontend
+    # queues the second audio naturally. Skipped on sleep phrases above.
+    await _broadcast_quick_ack_filler(result.language)
 
     # --- Intent classification + orchestration ---
     if _intent_parser is None or _orchestrator is None:
@@ -907,6 +992,7 @@ async def start_ws_server(
     global _silence_threshold, _silence_duration_ms, _sample_rate
     global _metrics_collector, _metrics_task
     global _conversation_mode, _persona_config
+    global _filler_cache
 
     from dotenv import load_dotenv
 
@@ -935,6 +1021,14 @@ async def start_ws_server(
 
     # Persona snapshot for sleep-phrase closing salutations.
     _persona_config = cfg.get_section("persona") or {}
+
+    # Load the quick-ack filler cache up-front. Path defaults to
+    # ``data/voice_cache``; override via ``voice.cache_directory`` in config.
+    filler_dir_str = voice_config.get("cache_directory", "data/voice_cache")
+    filler_dir = Path(filler_dir_str)
+    if not filler_dir.is_absolute():
+        filler_dir = Path.cwd() / filler_dir
+    _filler_cache = _load_filler_cache(filler_dir)
 
     # Audio config
     audio_config = cfg.get_section("audio")

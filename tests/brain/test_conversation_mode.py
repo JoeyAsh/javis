@@ -242,6 +242,7 @@ def ws_server_module() -> Any:
         "_orchestrator",
         "_intent_parser",
         "_memory",
+        "_filler_cache",
     )
     saved = {k: getattr(mod, k) for k in keys}
     mod._connected_clients.clear()
@@ -466,12 +467,17 @@ async def test_sleep_phrase_short_circuits_pipeline(
 async def test_successful_turn_arms_follow_up(
     ws_server_module: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A non-sleep-phrase turn ends with a follow-up window, not idle."""
+    """A non-sleep-phrase turn ends with a follow-up window, not idle.
+
+    Also asserts a quick-ack filler audio frame is broadcast *before* the
+    real LLM response (mask of the 7-11 s LLM round-trip).
+    """
     import numpy as np
 
     mod = ws_server_module
     mod._conversation_mode = ConversationMode(window_seconds=18.0)
     mod._persona_config = {"salutation_mode": "fixed", "salutation_pool": ["Sir"]}
+    mod._filler_cache = {"de": [("Moment", b"FILLER-BYTES")]}
 
     class _FakeSTT:
         async def transcribe(self, _audio: Any) -> SimpleNamespace:
@@ -479,7 +485,7 @@ async def test_successful_turn_arms_follow_up(
 
     class _FakeTTS:
         async def synthesize(self, _text: str) -> bytes:
-            return b"\x00" * 4000
+            return b"REAL-AUDIO-BYTES" * 64
 
     class _FakeIntent:
         async def classify_intent(self, _text: str, _lang: str) -> Any:
@@ -522,10 +528,17 @@ async def test_successful_turn_arms_follow_up(
         assert state["follow_up_timer_task"] is not None
         assert mod._conversation_mode.in_window() is True
 
-        # Last conversation_mode frame is active=True
         frames = [json.loads(m) for m in ws.sent]
+
+        # Last conversation_mode frame is active=True
         cm_frames = [f for f in frames if f["type"] == "conversation_mode"]
         assert cm_frames[-1]["payload"]["active"] is True
+
+        # Two audio frames: the filler (broadcast first) + the real answer.
+        audio_frames = [f for f in frames if f["type"] == "audio"]
+        assert len(audio_frames) == 2
+        assert audio_frames[0]["text"] == "Moment"
+        assert audio_frames[1]["text"] == "Es ist sonnig."
     finally:
         timer = mod._connection_state[id(ws)].get("follow_up_timer_task")
         if timer is not None and not timer.done():

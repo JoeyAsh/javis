@@ -84,7 +84,14 @@ export type WsIncoming =
 
 export type WsOutgoing =
   | { type: 'transcript'; text: string; isFinal: boolean }
-  | { type: 'reset' };
+  | { type: 'reset' }
+  /**
+   * STOP button — request the backend to abort any in-flight voice turn
+   * (STT / LLM / TTS) for this connection. Idempotent; safe to send when
+   * nothing is running. The backend replies with a ``status=idle`` frame
+   * and an info notification titled "Konversation gestoppt".
+   */
+  | { type: 'cancel_turn' };
 
 // ============ HUD mock types ============
 

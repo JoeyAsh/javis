@@ -530,11 +530,39 @@ async def _run_voice_pipeline(
     without a new wake word. Natural "sleep" phrases ("danke", "thanks",
     ...) short-circuit the LLM call and speak a warm closing line instead.
 
+    Cancellable: if the caller cancels this task (STOP button → ``cancel_turn``
+    command → ``task.cancel()``), the coroutine swallows the
+    ``CancelledError`` cleanly and does not emit any further audio /
+    transcript frames. The ``_cancel_current_turn`` helper owns the
+    user-visible idle + notification broadcasts.
+
     Args:
         audio_chunks: List of float32 audio chunks to transcribe.
         ws: The WebSocket connection that triggered this pipeline run
             (used for follow-up window arming + logging; audio broadcasts
             fan out to all clients).
+    """
+    try:
+        await _run_voice_pipeline_body(audio_chunks, ws)
+    except asyncio.CancelledError:
+        logger.info("Voice pipeline cancelled — discarding any in-flight result")
+        # Don't re-raise: the cancel initiator (``_cancel_current_turn``)
+        # already broadcast the idle + notification. Re-raising would
+        # propagate a bare CancelledError out of the asyncio task and
+        # log a noisy "Task was destroyed" message.
+        return
+    finally:
+        conn_state = _connection_state.get(id(ws))
+        if conn_state is not None:
+            conn_state["pipeline_task"] = None
+
+
+async def _run_voice_pipeline_body(
+    audio_chunks: list[np.ndarray],
+    ws: web.WebSocketResponse,
+) -> None:
+    """Actual pipeline body — wrapped by :func:`_run_voice_pipeline` for
+    cancellation safety. Do not call directly.
     """
     global _fish_tts, _stt_engine, _orchestrator, _intent_parser
 
@@ -775,15 +803,15 @@ async def _process_audio_for_client(
             state["mode"] = "processing"
             chunks = list(state["audio_chunks"])
             state["audio_chunks"] = []
-            asyncio.create_task(_run_voice_pipeline(chunks, ws))
+            state["pipeline_task"] = asyncio.create_task(
+                _run_voice_pipeline(chunks, ws)
+            )
             # Pipeline arms the next state (follow_up on success, idle on
             # sleep-close / failure). Reset intermediate mode here.
             state["mode"] = "idle"
             return
 
-        # Pre-speech timeout: 10 s in listening (user needs time to respond
-        # after the wake-ack audio finishes playing), window_seconds in
-        # follow_up.
+        # Pre-speech timeout: 10 s in listening, window_seconds in follow_up.
         pre_speech_timeout_samples = (
             int((_conversation_mode.window_seconds if _conversation_mode else 18.0)
                 * _sample_rate)
@@ -810,7 +838,9 @@ async def _process_audio_for_client(
             state["mode"] = "processing"
             chunks = list(state["audio_chunks"])
             state["audio_chunks"] = []
-            asyncio.create_task(_run_voice_pipeline(chunks, ws))
+            state["pipeline_task"] = asyncio.create_task(
+                _run_voice_pipeline(chunks, ws)
+            )
             state["mode"] = "idle"
 
 
@@ -819,11 +849,16 @@ async def _process_audio_for_client(
 # ---------------------------------------------------------------------------
 
 
-async def _handle_command(data: dict[str, Any]) -> None:
-    """Handle incoming JSON WebSocket command.
+async def _handle_command(
+    data: dict[str, Any],
+    ws: web.WebSocketResponse,
+) -> None:
+    """Handle an incoming JSON WebSocket command.
 
     Args:
-        data: Parsed command data
+        data: Parsed command data (``{"type": "...", "payload": {...}}``).
+        ws: The client connection — used to scope per-connection actions
+            (e.g. ``cancel_turn`` only aborts the caller's pipeline).
     """
     global _tts_engine
 
@@ -846,8 +881,63 @@ async def _handle_command(data: dict[str, Any]) -> None:
         # UI click. Acknowledge the command in the log and no-op.
         logger.info("Memory-reset command received (no-op; OpenClaw owns memory)")
 
+    elif cmd_type == "cancel_turn":
+        await _cancel_current_turn(ws)
+
     else:
         logger.warning(f"Unknown command type: {cmd_type}")
+
+
+async def _cancel_current_turn(ws: web.WebSocketResponse) -> None:
+    """Abort the in-flight voice turn for ``ws`` (idempotent).
+
+    Cancels any outstanding ``_run_voice_pipeline`` task tracked on the
+    connection, closes an active follow-up window, resets the connection
+    state to idle and broadcasts both a ``status=idle`` frame and an info
+    notification so the HUD can confirm the stop visually.
+    """
+    conn_id = id(ws)
+    state = _connection_state.get(conn_id)
+    if state is None:
+        logger.debug("cancel_turn received but no connection state — dropping")
+        return
+
+    task: asyncio.Task[Any] | None = state.get("pipeline_task")
+    had_task = task is not None and not task.done()
+
+    if had_task:
+        logger.info("Cancel-turn received; aborting pipeline")
+        assert task is not None
+        task.cancel()
+    else:
+        logger.info("Cancel-turn received; no active pipeline task")
+
+    # Close any armed follow-up window before we reset state.
+    await _close_follow_up_window(conn_id, "user_cancelled")
+
+    # Reset per-connection state so the next wake word starts fresh.
+    state["mode"] = "idle"
+    state["audio_chunks"] = []
+    state["speech_started"] = False
+    state["silent_samples"] = 0
+    state["total_samples"] = 0
+    state["skip_remaining"] = 0
+    state["pipeline_task"] = None
+
+    if _wake_word_detector is not None:
+        _wake_word_detector.reset()
+
+    await broadcast_state("idle")
+
+    # Stable notification id so client-side dedup collapses repeated
+    # cancels — the HUD shows a single "Konversation gestoppt" toast
+    # even if the user mashes STOP.
+    await broadcast_notification(
+        notification_id="voice-cancel",
+        severity="info",
+        title="Konversation gestoppt",
+        detail="Die laufende Anfrage wurde abgebrochen.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -882,6 +972,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         # Async task driving the follow-up expiry — cancelled as soon as
         # speech is detected inside the window or a sleep phrase closes it.
         "follow_up_timer_task": None,
+        # Async task running the voice pipeline for this connection. Set
+        # when speech ends and silence is detected; cleared when the
+        # pipeline returns or is cancelled via the STOP UI button.
+        "pipeline_task": None,
     }
     if _wake_word_detector:
         _wake_word_detector.reset()
@@ -924,7 +1018,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
             if msg.type == web.WSMsgType.TEXT:
                 try:
                     data = json.loads(msg.data)
-                    await _handle_command(data)
+                    await _handle_command(data, ws)
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid JSON received: {msg.data}")
 
@@ -944,6 +1038,13 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         # Cancel any pending follow-up timer so the background task doesn't
         # fire into a vanished connection.
         await _close_follow_up_window(conn_id, "cleanup")
+        # Cancel any in-flight pipeline task for this connection so its
+        # late audio broadcast doesn't land on a closed socket.
+        _state_snapshot = _connection_state.get(conn_id)
+        if _state_snapshot is not None:
+            _pending_task = _state_snapshot.get("pipeline_task")
+            if _pending_task is not None and not _pending_task.done():
+                _pending_task.cancel()
         _connected_clients.discard(ws)
         _connection_state.pop(conn_id, None)
         logger.info(f"Client disconnected. Total clients: {len(_connected_clients)}")

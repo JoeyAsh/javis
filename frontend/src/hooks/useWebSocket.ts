@@ -21,6 +21,12 @@ export interface UseWebSocketReturn {
   audioQueue: string[];
   consumeAudio: () => void;
   sendTranscript: (text: string) => void;
+  /**
+   * Emergency STOP — ask the backend to abort any in-flight voice turn
+   * for this connection. Safe to call repeatedly; the backend replies
+   * with ``status=idle`` + a ``Konversation gestoppt`` info notification.
+   */
+  sendCancelTurn: () => void;
   connected: boolean;
   /** Raw WebSocket ref — exposed so useMicStream can send binary PCM frames */
   wsRef: React.RefObject<WebSocket | null>;
@@ -203,6 +209,13 @@ export function useWebSocket(): UseWebSocketReturn {
     }
   }, []);
 
+  const sendCancelTurn = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg: WsOutgoing = { type: 'cancel_turn' };
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
   const subscribeSystem = useCallback(
     (listener: SystemMetricsListener): (() => void) => {
       systemListeners.add(listener);
@@ -249,6 +262,7 @@ export function useWebSocket(): UseWebSocketReturn {
     audioQueue,
     consumeAudio,
     sendTranscript,
+    sendCancelTurn,
     connected,
     wsRef,
     subscribeSystem,

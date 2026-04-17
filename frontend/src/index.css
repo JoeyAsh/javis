@@ -221,6 +221,20 @@ body {
   color: var(--bg);
   background: var(--accent-bright);
 }
+/* STOP / cancel-turn button — visually distinct from the orb-state toggles
+   so it can't be mistaken for a mock-state control. */
+.orb-devmenu__btn--stop {
+  color: var(--danger);
+  border-color: var(--danger);
+  margin-left: 4px;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+.orb-devmenu__btn--stop:hover {
+  color: var(--bg);
+  background: var(--danger);
+  border-color: var(--danger);
+}
 
 .hud-infobar__weather-icon {
   margin-right: 4px;

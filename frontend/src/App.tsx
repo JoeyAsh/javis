@@ -31,7 +31,14 @@ function AppInner(): ReactElement {
   const [muted, setMuted] = useState(false);
   const [idle, setIdle] = useState(false);
   const [orbOverride, setOrbOverride] = useState<OrbState | null>(null);
-  const { orbState, setOrbState, audioQueue, consumeAudio, wsRef } = useWebSocket();
+  const {
+    orbState,
+    setOrbState,
+    audioQueue,
+    consumeAudio,
+    wsRef,
+    sendCancelTurn,
+  } = useWebSocket();
   const { analyser, isSpeaking, enqueue } = useAudioAnalyser();
   const { resetAll } = useWindowManager();
   const followUp = useConversationMode();
@@ -123,7 +130,7 @@ function AppInner(): ReactElement {
         onOpenSettings={handleOpenSettings}
       />
 
-      {/* Orb dev menu — forced state override for testing */}
+      {/* Orb dev menu — forced state override for testing + STOP button */}
       <div
         style={{
           position: 'fixed',
@@ -132,7 +139,11 @@ function AppInner(): ReactElement {
           zIndex: 40,
         }}
       >
-        <OrbDevMenu override={orbOverride} onSet={setOrbOverride} />
+        <OrbDevMenu
+          override={orbOverride}
+          onSet={setOrbOverride}
+          onStop={sendCancelTurn}
+        />
       </div>
 
       {/* Mute button — top right, nudged left of the top-bar controls */}

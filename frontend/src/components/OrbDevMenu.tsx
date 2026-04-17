@@ -6,6 +6,11 @@ export interface OrbDevMenuProps {
   override: OrbState | null;
   /** Called with new override state, or null to return to live mode. */
   onSet: (override: OrbState | null) => void;
+  /**
+   * Optional STOP handler. When supplied, renders an extra button that
+   * aborts any in-flight voice turn on the backend. Hidden when omitted.
+   */
+  onStop?: () => void;
 }
 
 interface StateOption {
@@ -22,7 +27,11 @@ const OPTIONS: ReadonlyArray<StateOption> = [
   { key: 'live', label: 'LIVE', title: 'Follow real pipeline state' },
 ];
 
-export function OrbDevMenu({ override, onSet }: OrbDevMenuProps): ReactElement {
+export function OrbDevMenu({
+  override,
+  onSet,
+  onStop,
+}: OrbDevMenuProps): ReactElement {
   const active: OrbState | 'live' = override ?? 'live';
   return (
     <div
@@ -48,6 +57,18 @@ export function OrbDevMenu({ override, onSet }: OrbDevMenuProps): ReactElement {
           </button>
         );
       })}
+      {onStop ? (
+        <button
+          key="stop"
+          type="button"
+          className="orb-devmenu__btn orb-devmenu__btn--stop"
+          onClick={onStop}
+          title="Abort the in-flight voice turn"
+          aria-label="Stop current voice turn"
+        >
+          STOP
+        </button>
+      ) : null}
     </div>
   );
 }

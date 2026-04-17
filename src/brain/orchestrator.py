@@ -1,16 +1,24 @@
 """Orchestrator for JARVIS.
 
-Routes requests to appropriate subagents using Claude Opus.
+Single-call voice pipeline: a fast local intent classifier decides whether
+a turn is a **UI / local command** (PC control, smart-home, system commands
+like reset / voice / shutdown) or a **conversational turn**. UI commands run
+locally through their dedicated agents — no LLM involved. Conversational
+turns go straight to OpenClaw via :meth:`ClaudeClient.chat` — one round-trip,
+no routing-model hop.
+
+This replaces the previous two-LLM design (routing model → subagent with its
+own LLM call) with at most one LLM call per turn. Persona, factual lookups
+and conversational context all live inside the OpenClaw ``jarvis-main``
+session (``SOUL.md`` + session memory).
 """
 
-import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent
 from brain.agents.pc_agent import PcAgent
-from brain.agents.search_agent import SearchAgent
 from brain.agents.smart_home_agent import SmartHomeAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
@@ -21,64 +29,39 @@ from utils.logger import get_logger
 
 logger = get_logger("orchestrator")
 
+# Confidence threshold above which a local-intent classification is
+# trusted enough to bypass the conversational path entirely.
+_LOCAL_INTENT_CONFIDENCE = 0.7
+
 
 @dataclass
 class OrchestratorDecision:
-    """Decision from the orchestrator."""
+    """Legacy decision record — kept so the module's public surface
+    doesn't change (tests, diagnostics). No longer populated by an LLM
+    routing hop — the orchestrator now decides locally.
+    """
 
-    agent: str  # "chat" | "pc" | "smart_home" | "search" | "system"
+    agent: str
     task: str
-    params: dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any]
     requires_followup: bool = False
     reasoning: str = ""
 
 
-ORCHESTRATOR_SYSTEM_PROMPT = """You are the JARVIS orchestrator. Your job is to route user requests to the appropriate agent.
-
-Available agents:
-- chat: General conversation, questions, advice, recall of earlier turns,
-        meta questions ("what did I just ask?", "can you repeat that?",
-        "remember when I said X"), clarifications, explanations, opinions.
-- pc: PC control (open/close apps, volume, screenshot, etc.)
-- smart_home: Home automation (lights, thermostat, locks)
-- search: Web search for factual information (weather, news, facts that
-          require a live lookup)
-- system: JARVIS-process-level commands ONLY. Strictly: change voice,
-          reset conversation memory, shutdown/restart the assistant,
-          mute/unmute. Do NOT use `system` for any question the user
-          asks in natural language — those go to chat.
-
-Rules:
-1. NEVER answer the user directly - only route to an agent.
-2. Return JSON only, no explanation.
-3. Decompose multi-step requests into the FIRST step only.
-4. Use conversation context to resolve pronouns ("turn it off" -> last
-   mentioned device).
-5. When in doubt between `chat` and `system`, choose `chat`. Only route
-   to `system` if the user is clearly issuing a command targeting the
-   assistant itself (e.g. "reset memory", "change your voice", "shut
-   down"). Questions about conversation history are always `chat`.
-
-Examples:
-- "What did I just ask you?"              → chat
-- "Weißt du noch, was ich dich gefragt habe?" → chat
-- "Can you repeat that?"                  → chat
-- "What's the weather tomorrow?"          → search
-- "Reset your memory, start fresh."       → system
-- "Ändere deine Stimme."                  → system
-
-Response format (JSON only):
-{
-  "agent": "chat|pc|smart_home|search|system",
-  "task": "brief description of what the agent should do",
-  "params": {"key": "value"},
-  "requires_followup": false,
-  "reasoning": "why this routing decision (for logging only)"
-}"""
+# Intents that can be handled locally without any LLM round-trip. Anything
+# outside this set falls through to the conversational chat path (OpenClaw).
+_LOCAL_INTENTS: frozenset[Intent] = frozenset(
+    {Intent.PC_CONTROL, Intent.SMART_HOME, Intent.SYSTEM}
+)
 
 
 class Orchestrator:
-    """Routes requests to appropriate subagents."""
+    """Dispatches turns to local agents or to the OpenClaw chat path.
+
+    No routing LLM call is ever made here. A high-confidence match for a
+    local intent (PC / smart-home / system) runs the matching agent; every
+    other turn is a single ``chat()`` call against OpenClaw.
+    """
 
     def __init__(
         self,
@@ -86,25 +69,32 @@ class Orchestrator:
         memory: ConversationMemory,
         tts_engine: Any = None,
     ) -> None:
-        """Initialize the orchestrator.
+        """Initialise the orchestrator.
 
         Args:
-            claude_client: Claude client for API calls
-            memory: Conversation memory
-            tts_engine: TTS engine for system agent
+            claude_client: OpenClaw-backed client used for conversational
+                turns (``chat()``). Local agents do not use it.
+            memory: Legacy in-RAM conversation buffer. Kept so the
+                ``reset memory`` system command still has something to
+                clear; not consulted for LLM context — OpenClaw owns that.
+            tts_engine: TTS engine handle passed through to ``SystemAgent``
+                for voice-change commands.
         """
         self.claude_client = claude_client
         self.memory = memory
         self.tts_engine = tts_engine
 
-        # Load config
+        # Config — retained for backward compatibility, but the old
+        # "orchestrator_model" / "skip_on_clear_intent" knobs no longer
+        # affect routing: there is no routing LLM call any more.
         cfg = get_config()
         agents_config = cfg.get_section("agents")
-
         self.orchestrator_model = agents_config.get(
             "orchestrator_model", "claude-opus-4-5"
         )
-        self.orchestrator_max_tokens = agents_config.get("orchestrator_max_tokens", 150)
+        self.orchestrator_max_tokens = agents_config.get(
+            "orchestrator_max_tokens", 150
+        )
         self.skip_on_clear_intent = agents_config.get(
             "skip_orchestrator_on_clear_intent", True
         )
@@ -112,28 +102,27 @@ class Orchestrator:
             "history_turns_for_orchestrator", 3
         )
 
-        # Initialize subagents
         self._agents: dict[str, BaseAgent] = {}
         self._init_agents()
 
     def _init_agents(self) -> None:
-        """Initialize all subagents."""
+        """Wire up local agents.
+
+        ``SearchAgent`` is intentionally absent — factual lookups now land
+        on the OpenClaw ``jarvis-main`` session via the chat path, which
+        has direct access to the agent's own tools and long-term memory.
+        """
         self._agents = {
             "chat": ChatAgent(self.claude_client, self.memory),
             "pc": PcAgent(self.claude_client),
             "smart_home": SmartHomeAgent(self.claude_client),
-            "search": SearchAgent(self.claude_client),
             "system": SystemAgent(
                 self.claude_client, self.memory, self.tts_engine
             ),
         }
 
     def set_tts_engine(self, tts_engine: Any) -> None:
-        """Set the TTS engine (for late binding).
-
-        Args:
-            tts_engine: TTS engine instance
-        """
+        """Set the TTS engine on the shared ``SystemAgent`` (late binding)."""
         self.tts_engine = tts_engine
         if "system" in self._agents:
             self._agents["system"].tts_engine = tts_engine
@@ -144,154 +133,65 @@ class Orchestrator:
         language: str,
         intent_result: IntentResult | None = None,
     ) -> AgentResult:
-        """Process user input and return agent result.
+        """Dispatch a single user turn.
+
+        Fast path for high-confidence local intents; otherwise straight to
+        OpenClaw via ``claude_client.chat``.
 
         Args:
-            text: User input text
-            language: Detected language
-            intent_result: Pre-classified intent (optional)
+            text: User input text (STT output).
+            language: Detected language (``"en"`` / ``"de"``).
+            intent_result: Pre-classified intent (optional).
 
         Returns:
-            AgentResult from the appropriate agent
+            ``AgentResult`` ready for the TTS/broadcast stage.
         """
-        # If we have a high-confidence intent, skip orchestrator
+        # --- Local UI / action commands -------------------------------
         if (
-            self.skip_on_clear_intent
-            and intent_result
-            and intent_result.confidence > 0.7
-            and intent_result.intent != Intent.CHAT
+            intent_result is not None
+            and intent_result.intent in _LOCAL_INTENTS
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
         ):
-            return await self._route_direct(text, language, intent_result)
-
-        # Use orchestrator for ambiguous/complex requests
-        decision = await self._get_decision(text, language)
-
-        if decision is None:
-            # Fallback to chat
-            logger.warning("Orchestrator decision failed, falling back to chat")
-            return await self._agents["chat"].run(text, {}, language)
-
-        logger.info(
-            f"Orchestrator: {decision.agent} - {decision.task} "
-            f"(reason: {decision.reasoning})"
-        )
-
-        return await self._execute_decision(decision, language)
-
-    async def _route_direct(
-        self, text: str, language: str, intent_result: IntentResult
-    ) -> AgentResult:
-        """Route directly to agent based on intent (skip orchestrator).
-
-        Args:
-            text: User input text
-            language: Detected language
-            intent_result: Classified intent
-
-        Returns:
-            AgentResult from the appropriate agent
-        """
-        intent_to_agent = {
-            Intent.CHAT: "chat",
-            Intent.PC_CONTROL: "pc",
-            Intent.SMART_HOME: "smart_home",
-            Intent.WEB_SEARCH: "search",
-            Intent.SYSTEM: "system",
-        }
-
-        agent_name = intent_to_agent.get(intent_result.intent, "chat")
-        agent = self._agents.get(agent_name, self._agents["chat"])
-
-        logger.info(
-            f"Direct routing: {agent_name} "
-            f"(intent={intent_result.intent.value}, conf={intent_result.confidence:.2f})"
-        )
-
-        return await agent.run(text, intent_result.params, language)
-
-    async def _get_decision(
-        self, text: str, language: str
-    ) -> OrchestratorDecision | None:
-        """Get routing decision from orchestrator.
-
-        Args:
-            text: User input text
-            language: Detected language
-
-        Returns:
-            OrchestratorDecision or None on failure
-        """
-        # Build context with conversation summary
-        context = self.memory.get_summary(self.history_turns_for_orchestrator)
-
-        prompt = f"""Recent conversation:
-{context}
-
-Current user request ({language}): {text}
-
-Route this request to the appropriate agent. Respond with JSON only."""
-
-        try:
-            response = await self.claude_client.complete(
-                prompt=prompt,
-                system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
-                model=self.orchestrator_model,
-                max_tokens=self.orchestrator_max_tokens,
-                temperature=0.3,
+            agent_name = _intent_to_agent_name(intent_result.intent)
+            agent = self._agents.get(agent_name)
+            if agent is not None:
+                logger.info(
+                    f"Local dispatch: {agent_name} "
+                    f"(intent={intent_result.intent.value}, "
+                    f"conf={intent_result.confidence:.2f})"
+                )
+                return await agent.run(text, intent_result.params, language)
+            logger.warning(
+                f"Local intent {intent_result.intent.value} had no agent wired; "
+                "falling back to chat path"
             )
 
-            # Parse JSON response
-            response = response.strip()
-            if response.startswith("```"):
-                response = response.split("```")[1]
-                if response.startswith("json"):
-                    response = response[4:]
-            response = response.strip()
-
-            data = json.loads(response)
-
-            return OrchestratorDecision(
-                agent=data.get("agent", "chat"),
-                task=data.get("task", text),
-                params=data.get("params", {}),
-                requires_followup=data.get("requires_followup", False),
-                reasoning=data.get("reasoning", ""),
+        # --- Conversational path (single OpenClaw call) ---------------
+        # Everything else — CHAT, WEB_SEARCH, ambiguous intents — now goes
+        # straight to OpenClaw. The jarvis-main session owns persona, recall
+        # and any tool use needed to answer factual questions.
+        logger.info(
+            "Chat dispatch: jarvis-main session"
+            + (
+                f" (intent={intent_result.intent.value}, "
+                f"conf={intent_result.confidence:.2f})"
+                if intent_result is not None
+                else ""
             )
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse orchestrator response: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Orchestrator error: {e}")
-            return None
-
-    async def _execute_decision(
-        self, decision: OrchestratorDecision, language: str
-    ) -> AgentResult:
-        """Execute an orchestrator decision.
-
-        Args:
-            decision: Orchestrator decision
-            language: Detected language
-
-        Returns:
-            AgentResult from the agent
-        """
-        agent = self._agents.get(decision.agent)
-
-        if agent is None:
-            logger.warning(f"Unknown agent: {decision.agent}, falling back to chat")
-            agent = self._agents["chat"]
-
-        return await agent.run(decision.task, decision.params, language)
+        )
+        return await self._agents["chat"].run(text, {}, language)
 
     def get_agent(self, name: str) -> BaseAgent | None:
-        """Get a specific agent by name.
-
-        Args:
-            name: Agent name
-
-        Returns:
-            Agent instance or None
-        """
+        """Return a specific agent by name (``chat`` / ``pc`` / …)."""
         return self._agents.get(name)
+
+
+def _intent_to_agent_name(intent: Intent) -> str:
+    """Map a classified intent to the local agent key."""
+    if intent == Intent.PC_CONTROL:
+        return "pc"
+    if intent == Intent.SMART_HOME:
+        return "smart_home"
+    if intent == Intent.SYSTEM:
+        return "system"
+    return "chat"

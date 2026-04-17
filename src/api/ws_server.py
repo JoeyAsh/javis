@@ -336,30 +336,30 @@ def _pcm_bytes_to_float32(data: bytes) -> np.ndarray:
     return int16.astype(np.float32) / 32768.0
 
 
-def _load_filler_cache(cache_dir: Path) -> dict[str, list[tuple[str, bytes]]]:
-    """Load all ``filler_<lang>_*.mp3`` files from ``cache_dir`` into memory.
+def _load_voice_cache(
+    cache_dir: Path, prefix: str
+) -> dict[str, list[tuple[str, bytes]]]:
+    """Load all ``<prefix>_<lang>_<slug>.mp3`` files from ``cache_dir``.
 
     Returns a map from language code to a list of ``(display_text, mp3_bytes)``
     tuples. Missing directory or missing files is a warning, not an error —
-    the pipeline simply skips filler broadcasts in that case.
+    callers simply skip broadcasts in that case.
     """
     cache: dict[str, list[tuple[str, bytes]]] = {}
     if not cache_dir.exists():
         logger.warning(f"Voice cache directory not found: {cache_dir}")
         return cache
 
-    for path in sorted(cache_dir.glob("filler_*.mp3")):
-        # Filename form: filler_<lang>_<slug>.mp3 (lang is 2 chars by convention
-        # but we don't hard-code that in case future langs are 3-letter codes).
+    for path in sorted(cache_dir.glob(f"{prefix}_*.mp3")):
         stem = path.stem  # e.g. "filler_de_einen_augenblick"
-        parts = stem.split("_", 2)
-        if len(parts) < 3 or parts[0] != "filler":
+        # Strip the prefix explicitly so prefixes that contain underscores
+        # themselves still split cleanly into (lang, slug).
+        rest = stem[len(prefix) + 1 :] if stem.startswith(prefix + "_") else ""
+        parts = rest.split("_", 1)
+        if len(parts) < 2:
             logger.debug(f"Skipping unrecognised voice cache file: {path.name}")
             continue
-        lang = parts[1]
-        slug = parts[2]
-        # Human-readable text: replace underscores with spaces, title-case
-        # for the display in the HUD transcript.
+        lang, slug = parts[0], parts[1]
         display = slug.replace("_", " ").strip().capitalize()
         try:
             data = path.read_bytes()
@@ -367,45 +367,54 @@ def _load_filler_cache(cache_dir: Path) -> dict[str, list[tuple[str, bytes]]]:
             logger.warning(f"Failed to read {path}: {exc}")
             continue
         if not data:
-            logger.warning(f"Filler file is empty, skipping: {path}")
+            logger.warning(f"Cache file is empty, skipping: {path}")
             continue
         cache.setdefault(lang, []).append((display, data))
 
     total = sum(len(v) for v in cache.values())
     if total == 0:
         logger.warning(
-            f"No filler MP3s loaded from {cache_dir} — quick-ack fillers disabled"
+            f"No '{prefix}_*.mp3' files found in {cache_dir} — '{prefix}' broadcasts disabled"
         )
     else:
         langs = ", ".join(f"{k}={len(v)}" for k, v in cache.items())
-        logger.info(f"Loaded {total} quick-ack fillers ({langs})")
+        logger.info(f"Loaded {total} '{prefix}' phrases ({langs})")
     return cache
 
 
-async def _broadcast_quick_ack_filler(language: str) -> None:
-    """Broadcast a random pre-cached filler MP3 to all clients.
+def _load_filler_cache(cache_dir: Path) -> dict[str, list[tuple[str, bytes]]]:
+    """Backwards-compatible wrapper — delegates to :func:`_load_voice_cache`."""
+    return _load_voice_cache(cache_dir, "filler")
 
-    Called immediately after STT produces a usable transcript so the
-    frontend has audio to play while the real LLM round-trip is still
-    running. No-op if the cache is empty or the requested language
-    (plus fallback "de") has no entries.
-    """
+
+async def _broadcast_from_cache(
+    cache: dict[str, list[tuple[str, bytes]]],
+    language: str,
+    log_label: str,
+) -> None:
+    """Pick a random pre-cached MP3 from ``cache`` and broadcast it."""
     import random
 
-    if not _filler_cache:
+    if not cache:
         return
 
-    pool = _filler_cache.get(language)
+    pool = cache.get(language)
     if not pool:
-        # Fallback: prefer DE, then any available language.
-        pool = _filler_cache.get("de") or next(iter(_filler_cache.values()), [])
+        pool = cache.get("de") or next(iter(cache.values()), [])
     if not pool:
         return
 
     text, mp3_bytes = random.choice(pool)
     audio_b64 = base64.b64encode(mp3_bytes).decode("utf-8")
-    logger.info(f"Filler broadcast: {text!r} ({len(mp3_bytes)} bytes, lang={language})")
+    logger.info(
+        f"{log_label} broadcast: {text!r} ({len(mp3_bytes)} bytes, lang={language})"
+    )
     await broadcast_audio(audio_b64, text)
+
+
+async def _broadcast_quick_ack_filler(language: str) -> None:
+    """Broadcast a random pre-cached filler MP3 — plays while LLM is running."""
+    await _broadcast_from_cache(_filler_cache, language, "Filler")
 
 
 async def _close_follow_up_window(conn_id: int, reason: str) -> None:
@@ -776,12 +785,14 @@ async def _process_audio_for_client(
             state["mode"] = "idle"
             return
 
-        # Pre-speech timeout: 5 s in listening, window_seconds in follow_up.
+        # Pre-speech timeout: 10 s in listening (user needs time to respond
+        # after the wake-ack audio finishes playing), window_seconds in
+        # follow_up.
         pre_speech_timeout_samples = (
             int((_conversation_mode.window_seconds if _conversation_mode else 18.0)
                 * _sample_rate)
             if is_follow_up
-            else 5 * _sample_rate
+            else 10 * _sample_rate
         )
         if not state["speech_started"] and total_samples > pre_speech_timeout_samples:
             if is_follow_up:
@@ -791,7 +802,7 @@ async def _process_audio_for_client(
                 await _close_follow_up_window(conn_id, "expired")
                 await broadcast_state("idle")
             else:
-                logger.debug("No speech detected in 5 seconds, returning to idle")
+                logger.debug("No speech detected in 10 seconds, returning to idle")
                 state["mode"] = "idle"
                 state["audio_chunks"] = []
                 await broadcast_state("idle")
@@ -1022,13 +1033,13 @@ async def start_ws_server(
     # Persona snapshot for sleep-phrase closing salutations.
     _persona_config = cfg.get_section("persona") or {}
 
-    # Load the quick-ack filler cache up-front. Path defaults to
-    # ``data/voice_cache``; override via ``voice.cache_directory`` in config.
+    # Load quick-ack filler cache up-front. Path defaults to
+    # ``data/voice_cache``; override via ``voice.cache_directory``.
     filler_dir_str = voice_config.get("cache_directory", "data/voice_cache")
     filler_dir = Path(filler_dir_str)
     if not filler_dir.is_absolute():
         filler_dir = Path.cwd() / filler_dir
-    _filler_cache = _load_filler_cache(filler_dir)
+    _filler_cache = _load_voice_cache(filler_dir, "filler")
 
     # Audio config
     audio_config = cfg.get_section("audio")

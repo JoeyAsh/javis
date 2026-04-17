@@ -236,13 +236,22 @@ class ClaudeClient:
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        use_main_session: bool = False,
     ) -> str:
-        """Run a narrow utility completion (routing, summarisation, etc.).
+        """Run a completion against OpenClaw.
 
-        Utility calls travel on an ephemeral session id so they don't leak
-        into the main conversation memory. ``system_prompt`` is folded
-        into the user message so OpenClaw (which ignores our system slot)
-        still sees the instruction.
+        There are two distinct flavours:
+
+        * **Utility** (default, ``use_main_session=False``): ephemeral
+          session id (``jarvis-util-complete``). For internal calls like
+          orchestrator routing or JSON extraction that should NOT leak
+          into the main conversation memory.
+        * **Main-session** (``use_main_session=True``): routed through
+          the same ``jarvis-main`` session that :meth:`chat` uses. Pick
+          this for agent responses that speak directly to the user
+          (e.g. SearchAgent summarising results) — otherwise a later
+          follow-up like "weißt du noch wonach ich gefragt habe?" has
+          no context to work with.
 
         Args:
             prompt: User prompt / payload.
@@ -250,6 +259,8 @@ class ClaudeClient:
             model: Historical override, ignored — OpenClaw picks the model.
             max_tokens: Historical override, ignored.
             temperature: Historical override, ignored.
+            use_main_session: Route through the main conversation session
+                if ``True``. Default ``False`` (utility lane).
 
         Returns:
             Response text, or empty string on OpenClaw error.
@@ -257,7 +268,11 @@ class ClaudeClient:
         del model, max_tokens, temperature  # OpenClaw-governed now.
 
         composite = _compose_utility_prompt(system_prompt, prompt)
-        session = self._utility_session_id("complete")
+        session = (
+            None  # None → OpenClawClient falls back to self._session_id (jarvis-main)
+            if use_main_session
+            else self._utility_session_id("complete")
+        )
         response = await self._query(composite, session_id=session)
 
         if response.error:

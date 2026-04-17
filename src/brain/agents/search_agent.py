@@ -87,12 +87,16 @@ Search results:
 
 Provide a concise answer to the user's query."""
 
+        # Route through the main jarvis-main session so the summary counts
+        # as part of the ongoing conversation (follow-up questions like
+        # "weißt du noch, was du mir gerade gesagt hast" depend on this).
         response = await self.claude_client.complete(
             prompt=prompt,
             system_prompt=system_prompt,
             model=self.model,
             max_tokens=self.max_tokens,
             temperature=0.5,
+            use_main_session=True,
         )
 
         if not response:

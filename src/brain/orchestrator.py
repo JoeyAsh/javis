@@ -23,7 +23,6 @@ from brain.agents.smart_home_agent import SmartHomeAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
 from brain.intent_parser import Intent, IntentResult
-from brain.memory_legacy import ConversationMemory
 from utils.config_loader import get_config
 from utils.logger import get_logger
 
@@ -66,7 +65,7 @@ class Orchestrator:
     def __init__(
         self,
         claude_client: ClaudeClient,
-        memory: ConversationMemory,
+        memory: Any = None,
         tts_engine: Any = None,
     ) -> None:
         """Initialise the orchestrator.
@@ -74,9 +73,10 @@ class Orchestrator:
         Args:
             claude_client: OpenClaw-backed client used for conversational
                 turns (``chat()``). Local agents do not use it.
-            memory: Legacy in-RAM conversation buffer. Kept so the
-                ``reset memory`` system command still has something to
-                clear; not consulted for LLM context — OpenClaw owns that.
+            memory: Legacy parameter. Retained for call-site compatibility;
+                not consulted (OpenClaw owns session memory, and the local
+                transcript archive is written directly via
+                :class:`brain.memory.MemoryStore` from ``ws_server``).
             tts_engine: TTS engine handle passed through to ``SystemAgent``
                 for voice-change commands.
         """
@@ -113,11 +113,11 @@ class Orchestrator:
         has direct access to the agent's own tools and long-term memory.
         """
         self._agents = {
-            "chat": ChatAgent(self.claude_client, self.memory),
+            "chat": ChatAgent(self.claude_client),
             "pc": PcAgent(self.claude_client),
             "smart_home": SmartHomeAgent(self.claude_client),
             "system": SystemAgent(
-                self.claude_client, self.memory, self.tts_engine
+                self.claude_client, memory=None, tts_engine=self.tts_engine
             ),
         }
 

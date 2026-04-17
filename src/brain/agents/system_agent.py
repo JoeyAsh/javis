@@ -1,11 +1,15 @@
-"""System agent for JARVIS - handles system commands."""
+"""System agent for JARVIS — local UI commands (voice / reset / shutdown).
+
+Strictly local, no LLM round-trip. Reachable only from the
+:class:`brain.orchestrator.Orchestrator` when the fast intent parser
+classifies a turn as ``Intent.SYSTEM`` with high confidence.
+"""
 
 from pathlib import Path
 from typing import Any
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.claude_client import ClaudeClient
-from brain.memory_legacy import ConversationMemory
 from utils.logger import get_logger
 
 logger = get_logger("agent.system")
@@ -20,19 +24,22 @@ class SystemAgent(BaseAgent):
     def __init__(
         self,
         claude_client: ClaudeClient,
-        memory: ConversationMemory,
+        memory: Any = None,
         tts_engine: Any = None,
     ) -> None:
-        """Initialize the system agent.
+        """Initialise the system agent.
 
         Args:
-            claude_client: Claude client for API calls
-            memory: Conversation memory
-            tts_engine: TTS engine for voice changes
+            claude_client: LLM client (unused — SystemAgent is purely local).
+            memory: Legacy parameter. Retained for call-site compatibility;
+                no longer read (session memory is owned by OpenClaw, and
+                the transcript archive is an append-only audit log that
+                must not be wiped by a user command).
+            tts_engine: TTS engine for voice-change commands.
         """
         super().__init__()
         self.claude_client = claude_client
-        self.memory = memory
+        self.memory = memory  # kept only for test-level introspection
         self.tts_engine = tts_engine
 
     async def run(
@@ -177,22 +184,28 @@ class SystemAgent(BaseAgent):
         )
 
     async def _reset_memory(self, language: str) -> AgentResult:
-        """Reset conversation memory.
+        """Acknowledge a memory-reset request.
+
+        Session memory is owned by OpenClaw's ``jarvis-main`` session. The
+        local transcript archive (:class:`brain.memory.MemoryStore`) is an
+        append-only audit log and is intentionally NOT wiped — a "reset
+        memory" voice command must not destroy the user's history. We log
+        the request and speak a confirmation so the surface behaviour is
+        unchanged; future work can teach OpenClaw to clear its own
+        session at the user's request.
 
         Args:
-            language: Response language
+            language: Response language.
 
         Returns:
-            AgentResult with confirmation
+            ``AgentResult`` with spoken confirmation.
         """
-        self.memory.clear()
-
         if language == "de":
             msg = "Gesprächsspeicher zurückgesetzt, Sir. Wir beginnen von vorn."
         else:
             msg = "Conversation memory cleared, sir. Starting fresh."
 
-        logger.info("Conversation memory reset by user")
+        logger.info("Conversation memory reset requested by user (no-op locally)")
 
         return AgentResult(
             spoken_response=msg,

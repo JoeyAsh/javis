@@ -23,7 +23,6 @@ from audio.stt import SpeechToText, create_stt_engine
 from audio.wake_word import WakeWordDetector, create_wake_word_detector
 from brain.conversation_mode import ConversationMode
 from brain.memory import MemoryStore
-from brain.memory_legacy import ConversationMemory
 from brain.intent_parser import IntentParser, get_intent_parser
 from brain.orchestrator import Orchestrator
 from brain.salutation import get_salutation
@@ -54,7 +53,11 @@ def first_client_event() -> asyncio.Event:
     return _first_client_event
 
 # Shared pipeline components (set in start_ws_server)
-_memory: ConversationMemory | None = None
+#
+# Session memory is owned by OpenClaw (keyed by ``session_id``). The local
+# SQLite ``MemoryStore`` stays on as an append-only archive for transcript
+# search / audit — nothing in the voice pipeline reads back from it during
+# a turn. There is no more in-RAM ``ConversationMemory``.
 _memory_store: MemoryStore | None = None
 _openclaw_client: OpenClawClient | None = None
 _tts_engine: Any = None  # kept for legacy set_voice_profile support
@@ -533,7 +536,7 @@ async def _run_voice_pipeline(
             (used for follow-up window arming + logging; audio broadcasts
             fan out to all clients).
     """
-    global _memory, _fish_tts, _stt_engine, _orchestrator, _intent_parser
+    global _fish_tts, _stt_engine, _orchestrator, _intent_parser
 
     if not audio_chunks:
         logger.debug("No audio chunks for pipeline, returning to idle")
@@ -597,11 +600,8 @@ async def _run_voice_pipeline(
             except FishTTSError as exc:
                 logger.error(f"Fish TTS error during sleep close: {exc}")
 
-        if _memory is not None:
-            _memory.add_turn(role="user", content=result.text, language=result.language)
-            _memory.add_turn(
-                role="assistant", content=closing, language=result.language
-            )
+        # Memory: session history is owned by OpenClaw, the local archive
+        # is written by ``broadcast_transcript`` above. Nothing to do here.
 
         # Force the connection back to idle — _close_follow_up_window only
         # resets mode when the previous mode was follow_up, but a sleep
@@ -675,12 +675,8 @@ async def _run_voice_pipeline(
     except FishTTSError as exc:
         logger.error(f"Fish TTS error: {exc}")
 
-    # --- Update memory ---
-    if _memory:
-        _memory.add_turn(role="user", content=result.text, language=result.language)
-        _memory.add_turn(
-            role="assistant", content=response_text, language=result.language
-        )
+    # Memory: OpenClaw owns the conversational session; the local archive
+    # was already written by the ``broadcast_transcript`` calls above.
 
     # --- Arm follow-up window (or go straight to idle) ------------------
     # After a successful turn, keep the mic open for a short window so the
@@ -829,7 +825,7 @@ async def _handle_command(data: dict[str, Any]) -> None:
     Args:
         data: Parsed command data
     """
-    global _memory, _tts_engine
+    global _tts_engine
 
     cmd_type = data.get("type")
     payload = data.get("payload", {})
@@ -845,9 +841,10 @@ async def _handle_command(data: dict[str, Any]) -> None:
                 logger.error(f"Failed to change voice profile: {e}")
 
     elif cmd_type == "reset":
-        if _memory:
-            _memory.clear()
-            logger.info("Memory cleared via WebSocket command")
+        # Session memory is owned by OpenClaw; the local archive
+        # (``MemoryStore``) is append-only and must not be wiped by a
+        # UI click. Acknowledge the command in the log and no-op.
+        logger.info("Memory-reset command received (no-op; OpenClaw owns memory)")
 
     else:
         logger.warning(f"Unknown command type: {cmd_type}")
@@ -986,18 +983,21 @@ async def voices_handler(request: web.Request) -> web.Response:
 
 async def start_ws_server(
     config: dict[str, Any],
-    memory: ConversationMemory,
-    tts_engine: Any,
+    memory: Any = None,
+    tts_engine: Any = None,
 ) -> None:
     """Start the WebSocket and HTTP server and initialise the voice pipeline.
 
     Args:
-        config: API configuration section
-        memory: Conversation memory instance
+        config: API configuration section.
+        memory: Legacy parameter; ignored. OpenClaw owns session memory,
+            and the local archive (:class:`brain.memory.MemoryStore`) is
+            initialised internally. Kept in the signature for call-site
+            compat with older integrations.
         tts_engine: Unused (kept for API compatibility). Fish TTS is
             initialised internally.
     """
-    global _memory, _memory_store, _openclaw_client, _tts_engine, _fish_tts
+    global _memory_store, _openclaw_client, _tts_engine, _fish_tts
     global _stt_engine, _wake_word_detector
     global _orchestrator, _intent_parser, _start_time
     global _silence_threshold, _silence_duration_ms, _sample_rate
@@ -1010,10 +1010,11 @@ async def start_ws_server(
     from brain.claude_client import create_claude_client
     from utils.config_loader import get_config
 
+    del memory  # Ignored — see docstring.
+
     load_dotenv()
     cfg = get_config()
 
-    _memory = memory
     _tts_engine = tts_engine
     _start_time = time.time()
 
@@ -1102,15 +1103,9 @@ async def start_ws_server(
     logger.info("Initialising LLM client (OpenClaw-backed)...")
     claude_client = await create_claude_client(openclaw_client=_openclaw_client)
 
-    if _memory is None:
-        claude_config = cfg.get_section("claude")
-        from brain.memory_legacy import ConversationMemory as _CM
-
-        _memory = _CM(max_turns=claude_config.get("max_history_turns", 10))
-
     _orchestrator = Orchestrator(
         claude_client=claude_client,
-        memory=_memory,
+        memory=None,
         tts_engine=None,
     )
 

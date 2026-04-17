@@ -244,14 +244,12 @@ class ClaudeClient:
 
         * **Utility** (default, ``use_main_session=False``): ephemeral
           session id (``jarvis-util-complete``). For internal calls like
-          orchestrator routing or JSON extraction that should NOT leak
-          into the main conversation memory.
+          JSON extraction that should NOT leak into the main conversation
+          memory. With the single-call pipeline, the voice turn itself no
+          longer uses this path — it is retained for ad-hoc utilities and
+          external callers.
         * **Main-session** (``use_main_session=True``): routed through
-          the same ``jarvis-main`` session that :meth:`chat` uses. Pick
-          this for agent responses that speak directly to the user
-          (e.g. SearchAgent summarising results) — otherwise a later
-          follow-up like "weißt du noch wonach ich gefragt habe?" has
-          no context to work with.
+          the same ``jarvis-main`` session that :meth:`chat` uses.
 
         Args:
             prompt: User prompt / payload.

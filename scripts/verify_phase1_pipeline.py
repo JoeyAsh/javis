@@ -58,7 +58,6 @@ async def _run_once() -> tuple[int, list[str]]:
     from api import ws_server
     from brain.claude_client import ClaudeClient
     from brain.intent_parser import get_intent_parser
-    from brain.memory_legacy import ConversationMemory
     from brain.orchestrator import Orchestrator
 
     # --- Fake OpenClaw: counts calls + records session ids -------------
@@ -99,9 +98,8 @@ async def _run_once() -> tuple[int, list[str]]:
     claude_client = ClaudeClient(openclaw_client=openclaw)
     await claude_client.initialize()
 
-    memory = ConversationMemory(max_turns=5)
     orchestrator = Orchestrator(
-        claude_client=claude_client, memory=memory, tts_engine=None
+        claude_client=claude_client, memory=None, tts_engine=None
     )
 
     # --- Stub STT + Fish TTS on the module ----------------------------
@@ -117,7 +115,6 @@ async def _run_once() -> tuple[int, list[str]]:
     ws_server._fish_tts = tts_stub
     ws_server._orchestrator = orchestrator
     ws_server._intent_parser = get_intent_parser()
-    ws_server._memory = memory
     ws_server._memory_store = None
     ws_server._conversation_mode = None
     ws_server._persona_config = {}

@@ -241,7 +241,6 @@ def ws_server_module() -> Any:
         "_stt_engine",
         "_orchestrator",
         "_intent_parser",
-        "_memory",
         "_filler_cache",
     )
     saved = {k: getattr(mod, k) for k in keys}
@@ -418,7 +417,6 @@ async def test_sleep_phrase_short_circuits_pipeline(
 
     mod._orchestrator = _FakeOrchestrator()  # type: ignore[assignment]
     mod._intent_parser = _FakeIntent()  # type: ignore[assignment]
-    mod._memory = None  # Skip memory writes
 
     # Neutralise the playback sleep so the test doesn't stall 1.2 s.
     async def _fast_sleep(_s: float) -> None:
@@ -499,7 +497,6 @@ async def test_successful_turn_arms_follow_up(
     mod._fish_tts = _FakeTTS()  # type: ignore[assignment]
     mod._intent_parser = _FakeIntent()  # type: ignore[assignment]
     mod._orchestrator = _FakeOrchestrator()  # type: ignore[assignment]
-    mod._memory = None
 
     async def _fast_sleep(_s: float) -> None:
         return None

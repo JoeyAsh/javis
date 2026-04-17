@@ -13,7 +13,6 @@ from typing import Any
 from dotenv import load_dotenv
 
 from api.ws_server import broadcast_notification, start_ws_server
-from brain.memory_legacy import ConversationMemory
 from brain.proactive import ProactiveScheduler
 from utils.config_loader import get_config
 from utils.events import Event, EventBus
@@ -82,11 +81,9 @@ async def main() -> None:
 
     logger.info("Starting JARVIS (browser-mic mode)...")
 
-    claude_config = config.get_section("claude")
-    memory = ConversationMemory(
-        max_turns=claude_config.get("max_history_turns", 10)
-    )
-
+    # Session memory is owned by OpenClaw (keyed by ``openclaw.session_id``);
+    # the transcript archive is the local SQLite ``MemoryStore`` created
+    # inside ``start_ws_server``. There is no in-RAM ``ConversationMemory``.
     api_config = config.get_section("api")
 
     # Proactive-interjection pipeline: a bus for domain events (meeting
@@ -118,7 +115,7 @@ async def main() -> None:
         await scheduler.start()
 
         ws_task = asyncio.create_task(
-            start_ws_server(api_config, memory, None)
+            start_ws_server(api_config, None, None)
         )
 
         # Note: the startup "JARVIS online" notification is now emitted

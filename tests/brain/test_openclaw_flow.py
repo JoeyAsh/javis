@@ -22,7 +22,6 @@ import pytest_asyncio
 
 from brain.agents.chat_agent import ChatAgent
 from brain.claude_client import ClaudeClient
-from brain.memory_legacy import ConversationMemory
 from integrations.openclaw import AgentResponse
 
 
@@ -76,10 +75,7 @@ class TestTurnRoundTrip:
             text="All systems nominal, sir."
         )
 
-        agent = ChatAgent(
-            claude_client=claude_client,
-            memory=ConversationMemory(max_turns=5),
-        )
+        agent = ChatAgent(claude_client=claude_client)
 
         result = await agent.run(
             task="Status report please.",
@@ -131,10 +127,7 @@ class TestOfflineFallback:
         """Exceptions from OpenClaw do not crash the ChatAgent."""
         mock_openclaw.query_agent.side_effect = RuntimeError("boom")
 
-        agent = ChatAgent(
-            claude_client=claude_client,
-            memory=ConversationMemory(max_turns=5),
-        )
+        agent = ChatAgent(claude_client=claude_client)
 
         result = await agent.run(
             task="Still there?",

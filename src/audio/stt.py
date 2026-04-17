@@ -166,11 +166,21 @@ async def create_stt_engine(config: dict[str, Any] | None = None) -> SpeechToTex
         cfg = get_config()
         config = cfg.get_section("stt")
 
+    # Accept ``"auto"`` (human-friendly) as a synonym for ``None`` (Whisper's
+    # open-ended auto-detect). Anything else is passed straight through as
+    # an ISO language code, pinning Whisper to that language.
+    raw_lang = config.get("language")
+    language: str | None
+    if raw_lang is None or (isinstance(raw_lang, str) and raw_lang.strip().lower() in {"", "auto", "null", "none"}):
+        language = None
+    else:
+        language = str(raw_lang).strip()
+
     engine = SpeechToText(
         model=config.get("model", "small"),
         device=config.get("device", "cpu"),
         compute_type=config.get("compute_type", "int8"),
-        language=config.get("language"),
+        language=language,
     )
 
     await engine.initialize()

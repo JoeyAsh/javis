@@ -14,7 +14,10 @@ stt:
   model: "small"
   device: "cpu"
   compute_type: "int8"
-  language: null
+  # Whisper language hint. Pin to a specific ISO code (``"de"``, ``"en"``, ...)
+  # so Whisper stops drifting to exotic languages on ambiguous audio; set to
+  # ``null`` / ``"auto"`` for open-ended auto-detection.
+  language: "de"
 
 tts:
   engine: "fish"          # Fish Audio cloud TTS

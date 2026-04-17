@@ -21,6 +21,7 @@ from api.system_metrics import SystemMetrics, SystemMetricsCollector
 from audio.fish_tts import FishTTSClient, FishTTSError, strip_markdown_for_tts
 from audio.stt import SpeechToText, create_stt_engine
 from audio.wake_word import WakeWordDetector, create_wake_word_detector
+from brain.memory import MemoryStore
 from brain.memory_legacy import ConversationMemory
 from brain.intent_parser import IntentParser, get_intent_parser
 from brain.orchestrator import Orchestrator
@@ -52,6 +53,7 @@ def first_client_event() -> asyncio.Event:
 
 # Shared pipeline components (set in start_ws_server)
 _memory: ConversationMemory | None = None
+_memory_store: MemoryStore | None = None
 _openclaw_client: OpenClawClient | None = None
 _tts_engine: Any = None  # kept for legacy set_voice_profile support
 _fish_tts: FishTTSClient | None = None
@@ -103,14 +105,33 @@ async def broadcast_audio(audio_b64: str, text: str) -> None:
 
 
 async def broadcast_transcript(role: str, text: str) -> None:
-    """Broadcast transcript entry to all connected clients.
+    """Broadcast transcript entry to all connected clients and archive it.
+
+    Every transcript turn is also persisted to the JARVIS ``events`` table
+    in :class:`brain.memory.MemoryStore`. OpenClaw keeps the short-context
+    conversational memory; the local DB keeps an append-only archive of
+    every spoken turn for later recall features (voice-driven search,
+    timeline views, audit).
 
     Args:
-        role: Speaker role (user or jarvis)
-        text: Transcript text
+        role: Speaker role (``"user"`` or ``"jarvis"``).
+        text: Transcript text.
     """
     message = json.dumps({"type": "transcript", "payload": {"role": role, "text": text}})
     await _broadcast(message)
+
+    # Dual-write: archive to the local SQLite events log. Failures here
+    # must never take down the voice pipeline, so we swallow exceptions
+    # after logging.
+    if _memory_store is not None:
+        try:
+            await _memory_store.record_event(
+                event_type="transcript",
+                source="voice",
+                payload={"role": role, "text": text},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"MemoryStore record_event failed: {exc}")
 
 
 async def broadcast_notification(
@@ -319,6 +340,10 @@ async def _run_voice_pipeline(
 
     logger.info(f"User said ({result.language}): {result.text}")
 
+    # Broadcast + archive the user turn immediately — we want the
+    # archive to reflect reality even if the downstream LLM call fails.
+    await broadcast_transcript("user", result.text)
+
     # --- Intent classification + orchestration ---
     if _intent_parser is None or _orchestrator is None:
         logger.error("Orchestrator not initialised")
@@ -339,6 +364,10 @@ async def _run_voice_pipeline(
         response_text = "Entschuldigung, es gab einen Fehler."
 
     logger.info(f"JARVIS: {response_text}")
+
+    # Broadcast + archive the JARVIS turn before the (much slower) TTS
+    # synthesis so the HUD transcript updates with minimum latency.
+    await broadcast_transcript("jarvis", response_text)
 
     # --- TTS synthesis ---
     await broadcast_state("speaking")
@@ -645,7 +674,7 @@ async def start_ws_server(
         tts_engine: Unused (kept for API compatibility). Fish TTS is
             initialised internally.
     """
-    global _memory, _openclaw_client, _tts_engine, _fish_tts
+    global _memory, _memory_store, _openclaw_client, _tts_engine, _fish_tts
     global _stt_engine, _wake_word_detector
     global _orchestrator, _intent_parser, _start_time
     global _silence_threshold, _silence_duration_ms, _sample_rate
@@ -704,6 +733,21 @@ async def start_ws_server(
             "fall back to spoken offline message. Run "
             "'openclaw doctor' to diagnose."
         )
+
+    # --- Memory store (archive of transcripts / events) ---
+    memory_cfg = cfg.get_section("memory")
+    if memory_cfg.get("enabled", True):
+        _memory_store = MemoryStore(
+            db_path=memory_cfg.get("db_path", "data/jarvis.db")
+        )
+        try:
+            await _memory_store.initialize()
+            logger.info(
+                f"MemoryStore initialised (archive path: {_memory_store.db_path})"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"MemoryStore init failed — archiving disabled: {exc}")
+            _memory_store = None
 
     # LLM client (OpenClaw-backed) + orchestrator
     logger.info("Initialising LLM client (OpenClaw-backed)...")
@@ -804,9 +848,14 @@ async def start_ws_server(
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"http_runner cleanup failed: {exc}")
 
-        # Close OpenClaw.
+        # Close OpenClaw + MemoryStore.
         if _openclaw_client is not None:
             try:
                 await _openclaw_client.close()
             except Exception as exc:  # noqa: BLE001
                 logger.warning(f"OpenClaw client close failed: {exc}")
+        if _memory_store is not None:
+            try:
+                await _memory_store.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"MemoryStore close failed: {exc}")

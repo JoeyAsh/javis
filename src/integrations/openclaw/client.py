@@ -293,13 +293,47 @@ class OpenClawClient:
                     error=error_msg,
                 )
 
-            # Parse JSON response
+            # Parse JSON response.
+            #
+            # OpenClaw CLI >= 2026.4.x returns a run envelope:
+            #   { runId, status, summary,
+            #     result: { payloads: [ { text, mediaUrl } ],
+            #               meta: { finalAssistantVisibleText, ... } } }
+            # Older versions (kept for defensive compatibility) returned a
+            # flat { response|text, thinking_used, tool_calls } shape.
             try:
                 data = json.loads(stdout.decode())
+
+                # New envelope — prefer `meta.finalAssistantVisibleText`
+                # (already post-processed / visible to user); fall back to
+                # concatenated payload texts.
+                text = ""
+                result = data.get("result") if isinstance(data, dict) else None
+                if isinstance(result, dict):
+                    meta = result.get("meta") or {}
+                    if isinstance(meta, dict):
+                        text = (
+                            meta.get("finalAssistantVisibleText")
+                            or meta.get("finalAssistantRawText")
+                            or ""
+                        )
+                    if not text:
+                        payloads = result.get("payloads") or []
+                        if isinstance(payloads, list):
+                            text = "\n".join(
+                                p.get("text", "")
+                                for p in payloads
+                                if isinstance(p, dict) and p.get("text")
+                            )
+
+                # Legacy fallback for older CLIs / mocks.
+                if not text:
+                    text = data.get("response") or data.get("text") or ""
+
                 return AgentResponse(
-                    text=data.get("response", data.get("text", "")),
+                    text=text,
                     session_id=session,
-                    thinking_used=data.get("thinking_used", False),
+                    thinking_used=bool(data.get("thinking_used", False)),
                     tool_calls=data.get("tool_calls", []),
                 )
             except json.JSONDecodeError:

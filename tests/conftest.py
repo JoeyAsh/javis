@@ -70,6 +70,17 @@ def mock_config():
             "level": "DEBUG",
             "file": None,
         },
+        "openclaw": {
+            "enabled": True,
+            "gateway_url": "http://127.0.0.1:18789",
+            "session_id": "jarvis-main",
+            "thinking_level": "medium",
+            "timeout_seconds": 10,
+        },
+        "memory": {
+            "enabled": True,
+            "db_path": ":memory:",
+        },
         "anthropic_api_key": "test-api-key",
         "home_assistant_url": "http://homeassistant.local:8123",
         "home_assistant_token": "test-token",

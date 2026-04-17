@@ -65,7 +65,8 @@ class TestOpenClawClientInitialization:
 
         assert client.gateway_url == "http://127.0.0.1:18789"
         assert client.session_id == "jarvis-main"
-        assert client._thinking == "normal"
+        # Default thinking level maps to a valid OpenClaw CLI value.
+        assert client._thinking == "medium"
         assert client._timeout == 30
 
     def test_init_disabled(self, disabled_config):
@@ -239,10 +240,11 @@ class TestAgentQuery:
             result = await client.query_agent("Hello", session_id="custom-session")
 
             assert result.session_id == "custom-session"
-            # Verify command included custom session
+            # Verify command included custom session (OpenClaw CLI flag is
+            # ``--session-id``).
             call_args = mock_exec.call_args[0]
-            assert "--session" in call_args
-            session_idx = call_args.index("--session")
+            assert "--session-id" in call_args
+            session_idx = call_args.index("--session-id")
             assert call_args[session_idx + 1] == "custom-session"
 
     @pytest.mark.asyncio

@@ -24,6 +24,7 @@ from audio.wake_word import WakeWordDetector, create_wake_word_detector
 from brain.memory_legacy import ConversationMemory
 from brain.intent_parser import IntentParser, get_intent_parser
 from brain.orchestrator import Orchestrator
+from integrations.openclaw import OpenClawClient
 from utils.logger import get_logger
 
 logger = get_logger("ws_server")
@@ -51,6 +52,7 @@ def first_client_event() -> asyncio.Event:
 
 # Shared pipeline components (set in start_ws_server)
 _memory: ConversationMemory | None = None
+_openclaw_client: OpenClawClient | None = None
 _tts_engine: Any = None  # kept for legacy set_voice_profile support
 _fish_tts: FishTTSClient | None = None
 _stt_engine: SpeechToText | None = None
@@ -643,7 +645,8 @@ async def start_ws_server(
         tts_engine: Unused (kept for API compatibility). Fish TTS is
             initialised internally.
     """
-    global _memory, _tts_engine, _fish_tts, _stt_engine, _wake_word_detector
+    global _memory, _openclaw_client, _tts_engine, _fish_tts
+    global _stt_engine, _wake_word_detector
     global _orchestrator, _intent_parser, _start_time
     global _silence_threshold, _silence_duration_ms, _sample_rate
     global _metrics_collector, _metrics_task
@@ -676,9 +679,35 @@ async def start_ws_server(
     logger.info("Loading wake word detector...")
     _wake_word_detector = await create_wake_word_detector()
 
-    # Claude client + orchestrator
-    logger.info("Initialising Claude client...")
-    claude_client = await create_claude_client()
+    # --- OpenClaw health check (fail-fast at startup) ---
+    # All LLM traffic now routes through the OpenClaw gateway. If the
+    # daemon is not reachable there is no fallback path (the user asked
+    # for `claude login` only — no Anthropic SDK at runtime). We log
+    # loudly but do NOT hard-exit: the HUD must still come up so the
+    # user gets a visible "offline" notification instead of a silent
+    # dead backend.
+    openclaw_config = cfg.get_section("openclaw")
+    _openclaw_client = OpenClawClient(openclaw_config)
+    try:
+        await _openclaw_client.initialize()
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"OpenClaw client init failed: {exc}")
+
+    if await _openclaw_client.is_healthy():
+        logger.info(
+            f"OpenClaw gateway reachable — LLM path: OpenClaw "
+            f"(session={_openclaw_client.session_id})"
+        )
+    else:
+        logger.critical(
+            "OpenClaw gateway NOT reachable — conversational turns will "
+            "fall back to spoken offline message. Run "
+            "'openclaw doctor' to diagnose."
+        )
+
+    # LLM client (OpenClaw-backed) + orchestrator
+    logger.info("Initialising LLM client (OpenClaw-backed)...")
+    claude_client = await create_claude_client(openclaw_client=_openclaw_client)
 
     if _memory is None:
         claude_config = cfg.get_section("claude")
@@ -774,3 +803,10 @@ async def start_ws_server(
             await http_runner.cleanup()
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"http_runner cleanup failed: {exc}")
+
+        # Close OpenClaw.
+        if _openclaw_client is not None:
+            try:
+                await _openclaw_client.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"OpenClaw client close failed: {exc}")

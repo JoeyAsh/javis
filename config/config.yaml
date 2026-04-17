@@ -70,7 +70,9 @@ openclaw:
   managed_daemon: false  # true = JARVIS starts/stops daemon; false = assume systemd
   health_check_interval_seconds: 30
   session_id: "jarvis-main"
-  thinking_level: "normal"  # "none" | "normal" | "high"
+  # OpenClaw CLI thinking levels: off | minimal | low | medium | high | xhigh.
+  # Legacy aliases ("normal" -> "medium", "none" -> "off") are also accepted.
+  thinking_level: "medium"
   timeout_seconds: 30
   # Model used by OpenClaw's agent runtime (replaces the direct Anthropic
   # SDK path). The OpenClaw gateway owns auth via `claude login` — JARVIS

@@ -1,27 +1,26 @@
-"""Chat agent for JARVIS - handles general conversation."""
+"""Chat agent for JARVIS - handles general conversation.
+
+Conversational turns now route through OpenClaw via
+:class:`brain.claude_client.ClaudeClient`. OpenClaw owns:
+- the persona (loaded from ``~/.openclaw/workspace/SOUL.md``),
+- the multi-turn session memory (pinned to ``config.openclaw.session_id``).
+
+This agent therefore no longer injects a JARVIS system prompt or passes
+``ConversationMemory`` history — doing so would double-prompt OpenClaw
+and fragment session state. The ``ConversationMemory`` argument is kept
+in the constructor for backward compatibility (the ``SystemAgent`` still
+exposes a ``reset memory`` command that clears the local archive), but
+it is not consulted during a conversational turn.
+"""
 
 from typing import Any
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.claude_client import ClaudeClient
 from brain.memory_legacy import ConversationMemory
-from utils.config_loader import get_config
 from utils.logger import get_logger
 
 logger = get_logger("agent.chat")
-
-CHAT_SYSTEM_PROMPT = """You are JARVIS (Just A Rather Very Intelligent System), the AI assistant from Iron Man.
-You have the personality of Tony Stark's AI: British butler elegance with understated dry wit.
-Address the user as "sir" naturally and sparingly — not in every sentence.
-
-CRITICAL RESPONSE RULES:
-- ONE sentence is ideal. TWO is the absolute maximum. Never three.
-- No markdown, no bullet points, no headers in responses.
-- No filler phrases: never say "Absolutely", "Great question", "I'd be happy to", "Of course",
-  "How can I help", "Is there anything else", "I apologize", or "As an AI".
-- Dry wit is welcome, but keep it sharp and brief.
-
-Always respond in the same language the user spoke."""
 
 
 class ChatAgent(BaseAgent):
@@ -33,17 +32,14 @@ class ChatAgent(BaseAgent):
         """Initialize the chat agent.
 
         Args:
-            claude_client: Claude client for API calls
-            memory: Conversation memory for context
+            claude_client: OpenClaw-backed LLM client.
+            memory: Legacy in-RAM conversation buffer. Retained so the
+                ``reset memory`` system command has something to clear;
+                NOT consulted for LLM context — OpenClaw owns that now.
         """
         super().__init__()
         self.claude_client = claude_client
         self.memory = memory
-
-        cfg = get_config()
-        agents_config = cfg.get_section("agents")
-        self.max_tokens = agents_config.get("chat_max_tokens", 300)
-        self.history_turns = agents_config.get("history_turns_for_chat", 10)
 
     async def run(
         self, task: str, params: dict[str, Any], language: str
@@ -51,28 +47,20 @@ class ChatAgent(BaseAgent):
         """Handle a chat request.
 
         Args:
-            task: User message
-            params: Additional parameters (unused for chat)
-            language: Response language
+            task: User message.
+            params: Additional parameters (unused for chat).
+            language: Response language (``"en"``/``"de"``).
 
         Returns:
-            AgentResult with JARVIS response
+            AgentResult with JARVIS's response.
         """
+        del params  # Unused for general chat.
+
         try:
-            # Get conversation history
-            history = self.memory.get_history(self.history_turns)
-
-            # Build system prompt with language instruction
-            system_prompt = CHAT_SYSTEM_PROMPT
-            system_prompt += f"\n\n{self._get_language_instruction(language)}"
-
-            # Get response from Claude
-            response = await self.claude_client.complete(
-                prompt=task,
-                system_prompt=system_prompt,
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=0.7,
+            # Go straight to OpenClaw. Persona + history live there.
+            response = await self.claude_client.chat(
+                message=task,
+                language=language,
             )
 
             if not response:

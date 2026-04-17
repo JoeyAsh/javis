@@ -69,6 +69,22 @@ class OpenClawClient:
         session_id: Default session ID for queries.
     """
 
+    # OpenClaw CLI accepts: off | minimal | low | medium | high | xhigh.
+    # We keep the historical config alias "normal" mapped to the nearest
+    # valid level so existing configs don't need to change.
+    _THINKING_ALIASES: dict[str, str] = {
+        "normal": "medium",
+        "none": "off",
+    }
+    _THINKING_VALID: set[str] = {
+        "off",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    }
+
     def __init__(self, config: dict[str, Any]) -> None:
         """Initialize OpenClaw client.
 
@@ -76,16 +92,37 @@ class OpenClawClient:
             config: openclaw section from config.yaml containing:
                 - gateway_url: Gateway URL (default: http://127.0.0.1:18789)
                 - session_id: Default session ID (default: jarvis-main)
-                - thinking_level: Thinking level (default: normal)
+                - thinking_level: Thinking level. Accepts the OpenClaw
+                  CLI's levels (``off|minimal|low|medium|high|xhigh``)
+                  and legacy aliases (``normal`` → ``medium``,
+                  ``none`` → ``off``). Default: ``medium``.
                 - timeout_seconds: Request timeout (default: 30)
         """
         self._config = config
         self._gateway_url = config.get("gateway_url", "http://127.0.0.1:18789")
         self._session_id = config.get("session_id", "jarvis-main")
-        self._thinking = config.get("thinking_level", "normal")
+        self._thinking = self._normalize_thinking(
+            config.get("thinking_level", "medium")
+        )
         self._timeout = config.get("timeout_seconds", 30)
         self._http: httpx.AsyncClient | None = None
         self._enabled = config.get("enabled", True)
+
+    @classmethod
+    def _normalize_thinking(cls, level: str) -> str:
+        """Map legacy thinking aliases onto OpenClaw's current vocabulary.
+
+        Unknown values fall back to ``medium`` with a warning.
+        """
+        level = (level or "medium").strip().lower()
+        if level in cls._THINKING_VALID:
+            return level
+        if level in cls._THINKING_ALIASES:
+            return cls._THINKING_ALIASES[level]
+        logger.warning(
+            f"Unknown OpenClaw thinking level '{level}', defaulting to 'medium'"
+        )
+        return "medium"
 
     @property
     def gateway_url(self) -> str:
@@ -216,17 +253,18 @@ class OpenClawClient:
             )
 
         session = session_id or self._session_id
-        think_level = thinking or self._thinking
+        think_level = self._normalize_thinking(thinking) if thinking else self._thinking
 
-        logger.debug(f"Querying OpenClaw agent (session: {session})")
+        logger.debug(f"Querying OpenClaw agent (session-id: {session})")
 
-        # Use CLI for now; switch to REST when available
+        # Use CLI for now; switch to REST when available. Flag name is
+        # ``--session-id`` in the current OpenClaw CLI (>= 2026.4.x).
         cmd = [
             "openclaw",
             "agent",
             "--message",
             message,
-            "--session",
+            "--session-id",
             session,
             "--thinking",
             think_level,

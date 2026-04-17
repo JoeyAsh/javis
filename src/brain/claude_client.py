@@ -1,17 +1,43 @@
-"""Claude API client for JARVIS.
+"""LLM client for JARVIS — OpenClaw-backed.
 
-Wraps the Anthropic Python SDK with JARVIS personality and error handling.
+Despite the historical module name ``claude_client``, this module no longer
+talks to the Anthropic SDK directly. All conversational turns and utility
+LLM calls are routed through the OpenClaw gateway (``OpenClawClient``),
+which owns authentication (``claude login``), persistent session memory,
+and third-party integrations.
+
+Two logical session lanes are used:
+
+- **Conversational lane** — the shared session id from
+  ``config.openclaw.session_id`` (default ``"jarvis-main"``). Persona and
+  long-term memory live here; OpenClaw keeps context across turns and
+  reads ``~/.openclaw/workspace/SOUL.md`` for the JARVIS persona.
+- **Utility lane** — per-call ephemeral session ids
+  (``jarvis-util-<purpose>``). Used for orchestrator routing decisions,
+  search-result summarisation and other short, stateless JSON/text calls
+  that must NOT pollute the main conversation memory.
+
+The public ``ClaudeClient`` surface (``chat``, ``complete``,
+``chat_with_json``) is preserved so that ``orchestrator.py``, ``agents/*``
+and ``ws_server.py`` keep working without modification.
 """
 
-import asyncio
+from __future__ import annotations
+
+import json
 from typing import Any
 
+from integrations.openclaw import AgentResponse, OpenClawClient
 from utils.config_loader import get_config
 from utils.logger import get_logger
 
 logger = get_logger("claude_client")
 
-# JARVIS personality system prompt
+# JARVIS personality system prompt. OpenClaw auto-loads
+# ``~/.openclaw/workspace/SOUL.md`` at agent boot, so the persona block is
+# intentionally NOT injected as a system prompt any more. We keep the
+# constant exported for backward compatibility (tests, diagnostics) but
+# it's no longer prepended to outbound requests — that would double-prompt.
 JARVIS_SYSTEM_PROMPT = """You are JARVIS (Just A Rather Very Intelligent System), the AI assistant from Iron Man.
 You have the personality of Tony Stark's AI: British butler elegance with understated dry wit.
 Address the user as "sir" naturally and sparingly — not in every sentence.
@@ -26,15 +52,41 @@ CRITICAL RESPONSE RULES:
 
 Always respond in the same language the user spoke."""
 
-# Fallback responses for error cases
-FALLBACK_RESPONSES = {
-    "en": "I apologize, sir, but I'm experiencing technical difficulties. Please try again in a moment.",
-    "de": "Ich bitte um Entschuldigung, aber ich habe momentan technische Schwierigkeiten. Bitte versuchen Sie es in einem Moment erneut.",
+# Fallback responses for error cases — used when OpenClaw errors mid-turn.
+FALLBACK_RESPONSES: dict[str, str] = {
+    "en": (
+        "I apologize, sir, but I'm experiencing technical difficulties. "
+        "Please try again in a moment."
+    ),
+    "de": (
+        "Ich bitte um Entschuldigung, aber ich habe momentan technische "
+        "Schwierigkeiten. Bitte versuchen Sie es in einem Moment erneut."
+    ),
 }
 
 
+# Prefix for ephemeral utility session ids. Keeping them distinct from the
+# main conversation session avoids polluting JARVIS's long-term memory
+# with machine-formatted routing/JSON exchanges.
+_UTILITY_SESSION_PREFIX = "jarvis-util"
+
+
 class ClaudeClient:
-    """Client for Claude API with JARVIS personality."""
+    """LLM client routed through the OpenClaw gateway.
+
+    The class name is preserved for call-site compatibility — in reality
+    every request lands on ``OpenClawClient.query_agent``. The Anthropic
+    SDK is no longer touched at runtime.
+
+    Attributes:
+        model: Historical field, kept for logging/introspection. The
+            actual model is selected by the OpenClaw gateway based on
+            ``config.openclaw.agent_model``.
+        max_tokens: Retained for backward-compatible tests. OpenClaw
+            currently does not honour this — response length is shaped
+            by the persona in SOUL.md and by turn-level prompt hints.
+        temperature: Same note as ``max_tokens``.
+    """
 
     def __init__(
         self,
@@ -42,38 +94,101 @@ class ClaudeClient:
         model: str = "claude-sonnet-4-6",
         max_tokens: int = 300,
         temperature: float = 0.7,
+        openclaw_client: OpenClawClient | None = None,
     ) -> None:
-        """Initialize the Claude client.
+        """Initialise the LLM client.
 
         Args:
-            api_key: Anthropic API key. If None, loads from config.
-            model: Claude model to use
-            max_tokens: Maximum tokens in response
-            temperature: Response temperature (0-1)
+            api_key: Legacy parameter, ignored. Authentication is owned
+                by the OpenClaw gateway (``claude login``).
+            model: Informational only — recorded in logs. See the class
+                docstring.
+            max_tokens: Informational only.
+            temperature: Informational only.
+            openclaw_client: Pre-constructed OpenClaw client. If ``None``,
+                a new one will be created from config during
+                ``initialize()``.
         """
+        del api_key  # No longer used; kept in signature for compatibility.
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
-        self._client: Any = None
+        self._openclaw: OpenClawClient | None = openclaw_client
+        self._owns_openclaw: bool = openclaw_client is None
 
-        # Load API key
-        if api_key:
-            self._api_key = api_key
-        else:
-            cfg = get_config()
-            self._api_key = cfg.get("anthropic_api_key", "")
+    @property
+    def openclaw(self) -> OpenClawClient | None:
+        """Return the underlying OpenClaw client (or ``None`` pre-init)."""
+        return self._openclaw
 
     async def initialize(self) -> None:
-        """Initialize the Anthropic client."""
-        try:
-            import anthropic
+        """Initialise the underlying OpenClaw client.
 
-            self._client = anthropic.AsyncAnthropic(api_key=self._api_key)
-            logger.info(f"Claude client initialized with model: {self.model}")
+        Creates an ``OpenClawClient`` from ``config.openclaw`` if one was
+        not supplied at construction, and calls its ``initialize()`` so
+        the gateway connection is verified (or degraded-gracefully if the
+        daemon isn't running).
+        """
+        if self._openclaw is not None and not self._owns_openclaw:
+            logger.debug("LLM client using pre-supplied OpenClaw client")
+            return
 
-        except ImportError:
-            logger.error("anthropic package not installed. Run: pip install anthropic")
-            raise
+        cfg = get_config()
+        openclaw_config = cfg.get_section("openclaw")
+
+        if self._openclaw is None:
+            self._openclaw = OpenClawClient(openclaw_config)
+
+        await self._openclaw.initialize()
+        logger.info(
+            f"LLM client ready (route=OpenClaw, gateway={self._openclaw.gateway_url}, "
+            f"session={self._openclaw.session_id})"
+        )
+
+    async def close(self) -> None:
+        """Close the underlying OpenClaw client if we own it."""
+        if self._openclaw is not None and self._owns_openclaw:
+            await self._openclaw.close()
+            self._openclaw = None
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    async def _query(
+        self,
+        message: str,
+        session_id: str | None = None,
+        thinking: str | None = None,
+    ) -> AgentResponse:
+        """Send a prompt to OpenClaw and return the raw ``AgentResponse``.
+
+        Raises no exceptions — OpenClaw errors surface as ``response.error``.
+        """
+        if self._openclaw is None:
+            await self.initialize()
+
+        assert self._openclaw is not None  # for type-checker
+
+        return await self._openclaw.query_agent(
+            message=message,
+            session_id=session_id,
+            thinking=thinking,
+        )
+
+    def _utility_session_id(self, purpose: str) -> str:
+        """Build an ephemeral session id for a utility call."""
+        return f"{_UTILITY_SESSION_PREFIX}-{purpose}"
+
+    def _fallback_text(self, language: str) -> str:
+        """Return the localised spoken fallback message."""
+        if self._openclaw is not None:
+            return self._openclaw.get_offline_fallback_message(language)
+        return FALLBACK_RESPONSES.get(language, FALLBACK_RESPONSES["en"])
+
+    # ------------------------------------------------------------------
+    # Public API — preserved for existing callers
+    # ------------------------------------------------------------------
 
     async def chat(
         self,
@@ -82,110 +197,37 @@ class ClaudeClient:
         history: list[dict[str, str]] | None = None,
         system_prompt: str | None = None,
     ) -> str:
-        """Send a message to Claude and get a response.
+        """Send a conversational turn and return JARVIS's response.
+
+        Routes through the main OpenClaw session so the agent runtime owns
+        multi-turn memory. ``history`` and ``system_prompt`` are accepted
+        for backward compatibility but ignored: OpenClaw stores its own
+        history keyed by ``session_id`` and the persona lives in SOUL.md.
 
         Args:
-            message: User message
-            language: Response language (en, de)
-            history: Optional conversation history
-            system_prompt: Optional custom system prompt
+            message: User message.
+            language: Response language (``"en"``/``"de"``). Appended as a
+                per-turn hint so OpenClaw answers in the right language.
+            history: Ignored. Kept in signature for call-site compat.
+            system_prompt: Ignored. Kept in signature for call-site compat.
 
         Returns:
-            Claude's response text
+            JARVIS's spoken response text, or a localised fallback on
+            OpenClaw error.
         """
-        if self._client is None:
-            await self.initialize()
+        del history, system_prompt  # Intentionally ignored — see docstring.
 
-        # Build system prompt with language instruction
-        if system_prompt:
-            full_system = system_prompt
-        else:
-            full_system = JARVIS_SYSTEM_PROMPT
+        prompt = _with_language_hint(message, language)
+        response = await self._query(prompt)
 
-        if language == "de":
-            full_system += "\n\nRespond in German (Deutsch)."
-        else:
-            full_system += "\n\nRespond in English."
-
-        # Build messages array
-        messages = []
-        if history:
-            messages.extend(history)
-        messages.append({"role": "user", "content": message})
-
-        try:
-            response = await self._client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                system=full_system,
-                messages=messages,
+        if response.error or not response.text:
+            logger.error(
+                f"OpenClaw chat error: {response.error or 'empty response'}"
             )
+            return self._fallback_text(language)
 
-            # Extract text from response
-            if response.content and len(response.content) > 0:
-                text = response.content[0].text
-                logger.debug(f"Claude response: {text[:100]}...")
-                return text
-            else:
-                logger.warning("Empty response from Claude")
-                return FALLBACK_RESPONSES.get(language, FALLBACK_RESPONSES["en"])
-
-        except Exception as e:
-            logger.error(f"Claude API error: {e}")
-            return FALLBACK_RESPONSES.get(language, FALLBACK_RESPONSES["en"])
-
-    async def chat_with_json(
-        self,
-        message: str,
-        system_prompt: str,
-        max_tokens: int | None = None,
-    ) -> dict[str, Any]:
-        """Send a message expecting JSON response.
-
-        Args:
-            message: User message
-            system_prompt: System prompt (should instruct JSON output)
-            max_tokens: Override max tokens
-
-        Returns:
-            Parsed JSON response or empty dict on error
-        """
-        if self._client is None:
-            await self.initialize()
-
-        try:
-            response = await self._client.messages.create(
-                model=self.model,
-                max_tokens=max_tokens or self.max_tokens,
-                temperature=0.3,  # Lower temperature for structured output
-                system=system_prompt,
-                messages=[{"role": "user", "content": message}],
-            )
-
-            if response.content and len(response.content) > 0:
-                text = response.content[0].text
-
-                # Parse JSON from response
-                import json
-
-                # Try to find JSON in the response
-                text = text.strip()
-                if text.startswith("```json"):
-                    text = text[7:]
-                if text.startswith("```"):
-                    text = text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                text = text.strip()
-
-                return json.loads(text)
-            else:
-                return {}
-
-        except Exception as e:
-            logger.error(f"Claude API error (JSON mode): {e}")
-            return {}
+        logger.debug(f"OpenClaw chat response: {response.text[:100]}...")
+        return response.text
 
     async def complete(
         self,
@@ -195,47 +237,132 @@ class ClaudeClient:
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> str:
-        """Low-level completion with custom parameters.
+        """Run a narrow utility completion (routing, summarisation, etc.).
+
+        Utility calls travel on an ephemeral session id so they don't leak
+        into the main conversation memory. ``system_prompt`` is folded
+        into the user message so OpenClaw (which ignores our system slot)
+        still sees the instruction.
 
         Args:
-            prompt: User prompt
-            system_prompt: System prompt
-            model: Override model
-            max_tokens: Override max tokens
-            temperature: Override temperature
+            prompt: User prompt / payload.
+            system_prompt: Instructional prompt. Prepended to ``prompt``.
+            model: Historical override, ignored — OpenClaw picks the model.
+            max_tokens: Historical override, ignored.
+            temperature: Historical override, ignored.
 
         Returns:
-            Response text
+            Response text, or empty string on OpenClaw error.
         """
-        if self._client is None:
-            await self.initialize()
+        del model, max_tokens, temperature  # OpenClaw-governed now.
+
+        composite = _compose_utility_prompt(system_prompt, prompt)
+        session = self._utility_session_id("complete")
+        response = await self._query(composite, session_id=session)
+
+        if response.error:
+            logger.error(f"OpenClaw complete error: {response.error}")
+            return ""
+
+        return response.text
+
+    async def chat_with_json(
+        self,
+        message: str,
+        system_prompt: str,
+        max_tokens: int | None = None,
+    ) -> dict[str, Any]:
+        """Utility completion expected to return JSON.
+
+        Used by the orchestrator to parse routing decisions. Runs on the
+        utility lane for the same reasons as ``complete()``.
+
+        Args:
+            message: User prompt / payload.
+            system_prompt: Instructional prompt (should tell the model
+                to return JSON only).
+            max_tokens: Historical override, ignored.
+
+        Returns:
+            Parsed JSON object, or an empty dict on error / parse failure.
+        """
+        del max_tokens  # OpenClaw-governed.
+
+        composite = _compose_utility_prompt(
+            system_prompt + "\n\nReturn ONLY valid JSON, no prose, no code fence.",
+            message,
+        )
+        session = self._utility_session_id("json")
+        response = await self._query(composite, session_id=session)
+
+        if response.error or not response.text:
+            logger.error(
+                f"OpenClaw chat_with_json error: {response.error or 'empty'}"
+            )
+            return {}
+
+        text = response.text.strip()
+        # Trim accidental code fences — OpenClaw sometimes wraps JSON.
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
 
         try:
-            response = await self._client.messages.create(
-                model=model or self.model,
-                max_tokens=max_tokens or self.max_tokens,
-                temperature=temperature if temperature is not None else self.temperature,
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}],
-            )
-
-            if response.content and len(response.content) > 0:
-                return response.content[0].text
-            return ""
-
-        except Exception as e:
-            logger.error(f"Claude API error: {e}")
-            return ""
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            logger.error(f"Failed to parse OpenClaw JSON response: {exc}")
+            return {}
 
 
-async def create_claude_client(config: dict[str, Any] | None = None) -> ClaudeClient:
-    """Factory function to create Claude client.
+# ----------------------------------------------------------------------
+# Module helpers
+# ----------------------------------------------------------------------
+
+
+def _with_language_hint(message: str, language: str) -> str:
+    """Append a terse language hint so OpenClaw answers in the right lang.
+
+    SOUL.md already instructs JARVIS to mirror the user's language, but a
+    one-line reminder is cheap insurance.
+    """
+    hint = "[respond in German]" if language == "de" else "[respond in English]"
+    return f"{hint}\n\n{message}"
+
+
+def _compose_utility_prompt(system_prompt: str, user_prompt: str) -> str:
+    """Fold system + user prompts into a single payload for OpenClaw.
+
+    OpenClaw's ``query_agent`` currently takes a single ``message``
+    string; it does not expose a separate system slot. We bracket the
+    instructional block so the model can tell them apart.
+    """
+    return (
+        "[[SYSTEM INSTRUCTION]]\n"
+        f"{system_prompt.strip()}\n"
+        "[[END SYSTEM INSTRUCTION]]\n\n"
+        f"{user_prompt.strip()}"
+    )
+
+
+async def create_claude_client(
+    config: dict[str, Any] | None = None,
+    openclaw_client: OpenClawClient | None = None,
+) -> ClaudeClient:
+    """Factory for :class:`ClaudeClient` — preserves historical signature.
 
     Args:
-        config: Optional Claude configuration. If None, loads from global config.
+        config: Optional Claude configuration (for ``model`` metadata).
+            If ``None``, loaded from the global config. The LLM route is
+            always OpenClaw regardless of this value.
+        openclaw_client: Inject an existing client (e.g. one shared by
+            several subsystems). If ``None`` a fresh one is created.
 
     Returns:
-        Configured ClaudeClient instance
+        An initialised ``ClaudeClient`` ready for use.
     """
     if config is None:
         cfg = get_config()
@@ -245,6 +372,7 @@ async def create_claude_client(config: dict[str, Any] | None = None) -> ClaudeCl
         model=config.get("model", "claude-sonnet-4-6"),
         max_tokens=config.get("max_tokens", 300),
         temperature=config.get("temperature", 0.7),
+        openclaw_client=openclaw_client,
     )
 
     await client.initialize()

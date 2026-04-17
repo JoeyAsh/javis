@@ -12,6 +12,7 @@ import {
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioAnalyser } from './hooks/useAudioAnalyser';
 import { useMicStream } from './hooks/useMicStream';
+import { useConversationMode } from './hooks/useConversationMode';
 import type { OrbState } from './types';
 
 /**
@@ -33,10 +34,14 @@ function AppInner(): ReactElement {
   const { orbState, setOrbState, audioQueue, consumeAudio, wsRef } = useWebSocket();
   const { analyser, isSpeaking, enqueue } = useAudioAnalyser();
   const { resetAll } = useWindowManager();
+  const followUp = useConversationMode();
 
   // Dev-override wins over live pipeline state. When override is null, the
-  // orb follows the real pipeline (WebSocket → setOrbState).
-  const effectiveOrbState: OrbState = orbOverride ?? orbState;
+  // orb follows the real pipeline (WebSocket → setOrbState). When a
+  // follow-up window is active and no explicit state is set, fold that
+  // into the orb state so it picks the `follow_up` visual preset.
+  const effectiveOrbState: OrbState =
+    orbOverride ?? (followUp.active && orbState === 'listening' ? 'follow_up' : orbState);
 
   // Stream raw PCM audio from the browser mic to the backend via WebSocket.
   // Paused while JARVIS is speaking (to prevent feedback) or while muted.
@@ -88,7 +93,9 @@ function AppInner(): ReactElement {
         ? 'thinking...'
         : effectiveOrbState === 'speaking'
           ? 'speaking...'
-          : '';
+          : effectiveOrbState === 'follow_up'
+            ? 'follow-up...'
+            : '';
 
   return (
     <div
@@ -101,6 +108,7 @@ function AppInner(): ReactElement {
           orbState={effectiveOrbState}
           analyser={analyser}
           mockMode={orbOverride}
+          followUp={followUp}
         />
       </OrbErrorBoundary>
 

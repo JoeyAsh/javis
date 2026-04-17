@@ -7,3 +7,5 @@ export { useResizable } from './useResizable';
 export { useSwapDrag } from './useSwapDrag';
 export { useSystemMetrics } from './useSystemMetrics';
 export type { SystemMetricsLive, MetricKey, MetricHistories } from './useSystemMetrics';
+export { useConversationMode } from './useConversationMode';
+export type { ConversationModeState } from './useConversationMode';

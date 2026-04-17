@@ -21,6 +21,17 @@ export interface Orb {
    * restores normal (analyser-driven) behaviour.
    */
   setMockMode(m: OrbState | null): void;
+  /**
+   * Conversation-mode follow-up overlay.
+   *
+   * While `active` is true the orb pulses at a subtler amplitude than
+   * full `listening`, signalling that the mic is still open without
+   * the wake word. In the last 5 s of the window, a thin accent-coloured
+   * ring circumscribes the orb and visibly ticks from full → empty as
+   * `seconds` counts down. When `active` flips false, the ring fades
+   * out smoothly (~180 ms) and the orb returns to its baseline pulse.
+   */
+  setFollowUp(active: boolean, seconds: number): void;
   destroy(): void;
 }
 
@@ -167,6 +178,34 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   const electronsMesh = new THREE.Points(electronGeo, electronMat);
   scene.add(electronsMesh);
 
+  // ── Follow-up countdown ring ──
+  // Thin accent-coloured ring at ~1.15× the orb's render radius, drawn
+  // only during the follow-up window. Last 5 s of the window: drawRange
+  // animates from a full circle down to zero, ticking to indicate the
+  // remaining time. Additive to the particle engine — this is a separate
+  // LineLoop with its own material, it never touches `points`/`lines`.
+  const RING_SEGMENTS = 128;
+  const ringGeo = new THREE.BufferGeometry();
+  const ringPos = new Float32Array((RING_SEGMENTS + 1) * 3);
+  for (let i = 0; i <= RING_SEGMENTS; i++) {
+    const a = (i / RING_SEGMENTS) * Math.PI * 2;
+    ringPos[i * 3] = Math.cos(a);
+    ringPos[i * 3 + 1] = Math.sin(a);
+    ringPos[i * 3 + 2] = 0;
+  }
+  ringGeo.setAttribute('position', new THREE.BufferAttribute(ringPos, 3));
+  ringGeo.setDrawRange(0, RING_SEGMENTS + 1);
+
+  const ringMat = new THREE.LineBasicMaterial({
+    color: 0x4ca8e8, // matches --accent
+    transparent: true,
+    opacity: 0.0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const ring = new THREE.Line(ringGeo, ringMat);
+  scene.add(ring);
+
   interface ElectronData {
     sx: number; sy: number; sz: number;
     ex: number; ey: number; ez: number;
@@ -210,6 +249,18 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
   // how each state looks with representative motion/amplitude.
   let mockMode: OrbState | null = null;
 
+  // ── Follow-up countdown ──
+  // Driven by the `conversation_mode` WS stream from the backend.
+  // `followUpActive` gates the ring's opacity + the orb's muted pulse.
+  // `followUpSeconds` is the raw seconds_remaining pushed by the hook
+  // (locally interpolated on a 200 ms tick for smoothness).
+  let followUpActive = false;
+  let followUpSeconds = 0;
+  /** Ring opacity target — lerped in animate() so the ring fades smoothly. */
+  let ringOpacityTarget = 0;
+  /** Current ring opacity — lerps toward ringOpacityTarget at ~180 ms rate. */
+  let ringOpacityCurrent = 0;
+
   const clock = new THREE.Clock();
 
   // Lerp rate constants — centralised for easy tweaking.
@@ -250,6 +301,12 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
         // Baseline small; audio amplitude punches outward up to MAX_RENDER_RADIUS.
         targetRadius = 18; targetSpeed = 0.35; targetBright = 0.72; targetSize = 0.6;
         targetLineAmount = 0.8; targetElectronRate = 0; break;
+      case 'follow_up':
+        // Follow-up window — a subtler listening: narrower pulse, dimmer
+        // glow, fewer connections. Signals "mic still open" without the
+        // full-attention feel of a just-triggered wake word.
+        targetRadius = 17; targetSpeed = 0.18; targetBright = 0.55; targetSize = 0.6;
+        targetLineAmount = 0.15; targetElectronRate = 0; break;
     }
 
     currentRadius += (targetRadius - currentRadius) * LERP_RATE;
@@ -532,6 +589,10 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
         coreSizeBase = 1.15 + smoothedAmp * 0.6;
         coreOpacity = 0.8 + smoothedAmp * 0.15;
         corePulsePeriod = 2.4; corePulseAmt = 0.18; break;
+      case 'follow_up':
+        // Between full listening and idle — still attentive but muted.
+        coreSizeBase = 0.75; coreOpacity = 0.35;
+        corePulsePeriod = 3.2; corePulseAmt = 0.12; break;
     }
     const corePulse =
       1.0 + corePulseAmt * Math.sin((t / corePulsePeriod) * Math.PI * 2);
@@ -558,6 +619,32 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
     camera.position.y = Math.cos(t * 0.015) * 2;
     camera.lookAt(0, 0, cloudZ * 0.2);
 
+    // ── Follow-up countdown ring ──
+    // The ring scales with the current render radius so it always sits
+    // just outside the particle cloud. Opacity target is 0.7 while the
+    // window is active and we're within the final 5 s; otherwise 0.
+    // The drawRange walks from full → empty over those last 5 s.
+    const RING_SCALE = 1.15;
+    ring.scale.setScalar(currentRadius * RING_SCALE);
+    ring.position.z = cloudZ * 0.2;
+
+    // Show the ring only inside the last 5 s of the window.
+    const ringVisible = followUpActive && followUpSeconds > 0 && followUpSeconds <= 5;
+    ringOpacityTarget = ringVisible ? 0.7 : 0.0;
+    // Lerp at ~180 ms (at 60 fps, factor ≈ 0.09 per frame).
+    ringOpacityCurrent += (ringOpacityTarget - ringOpacityCurrent) * 0.09;
+    ringMat.opacity = ringOpacityCurrent;
+
+    if (ringVisible) {
+      // Fraction of segments to draw. At seconds=5 → full ring; at 0 → empty.
+      const frac = Math.max(0, Math.min(1, followUpSeconds / 5));
+      const segs = Math.max(1, Math.round((RING_SEGMENTS + 1) * frac));
+      ringGeo.setDrawRange(0, segs);
+    } else if (ringOpacityCurrent < 0.01) {
+      // Fully faded — reset drawRange so a fresh arm doesn't flash mid-frame.
+      ringGeo.setDrawRange(0, RING_SEGMENTS + 1);
+    }
+
     renderer.render(scene, camera);
   }
 
@@ -577,10 +664,16 @@ export function createOrb(canvas: HTMLCanvasElement): Orb {
       if (a) freqData = new Uint8Array(a.frequencyBinCount);
     },
     setMockMode(m: OrbState | null) { mockMode = m; },
+    setFollowUp(active: boolean, seconds: number) {
+      followUpActive = active;
+      followUpSeconds = Math.max(0, seconds);
+    },
     destroy() {
       destroyed = true;
       window.removeEventListener('resize', onResize);
       glowTex.dispose();
+      ringGeo.dispose();
+      ringMat.dispose();
       renderer.dispose();
     },
   };

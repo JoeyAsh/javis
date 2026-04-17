@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type React from 'react';
 import type {
+  ConversationModePayload,
   NotificationPayload,
   OrbState,
   SystemMetricsPayload,
@@ -12,6 +13,7 @@ import type {
 export type SystemMetricsListener = (payload: SystemMetricsPayload) => void;
 export type TranscriptListener = (payload: TranscriptPayload) => void;
 export type NotificationListener = (payload: NotificationPayload) => void;
+export type ConversationModeListener = (payload: ConversationModePayload) => void;
 
 export interface UseWebSocketReturn {
   orbState: OrbState;
@@ -32,6 +34,8 @@ export interface UseWebSocketReturn {
   subscribeTranscripts: (listener: TranscriptListener) => () => void;
   /** Subscribe to `type: 'notification'` payloads. */
   subscribeNotifications: (listener: NotificationListener) => () => void;
+  /** Subscribe to `type: 'conversation_mode'` payloads. */
+  subscribeConversationMode: (listener: ConversationModeListener) => () => void;
 }
 
 // Module-level subscriber registries — any consumer of the singleton
@@ -39,6 +43,7 @@ export interface UseWebSocketReturn {
 const systemListeners = new Set<SystemMetricsListener>();
 const transcriptListeners = new Set<TranscriptListener>();
 const notificationListeners = new Set<NotificationListener>();
+const conversationModeListeners = new Set<ConversationModeListener>();
 
 function emitSystem(payload: SystemMetricsPayload): void {
   systemListeners.forEach((listener) => {
@@ -66,6 +71,16 @@ function emitNotification(payload: NotificationPayload): void {
       listener(payload);
     } catch (err) {
       console.error('[ws] notification listener threw', err);
+    }
+  });
+}
+
+function emitConversationMode(payload: ConversationModePayload): void {
+  conversationModeListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] conversation_mode listener threw', err);
     }
   });
 }
@@ -148,6 +163,9 @@ export function useWebSocket(): UseWebSocketReturn {
           case 'notification':
             emitNotification(msg.payload);
             break;
+          case 'conversation_mode':
+            emitConversationMode(msg.payload);
+            break;
         }
       } catch (err) {
         console.error('[ws] parse error', err);
@@ -215,6 +233,16 @@ export function useWebSocket(): UseWebSocketReturn {
     [],
   );
 
+  const subscribeConversationMode = useCallback(
+    (listener: ConversationModeListener): (() => void) => {
+      conversationModeListeners.add(listener);
+      return () => {
+        conversationModeListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
   return {
     orbState,
     setOrbState,
@@ -226,6 +254,7 @@ export function useWebSocket(): UseWebSocketReturn {
     subscribeSystem,
     subscribeTranscripts,
     subscribeNotifications,
+    subscribeConversationMode,
   };
 }
 
@@ -257,5 +286,14 @@ export function subscribeNotificationStream(
   notificationListeners.add(listener);
   return () => {
     notificationListeners.delete(listener);
+  };
+}
+
+export function subscribeConversationModeStream(
+  listener: ConversationModeListener,
+): () => void {
+  conversationModeListeners.add(listener);
+  return () => {
+    conversationModeListeners.delete(listener);
   };
 }

@@ -1,4 +1,15 @@
-export type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
+export type OrbState =
+  | 'idle'
+  | 'listening'
+  | 'thinking'
+  | 'speaking'
+  /**
+   * Follow-up window after a successful voice turn. The mic stays open
+   * for the configured window (default 18 s) so the user can keep
+   * talking without repeating the wake word. Visually a subtler pulse
+   * than full `listening` — see `setFollowUp` in ``lib/orb.ts``.
+   */
+  | 'follow_up';
 
 // ============ HUD window system ============
 
@@ -51,13 +62,25 @@ export interface NotificationPayload {
   timestamp?: string;
 }
 
+/**
+ * Server-emitted conversation-mode update — sent when the follow-up
+ * window is armed (after a successful turn) and again when it expires
+ * or is closed by a sleep phrase. Used by the HUD to drive the orb's
+ * muted pulse + last-5 s countdown ring.
+ */
+export interface ConversationModePayload {
+  active: boolean;
+  seconds_remaining: number;
+}
+
 export type WsIncoming =
   | { type: 'audio'; data: string; text: string }
   | { type: 'status'; state: OrbState }
   | { type: 'text'; text: string }
   | { type: 'system'; payload: SystemMetricsPayload }
   | { type: 'transcript'; payload: TranscriptPayload }
-  | { type: 'notification'; payload: NotificationPayload };
+  | { type: 'notification'; payload: NotificationPayload }
+  | { type: 'conversation_mode'; payload: ConversationModePayload };
 
 export type WsOutgoing =
   | { type: 'transcript'; text: string; isFinal: boolean }

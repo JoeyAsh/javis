@@ -102,6 +102,32 @@ else
     echo "JARVIS persona not deployed. Create config/SOUL.md and run this script again."
 fi
 
+# Deploy JARVIS CAPABILITIES.md — inventory of what the agent can do
+# right now, so meta questions ("was kannst du?") return accurate
+# answers instead of generic platitudes. Same overwrite-confirm flow.
+CAP_SOURCE="$(dirname "$0")/../config/CAPABILITIES.md"
+CAP_DEST="$HOME/.openclaw/workspace/CAPABILITIES.md"
+
+if [ -f "$CAP_SOURCE" ]; then
+    mkdir -p "$HOME/.openclaw/workspace"
+
+    if [ -f "$CAP_DEST" ]; then
+        echo "CAPABILITIES.md already exists at $CAP_DEST"
+        read -p "Overwrite with current JARVIS capability inventory? [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            cp "$CAP_SOURCE" "$CAP_DEST"
+            echo "JARVIS capability inventory deployed to $CAP_DEST"
+        fi
+    else
+        cp "$CAP_SOURCE" "$CAP_DEST"
+        echo "JARVIS capability inventory deployed to $CAP_DEST"
+    fi
+else
+    echo "WARNING: CAPABILITIES.md not found at $CAP_SOURCE"
+    echo "Capability inventory not deployed. Create config/CAPABILITIES.md and re-run."
+fi
+
 # --------------------------------------------------------------------------
 # Config hardening — every key below caused concrete bugs during JARVIS dev;
 # the `openclaw config set` commands are idempotent, so re-runs are safe.

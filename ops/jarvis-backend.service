@@ -7,6 +7,9 @@ Wants=openclaw-gateway.service
 Type=simple
 WorkingDirectory=/home/paps/Repos/Jarvis
 Environment=PYTHONPATH=src
+# Include nvm-managed node bin so the openclaw CLI is discoverable when
+# the WS streaming path falls back to subprocess mode.
+Environment="PATH=/home/paps/.nvm/versions/node/v24.15.0/bin:/home/paps/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=/home/paps/Repos/Jarvis/.venv/bin/python -m main
 Restart=always
 RestartSec=3

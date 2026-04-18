@@ -23,7 +23,7 @@ logger = get_logger("github.client")
 
 _BASE_URL = "https://api.github.com"
 _TIMEOUT = aiohttp.ClientTimeout(total=10)
-_RATE_LIMIT_HEADROOM = 50  # raise before this many requests remain
+_RATE_LIMIT_HEADROOM = 5  # raise before this many requests remain (search API caps at 30/h)
 
 
 # ---------------------------------------------------------------------------

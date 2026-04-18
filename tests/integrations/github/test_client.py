@@ -165,11 +165,11 @@ async def test_fetch_my_prs_403_raises_rate_limit_error() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_my_prs_low_remaining_raises_rate_limit() -> None:
-    """When X-RateLimit-Remaining < 50 on a 200 response, raises GitHubRateLimitError."""
+    """When X-RateLimit-Remaining < headroom on a 200 response, raises GitHubRateLimitError."""
     session = _make_session(
         json_data={"items": [_pr_item(1)]},
         status=200,
-        headers={"X-RateLimit-Remaining": "10"},
+        headers={"X-RateLimit-Remaining": "2"},
     )
     client = GitHubClient(token="ghp_test", session=session)
 

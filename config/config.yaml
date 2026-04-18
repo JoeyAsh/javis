@@ -116,8 +116,13 @@ github:
   # Token-gated: requires GITHUB_TOKEN in .env (classic PAT, scopes
   # repo read + read:org). If the token is missing the poller does NOT
   # start regardless of this flag. Set repos to the list you want tracked.
+  # NOTE: our current client uses the /search/issues endpoint (30 req/h
+  # hard cap). 180 s = 20 ticks/h = fits the search quota with breathing
+  # room. Planned refactor (see .tmp/features/openclaw-dedup-analysis.md
+  # Tier 1.5) will replace this with the OpenClaw `github` skill over
+  # the `gh` CLI, which uses the 5000 req/h Core-API.
   enabled: true
-  poll_interval_seconds: 60
+  poll_interval_seconds: 180
   repos:
     - "JoeyAsh/javis"
   # Add more repos by extending this list:

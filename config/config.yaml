@@ -169,6 +169,13 @@ drive:
   max_results: 10
   preview_content_chars: 500
 
+log_panel:
+  # Live backend log stream + turn-timeline waterfall in the HUD. Server
+  # maintains a ring buffer of recent log lines that is replayed when a
+  # new WS client connects. Set enabled: false to disable the broadcast.
+  enabled: true
+  max_buffer_lines: 500
+
 gmail:
   enabled: true
   max_unread_summary: 5

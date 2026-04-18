@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { OrbCanvas } from './components/OrbCanvas';
 import { OrbErrorBoundary } from './components/OrbErrorBoundary';
 import { HudTopBar } from './components/HudTopBar';
 import { OrbDevMenu } from './components/OrbDevMenu';
 import { HudWindows } from './components/hud/HudWindows';
+import { SettingsOverlay } from './components/SettingsOverlay';
+import { PushToTalkButton } from './components/PushToTalkButton';
 import {
   WindowManagerProvider,
   useWindowManager,
@@ -13,6 +15,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioAnalyser } from './hooks/useAudioAnalyser';
 import { useMicStream } from './hooks/useMicStream';
 import { useConversationMode } from './hooks/useConversationMode';
+import { useSettings } from './hooks/useSettings';
 import type { AppOrbState } from './types';
 
 /**
@@ -31,6 +34,8 @@ function AppInner(): ReactElement {
   const [muted, setMuted] = useState(false);
   const [idle, setIdle] = useState(false);
   const [orbOverride, setOrbOverride] = useState<AppOrbState | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsHook = useSettings();
   const {
     orbState,
     audioQueue,
@@ -99,9 +104,7 @@ function AppInner(): ReactElement {
   }, [resetAll]);
 
   const handleOpenSettings = useCallback(() => {
-    // Stub: settings modal not built yet.
-    // eslint-disable-next-line no-alert
-    alert('Settings modal — not yet implemented.');
+    setSettingsOpen(true);
   }, []);
 
   const statusLabel =
@@ -117,10 +120,14 @@ function AppInner(): ReactElement {
               ? (currentToolSummary ?? 'working...')
               : '';
 
+  // Apply --panel-opacity from settings so all .window elements pick it up
+  // without touching individual panel styles.
+  const panelOpacityCssVar = { '--panel-opacity': settingsHook.settings.panelOpacity } as React.CSSProperties;
+
   return (
     <div
       className="fixed inset-0 w-screen h-screen overflow-hidden"
-      style={{ background: 'var(--bg)' }}
+      style={{ background: 'var(--bg)', ...panelOpacityCssVar }}
     >
       {/* Orb canvas — backdrop, z-index 0 */}
       <OrbErrorBoundary>
@@ -216,6 +223,19 @@ function AppInner(): ReactElement {
           </svg>
         )}
       </button>
+
+      {/* Settings overlay — z-index 50, above everything */}
+      <SettingsOverlay
+        open={settingsOpen}
+        onClose={() => { setSettingsOpen(false); }}
+        settingsHook={settingsHook}
+      />
+
+      {/* Push-to-Talk button — rendered only when enabled in settings */}
+      <PushToTalkButton
+        enabled={settingsHook.settings.pushToTalk}
+        wsRef={wsRef}
+      />
 
       {/* Bottom center: status text + JARVIS label */}
       <div

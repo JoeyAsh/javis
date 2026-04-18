@@ -906,6 +906,21 @@ async def broadcast_system_metrics(metrics: SystemMetrics | None = None) -> None
     await _broadcast(message)
 
 
+async def broadcast_turn_timing(timing: dict[str, Any]) -> None:
+    """Broadcast per-turn latency timing to all connected clients.
+
+    Emitted at the end of each successful voice pipeline turn so the
+    frontend LogPanel can render a Gantt-style waterfall diagram.
+
+    Args:
+        timing: Dict with keys ``turn_id``, ``audio_end_ts``,
+            ``stt_done_ts``, ``llm_first_token_ts``, ``llm_done_ts``,
+            ``tts_first_audio_ts``, ``tts_done_ts`` (all epoch ms floats).
+    """
+    message = json.dumps({"type": "turn_timing", "payload": timing})
+    await _broadcast(message)
+
+
 async def _broadcast(message: str) -> None:
     """Broadcast a message to all connected clients.
 
@@ -1875,6 +1890,12 @@ async def _run_voice_pipeline_body(
         await broadcast_state("idle")
         return
 
+    # --- Per-turn timing instrumentation ---
+    import uuid as _uuid  # noqa: PLC0415
+
+    _turn_id = _uuid.uuid4().hex[:12]
+    _t_audio_end = time.time() * 1000  # epoch ms
+
     # --- Transcribe ---
     await broadcast_state("thinking")
 
@@ -1884,6 +1905,7 @@ async def _run_voice_pipeline_body(
         return
 
     result = await _stt_engine.transcribe(audio_data)
+    _t_stt_done = time.time() * 1000  # epoch ms
 
     if not result.text.strip():
         logger.debug("Empty transcription, returning to idle")
@@ -1998,6 +2020,8 @@ async def _run_voice_pipeline_body(
     full_response_text = ""
     first_audio_sent = False
     t_stream_start = time.monotonic()
+    _t_llm_first_token_ms: float | None = None
+    _t_tts_first_audio_ms: float | None = None
     # Threshold above which we assume a tool call is running during the silence
     # before the first text delta arrives (TTFT > this value → broadcast working).
     _TOOL_HINT_TTFT_S: float = 2.0
@@ -2077,6 +2101,9 @@ async def _run_voice_pipeline_body(
                         )
 
                 if chunk.new_text:
+                    nonlocal _t_llm_first_token_ms
+                    if _t_llm_first_token_ms is None:
+                        _t_llm_first_token_ms = time.time() * 1000
                     yield chunk.new_text
         except asyncio.CancelledError:
             raise
@@ -2093,6 +2120,7 @@ async def _run_voice_pipeline_body(
 
                 if not first_audio_sent:
                     first_audio_sent = True
+                    _t_tts_first_audio_ms = time.time() * 1000
                     elapsed_ms = (time.monotonic() - t_stream_start) * 1000
                     logger.info(
                         f"First audio chunk sent {elapsed_ms:.0f}ms after stream start"
@@ -2166,6 +2194,24 @@ async def _run_voice_pipeline_body(
         and conn_state.get("pending_email_send") is None
     ):
         await _attempt_email_compose_draft(ws, intent_result, full_response_text)
+
+    # --- Emit turn-timing telemetry ---
+    _t_llm_done = time.time() * 1000
+    _t_tts_done = _t_llm_done  # tts stream finishes just before we reach here
+    try:
+        await broadcast_turn_timing(
+            {
+                "turn_id": _turn_id,
+                "audio_end_ts": _t_audio_end,
+                "stt_done_ts": _t_stt_done,
+                "llm_first_token_ts": _t_llm_first_token_ms,
+                "llm_done_ts": _t_llm_done,
+                "tts_first_audio_ts": _t_tts_first_audio_ms,
+                "tts_done_ts": _t_tts_done,
+            }
+        )
+    except Exception as _tt_exc:  # noqa: BLE001
+        logger.debug(f"turn_timing broadcast failed: {_tt_exc}")
 
     # --- Arm follow-up window (or go straight to idle) ------------------
     # After a successful turn, keep the mic open for a short window so the
@@ -2701,6 +2747,17 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         except Exception as _gl_exc:  # noqa: BLE001
             logger.debug(f"GitLab on-connect push failed: {_gl_exc}")
 
+    # Replay buffered log lines to the newly connected client.
+    try:
+        from utils.logger import get_log_buffer as _get_log_buf  # noqa: PLC0415
+
+        for _log_entry in _get_log_buf():
+            await ws.send_str(
+                json.dumps({"type": "log_line", "payload": _log_entry})
+            )
+    except Exception as _log_replay_exc:  # noqa: BLE001
+        logger.debug(f"Log buffer replay failed: {_log_replay_exc}")
+
     # Mark the first-client event so other subsystems (scheduler, tests)
     # can still observe "at least one client has been here".
     if not _first_client_event.is_set():
@@ -2768,6 +2825,122 @@ async def voices_handler(request: web.Request) -> web.Response:
                 voices.append(wav_file.name)
 
     return web.json_response(voices)
+
+
+# ---------------------------------------------------------------------------
+# /api/config/repos — GET + POST (localhost-only)
+# ---------------------------------------------------------------------------
+
+# Path to the config file — resolved relative to this file so it works
+# regardless of CWD.
+_CONFIG_YAML_PATH: Path = Path(__file__).parent.parent.parent / "config" / "config.yaml"
+
+
+def _is_loopback(request: web.Request) -> bool:
+    """Return True if the request originates from a loopback address."""
+    peer = request.transport
+    if peer is None:
+        return False
+    peername = peer.get_extra_info("peername")
+    if peername is None:
+        return False
+    host = peername[0] if isinstance(peername, (list, tuple)) else str(peername)
+    return host in {"127.0.0.1", "::1", "localhost"}
+
+
+async def config_repos_get_handler(request: web.Request) -> web.Response:
+    """GET /api/config/repos — return current github.repos and gitlab.projects.
+
+    Localhost-only: rejects requests from non-loopback IPs with 403.
+
+    Returns:
+        JSON ``{github: [...], gitlab: [...]}``
+    """
+    if not _is_loopback(request):
+        return web.Response(status=403, text="Forbidden: localhost only")
+
+    try:
+        from ruamel.yaml import YAML  # noqa: PLC0415
+
+        yaml = YAML()
+        yaml.preserve_quotes = True
+        with _CONFIG_YAML_PATH.open("r", encoding="utf-8") as fh:
+            data = yaml.load(fh)
+
+        github_repos: list[str] = []
+        gitlab_repos: list[str] = []
+
+        if data:
+            gh_section = data.get("github") or {}
+            gl_section = data.get("gitlab") or {}
+            github_repos = list(gh_section.get("repos") or [])
+            gitlab_repos = list(gl_section.get("projects") or [])
+
+        return web.json_response({"github": github_repos, "gitlab": gitlab_repos})
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"[config_repos] GET failed: {exc}")
+        return web.Response(status=500, text=str(exc))
+
+
+async def config_repos_post_handler(request: web.Request) -> web.Response:
+    """POST /api/config/repos — update github.repos and gitlab.projects.
+
+    Localhost-only. Reads the existing config, updates only the repo lists,
+    writes back using ruamel.yaml so comments are preserved.
+
+    Body: JSON ``{github: [...], gitlab: [...]}``
+    """
+    if not _is_loopback(request):
+        return web.Response(status=403, text="Forbidden: localhost only")
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.Response(status=400, text="Invalid JSON body")
+
+    if not isinstance(body, dict):
+        return web.Response(status=400, text="Body must be a JSON object")
+
+    github_list = body.get("github")
+    gitlab_list = body.get("gitlab")
+    if not isinstance(github_list, list) or not isinstance(gitlab_list, list):
+        return web.Response(status=400, text="Fields 'github' and 'gitlab' must be arrays")
+
+    # Validate: all items must be non-empty strings
+    for item in github_list + gitlab_list:
+        if not isinstance(item, str) or not item.strip():
+            return web.Response(status=400, text="All repo entries must be non-empty strings")
+
+    try:
+        from ruamel.yaml import YAML  # noqa: PLC0415
+
+        yaml = YAML()
+        yaml.preserve_quotes = True
+        with _CONFIG_YAML_PATH.open("r", encoding="utf-8") as fh:
+            data = yaml.load(fh)
+
+        if data is None:
+            return web.Response(status=500, text="Config file is empty or invalid")
+
+        if "github" not in data or data["github"] is None:
+            data["github"] = {}
+        if "gitlab" not in data or data["gitlab"] is None:
+            data["gitlab"] = {}
+
+        data["github"]["repos"] = github_list
+        data["gitlab"]["projects"] = gitlab_list
+
+        with _CONFIG_YAML_PATH.open("w", encoding="utf-8") as fh:
+            yaml.dump(data, fh)
+
+        logger.info(
+            f"[config_repos] Updated github.repos={github_list}, "
+            f"gitlab.projects={gitlab_list}"
+        )
+        return web.json_response({"ok": True})
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"[config_repos] POST failed: {exc}")
+        return web.Response(status=500, text=str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -2962,6 +3135,8 @@ async def start_ws_server(
     http_app = web.Application(middlewares=[cors_middleware])
     http_app.router.add_get("/voices", voices_handler)
     http_app.router.add_get("/oauth/spotify/callback", spotify_oauth_callback_handler)
+    http_app.router.add_get("/api/config/repos", config_repos_get_handler)
+    http_app.router.add_post("/api/config/repos", config_repos_post_handler)
 
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)
@@ -2976,6 +3151,15 @@ async def start_ws_server(
     http_site = web.TCPSite(http_runner, "0.0.0.0", http_port)
     await http_site.start()
     logger.info(f"HTTP server started on port {http_port}")
+
+    # Log-panel sink — wire loguru → WS broadcast when feature is enabled.
+    log_panel_cfg = cfg.get_section("log_panel") or {}
+    if log_panel_cfg.get("enabled", True):
+        from utils.logger import register_ws_broadcast as _register_log_sink  # noqa: PLC0415
+
+        _log_max_buf = int(log_panel_cfg.get("max_buffer_lines", 500))
+        _register_log_sink(_broadcast, _log_max_buf)
+        logger.info(f"Log-panel WS sink registered (max_buffer_lines={_log_max_buf})")
 
     # Background metrics broadcast — 2 s interval via SystemMetricsCollector.
     _metrics_collector = SystemMetricsCollector(interval_seconds=2.0)

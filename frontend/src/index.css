@@ -38,6 +38,11 @@
   /* Font */
   --font: 'JetBrains Mono', ui-monospace, monospace;
 
+  /* Panel opacity — controlled via Settings → Display slider.
+     Overridden at runtime via style on the root element so all panels
+     pick it up without a reload. Default: 1.0 (fully opaque). */
+  --panel-opacity: 1.0;
+
   /* Panel dimensions */
   --panel-header-height: 28px;
   --panel-padding: 14px;
@@ -289,7 +294,7 @@ body {
 
 .window {
   position: absolute;
-  background: rgba(13, 13, 20, 0.72);
+  background: rgba(13, 13, 20, calc(0.72 * var(--panel-opacity)));
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border);
@@ -590,6 +595,11 @@ body {
 @keyframes pulse-dot {
   0%, 100% { opacity: 0.3; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes ptt-ring {
+  0%   { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.8); }
 }
 
 .pulse-dot {

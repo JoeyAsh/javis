@@ -10,6 +10,7 @@ import type {
   EmailSendDonePayload,
   GitHubStatePayload,
   GitLabStatePayload,
+  LogLinePayload,
   MailStatePayload,
   NotificationPayload,
   OrbState,
@@ -17,6 +18,7 @@ import type {
   SpotifyStatePayload,
   SystemMetricsPayload,
   TranscriptPayload,
+  TurnTimingPayload,
   WsIncoming,
   WsOutgoing,
 } from '../types';
@@ -34,6 +36,8 @@ export type CalendarStateListener = (payload: CalendarStatePayload) => void;
 export type CalendarOpPreviewListener = (payload: CalendarOpPreviewPayload) => void;
 export type CalendarOpDoneListener = (payload: CalendarOpDonePayload) => void;
 export type GitLabStateListener = (payload: GitLabStatePayload) => void;
+export type LogLineListener = (payload: LogLinePayload) => void;
+export type TurnTimingListener = (payload: TurnTimingPayload) => void;
 
 export interface UseWebSocketReturn {
   orbState: AppOrbState;
@@ -80,6 +84,10 @@ export interface UseWebSocketReturn {
   subscribeCalendarOpDone: (listener: CalendarOpDoneListener) => () => void;
   /** Subscribe to `type: 'gitlab_state'` payloads. */
   subscribeGitlabState: (listener: GitLabStateListener) => () => void;
+  /** Subscribe to `type: 'log_line'` payloads (backend log stream). */
+  subscribeLogLine: (listener: LogLineListener) => () => void;
+  /** Subscribe to `type: 'turn_timing'` payloads (per-turn waterfall). */
+  subscribeTurnTiming: (listener: TurnTimingListener) => () => void;
   /**
    * Send a Spotify command to the backend.
    * Phase 1: backend logs receipt; actual control is via voice → OpenClaw.
@@ -122,6 +130,8 @@ const calendarStateListeners = new Set<CalendarStateListener>();
 const calendarOpPreviewListeners = new Set<CalendarOpPreviewListener>();
 const calendarOpDoneListeners = new Set<CalendarOpDoneListener>();
 const gitLabStateListeners = new Set<GitLabStateListener>();
+const logLineListeners = new Set<LogLineListener>();
+const turnTimingListeners = new Set<TurnTimingListener>();
 
 // Module-level WS send reference — set by the hook on each connection so
 // standalone send helpers (e.g. in panels that don't call useWebSocket()) can
@@ -254,6 +264,26 @@ function emitGitLabState(payload: GitLabStatePayload): void {
       listener(payload);
     } catch (err) {
       console.error('[ws] gitlab_state listener threw', err);
+    }
+  });
+}
+
+function emitLogLine(payload: LogLinePayload): void {
+  logLineListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] log_line listener threw', err);
+    }
+  });
+}
+
+function emitTurnTiming(payload: TurnTimingPayload): void {
+  turnTimingListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] turn_timing listener threw', err);
     }
   });
 }
@@ -482,6 +512,12 @@ export function useWebSocket(): UseWebSocketReturn {
           case 'gitlab_state':
             emitGitLabState(msg.payload);
             break;
+          case 'log_line':
+            emitLogLine(msg.payload);
+            break;
+          case 'turn_timing':
+            emitTurnTiming(msg.payload);
+            break;
         }
       } catch (err) {
         console.error('[ws] parse error', err);
@@ -673,6 +709,26 @@ export function useWebSocket(): UseWebSocketReturn {
     [],
   );
 
+  const subscribeLogLine = useCallback(
+    (listener: LogLineListener): (() => void) => {
+      logLineListeners.add(listener);
+      return () => {
+        logLineListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
+  const subscribeTurnTiming = useCallback(
+    (listener: TurnTimingListener): (() => void) => {
+      turnTimingListeners.add(listener);
+      return () => {
+        turnTimingListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
   const sendSpotifyCmd = useCallback(
     (action: SpotifyCmdAction, value?: number) => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -708,6 +764,8 @@ export function useWebSocket(): UseWebSocketReturn {
     subscribeCalendarOpPreview,
     subscribeCalendarOpDone,
     subscribeGitlabState,
+    subscribeLogLine,
+    subscribeTurnTiming,
     sendSpotifyCmd,
     registerStopAudio,
     notifyAudioPlaying,
@@ -832,5 +890,21 @@ export function subscribeGitLabStateStream(listener: GitLabStateListener): () =>
   gitLabStateListeners.add(listener);
   return () => {
     gitLabStateListeners.delete(listener);
+  };
+}
+
+/** Subscribe to `log_line` messages from the module-level registry. */
+export function subscribeLogLineStream(listener: LogLineListener): () => void {
+  logLineListeners.add(listener);
+  return () => {
+    logLineListeners.delete(listener);
+  };
+}
+
+/** Subscribe to `turn_timing` messages from the module-level registry. */
+export function subscribeTurnTimingStream(listener: TurnTimingListener): () => void {
+  turnTimingListeners.add(listener);
+  return () => {
+    turnTimingListeners.delete(listener);
   };
 }

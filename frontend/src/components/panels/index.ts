@@ -8,3 +8,4 @@ export { DevPanel } from './DevPanel';
 export { NotificationsPanel } from './NotificationsPanel';
 export { TranscriptPanel } from './TranscriptPanel';
 export { SelfFixPanel } from './SelfFixPanel';
+export { LogPanel } from './LogPanel';

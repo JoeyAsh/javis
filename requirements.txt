@@ -43,3 +43,6 @@ dateparser>=1.2.0
 
 # Spotify integration
 spotipy>=2.23.0
+
+# YAML editing that preserves comments (used by /api/config/repos endpoint)
+ruamel.yaml>=0.18.0

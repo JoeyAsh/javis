@@ -176,6 +176,8 @@ const PANEL_ORDER: ReadonlyArray<PanelId> = [
   'system',
   'dev',
   'selffix',
+  'gitlab',
+  'log',
 ];
 
 const INITIAL_Z_BASE = 10;

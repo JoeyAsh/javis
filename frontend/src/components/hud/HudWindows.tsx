@@ -16,6 +16,7 @@ import {
   DevPanel,
   GitLabPanel,
   LightsPanel,
+  LogPanel,
   MailPanel,
   NotificationsPanel,
   NowPlayingPanel,
@@ -109,6 +110,12 @@ const WINDOWS: ReadonlyArray<WindowSpec> = [
     title: 'GitLab',
     icon: <Dot />,
     render: (mode) => <GitLabPanel mode={mode} />,
+  },
+  {
+    id: 'log',
+    title: 'Console',
+    icon: <Dot />,
+    render: (mode) => <LogPanel mode={mode} />,
   },
 ];
 

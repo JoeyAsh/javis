@@ -149,10 +149,11 @@ export const DEFAULT_ASSIGNMENTS: Record<PanelId, SlotId> = {
   system: 'R3',
   transcript: 'B1',
   dev: 'B2',
-  // gitlab occupies B3 (bottom-strip). selffix shares B3 at lower priority
-  // — drag it to another free slot if needed.
+  // gitlab occupies B3 (bottom-strip). selffix and log share B3 at lower
+  // priority — drag them to another free slot if needed.
   gitlab: 'B3',
   selffix: 'B3',
+  log: 'B3',
 };
 
 /**

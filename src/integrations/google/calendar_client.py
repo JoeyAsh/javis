@@ -178,8 +178,7 @@ class GoogleCalendarClient:
         """
         async with self._lock:
             if self._service is None:
-                self._service = await asyncio.to_thread(
-                    self._oauth_service.build_service,
+                self._service = await self._oauth_service.build_service(
                     "calendar",
                     "v3",
                     scopes=CALENDAR_SCOPES,

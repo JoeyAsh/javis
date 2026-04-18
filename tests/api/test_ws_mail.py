@@ -178,6 +178,10 @@ async def test_mail_poller_calls_broadcast_mail_state():
 
     with (
         patch("api.ws_server.get_gmail_client", return_value=mock_client),
+        patch(
+            "integrations.google.oauth.get_google_oauth_service",
+            return_value=MagicMock(is_authenticated=AsyncMock(return_value=True)),
+        ),
         patch("api.ws_server.broadcast_mail_state", side_effect=_capture_broadcast),
         patch("asyncio.sleep", side_effect=_fast_sleep),
     ):
@@ -231,6 +235,10 @@ async def test_mail_poller_survives_oauth_error():
 
     with (
         patch("api.ws_server.get_gmail_client", return_value=mock_client),
+        patch(
+            "integrations.google.oauth.get_google_oauth_service",
+            return_value=MagicMock(is_authenticated=AsyncMock(return_value=True)),
+        ),
         patch("api.ws_server.broadcast_mail_state", new_callable=AsyncMock),
         patch("asyncio.sleep", side_effect=_controlled_sleep),
     ):
@@ -275,6 +283,10 @@ async def test_mail_poller_backoff_after_failures():
 
     with (
         patch("api.ws_server.get_gmail_client", return_value=mock_client),
+        patch(
+            "integrations.google.oauth.get_google_oauth_service",
+            return_value=MagicMock(is_authenticated=AsyncMock(return_value=True)),
+        ),
         patch("api.ws_server.broadcast_mail_state", new_callable=AsyncMock),
         patch("asyncio.sleep", side_effect=_capture_sleep),
     ):

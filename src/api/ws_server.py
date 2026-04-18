@@ -1029,6 +1029,18 @@ async def _start_mail_poller(poll_interval: int, vip_senders: list[str]) -> None
         await asyncio.sleep(sleep_secs)
 
         try:
+            # Skip silently when OAuth hasn't been completed yet — don't spam
+            # the interactive flow from a background task; that job belongs
+            # to explicit voice triggers or manual CLI login.
+            from integrations.google.oauth import get_google_oauth_service as _get_oauth
+            from utils.config_loader import get_config as _get_cfg
+
+            _gmail_scopes_cfg = _get_cfg().get_section("gmail") or {}
+            _gmail_scopes = _gmail_scopes_cfg.get("scopes", [])
+            if not await _get_oauth().is_authenticated(_gmail_scopes):
+                logger.debug("Mail poller: skipping — Google OAuth not yet completed")
+                continue
+
             client = get_gmail_client(vip_senders=vip_senders)
             messages = await client.list_unread(max_results=5)
             unread_count = await client.get_unread_count()
@@ -1441,6 +1453,17 @@ async def _start_calendar_poller(poll_interval: int) -> None:
         reminder_thresholds: list[int] = _cal_cfg.get("reminder_thresholds_minutes", [10, 5, 1])
 
         try:
+            # Skip silently when OAuth hasn't been completed yet — don't spam
+            # the interactive flow from a background task.
+            from integrations.google.oauth import (  # noqa: PLC0415
+                get_google_oauth_service as _get_oauth,
+            )
+
+            _cal_scopes = _cal_cfg.get("scopes", [])
+            if not await _get_oauth().is_authenticated(_cal_scopes):
+                logger.debug("Calendar poller: skipping — Google OAuth not yet completed")
+                continue
+
             now = datetime.now(timezone.utc)
             client = get_calendar_client()
             events = await client.list_events(
@@ -2789,7 +2812,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     # browser tab always sees the HUD pipe is live.
     from datetime import datetime, timezone
 
-    # Fetch unread count once per connection for the welcome context line.
+    # Fetch unread count for the welcome context line — only if Google
+    # OAuth is already done (cached token). Do NOT trigger the interactive
+    # flow here, that would block the connection for up to 120 s while the
+    # user isn't looking, and wedge the audio pipeline in the meantime.
     _welcome_unread_ctx = ""
     try:
         from utils.config_loader import get_config as _get_cfg
@@ -2797,11 +2823,17 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         _gmail_cfg = _get_cfg().get_section("gmail") or {}
         if _gmail_cfg.get("enabled", False):
             from integrations.google.gmail_client import get_gmail_client as _get_gc
+            from integrations.google.oauth import get_google_oauth_service as _get_oauth
 
-            _uc = await _get_gc(
-                vip_senders=_gmail_cfg.get("vip_senders", [])
-            ).get_unread_count()
-            _welcome_unread_ctx = f" {_uc} ungelesene E-Mail(s)."
+            _scopes = _gmail_cfg.get("scopes", [])
+            if await _get_oauth().is_authenticated(_scopes):
+                _uc = await asyncio.wait_for(
+                    _get_gc(
+                        vip_senders=_gmail_cfg.get("vip_senders", [])
+                    ).get_unread_count(),
+                    timeout=3.0,
+                )
+                _welcome_unread_ctx = f" {_uc} ungelesene E-Mail(s)."
     except Exception as _wexc:
         logger.debug(f"Welcome unread count fetch skipped: {_wexc}")
 

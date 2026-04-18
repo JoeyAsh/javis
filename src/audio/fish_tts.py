@@ -1,17 +1,30 @@
 """Fish Audio cloud TTS integration for JARVIS.
 
 Sends text to Fish Audio API and returns MP3 audio bytes.
+
+Prosody support: ``FishTTSClient.synthesize()`` accepts an optional
+``prosody_hint`` dict with keys ``speed`` (float) and ``energy`` (str).
+Fish Audio's REST API supports ``speed`` natively; the ``energy`` key is
+informational and is logged at startup rather than sent to the API.
 """
+
+from __future__ import annotations
 
 import os
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from utils.logger import get_logger
 
+if TYPE_CHECKING:
+    from audio.prosody import ProsodyHint
+
 logger = get_logger("fish_tts")
+
+# Set once at startup so we only log the inert-energy warning once.
+_prosody_energy_warned: bool = False
 
 FISH_API_URL = "https://api.fish.audio/v1/tts"
 
@@ -83,11 +96,22 @@ class FishTTSClient:
         if not self._api_key:
             logger.warning("FISH_API_KEY not set — Fish TTS will fail at runtime")
 
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(
+        self,
+        text: str,
+        prosody_hint: "ProsodyHint | None" = None,
+    ) -> bytes:
         """Synthesize text to MP3 audio bytes via Fish Audio API.
 
         Args:
             text: Text to synthesize.
+            prosody_hint: Optional prosody hint dict with ``speed`` (float)
+                and ``energy`` (str) keys produced by
+                :func:`audio.prosody.get_prosody_hint`.  When provided,
+                ``speed`` is forwarded to the Fish Audio API.  The
+                ``energy`` key is informational only — Fish Audio has no
+                direct energy/mood parameter, so it is acknowledged via a
+                one-time startup log rather than sent to the API.
 
         Returns:
             MP3 audio bytes.
@@ -95,6 +119,8 @@ class FishTTSClient:
         Raises:
             FishTTSError: On API error or non-2xx response.
         """
+        global _prosody_energy_warned
+
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -105,6 +131,19 @@ class FishTTSClient:
         }
         if self._voice_id:
             payload["reference_id"] = self._voice_id
+
+        if prosody_hint is not None:
+            speed = prosody_hint.get("speed")
+            if speed is not None and speed != 1.0:
+                payload["speed"] = float(speed)
+
+            energy = prosody_hint.get("energy")
+            if energy and energy != "neutral" and not _prosody_energy_warned:
+                logger.info(
+                    f"Prosody energy={energy!r} is inert for Fish Audio "
+                    "(API has no mood/energy parameter — speed applied only)"
+                )
+                _prosody_energy_warned = True
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:

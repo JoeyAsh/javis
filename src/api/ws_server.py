@@ -92,6 +92,25 @@ _quick_ack_generator: QuickAckGenerator | None = None
 
 _start_time: float = time.time()
 
+# ---------------------------------------------------------------------------
+# Phrase-cache hit / miss counters (Item 2: cache metrics)
+# ---------------------------------------------------------------------------
+# Module-level counters, incremented on every playback attempt.
+# "hit"  = a file was found in cache and played.
+# "miss" = cache was empty / language pool absent → silent skip.
+_phrase_cache_stats: dict[str, int] = {
+    "filler_hits": 0,
+    "filler_misses": 0,
+    "ack_hits": 0,
+    "ack_misses": 0,
+    "backchannel_hits": 0,
+    "backchannel_misses": 0,
+    "sleep_match_hits": 0,
+}
+
+# Background task handle for periodic metric logging.
+_cache_stats_log_task: asyncio.Task[None] | None = None
+
 # Spotify integration — client singleton and background task handle.
 _spotify_client: SpotifyClient | None = None
 _spotify_poller_task: asyncio.Task[None] | None = None
@@ -1589,17 +1608,35 @@ async def _broadcast_from_cache(
     cache: dict[str, list[tuple[str, bytes]]],
     language: str,
     log_label: str,
+    stat_key: str | None = None,
 ) -> None:
-    """Pick a random pre-cached MP3 from ``cache`` and broadcast it."""
+    """Pick a random pre-cached MP3 from ``cache`` and broadcast it.
+
+    Args:
+        cache: Mapping of language → list of (display_text, mp3_bytes).
+        language: Preferred language code.
+        log_label: Label used in INFO log messages.
+        stat_key: Prefix for ``_phrase_cache_stats`` counters
+            (e.g. ``"filler"`` increments ``filler_hits`` / ``filler_misses``).
+            When ``None`` no stats are updated.
+    """
     import random
 
     if not cache:
+        if stat_key:
+            _phrase_cache_stats[f"{stat_key}_misses"] = (
+                _phrase_cache_stats.get(f"{stat_key}_misses", 0) + 1
+            )
         return
 
     pool = cache.get(language)
     if not pool:
         pool = cache.get("de") or next(iter(cache.values()), [])
     if not pool:
+        if stat_key:
+            _phrase_cache_stats[f"{stat_key}_misses"] = (
+                _phrase_cache_stats.get(f"{stat_key}_misses", 0) + 1
+            )
         return
 
     text, mp3_bytes = random.choice(pool)
@@ -1607,12 +1644,16 @@ async def _broadcast_from_cache(
     logger.info(
         f"{log_label} broadcast: {text!r} ({len(mp3_bytes)} bytes, lang={language})"
     )
+    if stat_key:
+        _phrase_cache_stats[f"{stat_key}_hits"] = (
+            _phrase_cache_stats.get(f"{stat_key}_hits", 0) + 1
+        )
     await broadcast_audio(audio_b64, text)
 
 
 async def _broadcast_quick_ack_filler(language: str) -> None:
     """Broadcast a random pre-cached filler MP3 — plays while LLM is running."""
-    await _broadcast_from_cache(_filler_cache, language, "Filler")
+    await _broadcast_from_cache(_filler_cache, language, "Filler", stat_key="filler")
 
 
 async def _maybe_play_backchannel(
@@ -1632,6 +1673,9 @@ async def _maybe_play_backchannel(
     import random
 
     if not _backchannel_cache:
+        _phrase_cache_stats["backchannel_misses"] = (
+            _phrase_cache_stats.get("backchannel_misses", 0) + 1
+        )
         return
 
     now = time.monotonic()
@@ -1645,11 +1689,17 @@ async def _maybe_play_backchannel(
             iter(_backchannel_cache.values()), []
         )
     if not pool:
+        _phrase_cache_stats["backchannel_misses"] = (
+            _phrase_cache_stats.get("backchannel_misses", 0) + 1
+        )
         return
 
     _text, mp3_bytes = random.choice(pool)
     audio_b64 = base64.b64encode(mp3_bytes).decode("utf-8")
     state["last_backchannel_at"] = now
+    _phrase_cache_stats["backchannel_hits"] = (
+        _phrase_cache_stats.get("backchannel_hits", 0) + 1
+    )
     logger.info(f"Backchannel broadcast ({language}, {len(mp3_bytes)} bytes)")
     # Empty text so the transcript panel doesn't render a "mhm" entry.
     await broadcast_audio(audio_b64, "", channel="backchannel")
@@ -1914,6 +1964,12 @@ async def _run_voice_pipeline_body(
 
     logger.info(f"User said ({result.language}): {result.text}")
 
+    # Item 1: store per-connection detected language so backchannel
+    # playback during the *next* turn uses the right language pool.
+    _conn_state_ref = _connection_state.get(id(ws))
+    if _conn_state_ref is not None:
+        _conn_state_ref["detected_language"] = result.language or "de"
+
     # Broadcast + archive the user turn immediately — we want the
     # archive to reflect reality even if the downstream LLM call fails.
     await broadcast_transcript("user", result.text)
@@ -1943,6 +1999,9 @@ async def _run_voice_pipeline_body(
     if _conversation_mode is not None and _conversation_mode.detect_sleep_phrase(
         result.text, result.language
     ):
+        _phrase_cache_stats["sleep_match_hits"] = (
+            _phrase_cache_stats.get("sleep_match_hits", 0) + 1
+        )
         salutation = get_salutation(_persona_config) if _persona_config else "Sir"
         closing = _conversation_mode.closing_phrase(result.language, salutation)
         logger.info(f"Sleep phrase detected — closing with: {closing!r}")
@@ -1991,7 +2050,7 @@ async def _run_voice_pipeline_body(
     # filler_*.mp3 — same delivery path, better UX signal.
     if _quick_ack_enabled and _quick_ack_generator is not None and _ack_cache:
         if _quick_ack_generator.should_ack(result.text):
-            await _broadcast_from_cache(_ack_cache, result.language, "QuickAck")
+            await _broadcast_from_cache(_ack_cache, result.language, "QuickAck", stat_key="ack")
         else:
             await _broadcast_quick_ack_filler(result.language)
     else:
@@ -2030,6 +2089,20 @@ async def _run_voice_pipeline_body(
     # The StreamSplitter converts a stream of incremental tokens into
     # complete sentences suitable for TTS synthesis.
     splitter = StreamSplitter(min_chars=40, max_wait_ms=600)
+
+    # --- Disfluency + prosody setup (Items 3 & 4) -------------------------
+    from utils.config_loader import get_config as _get_cfg_vp  # noqa: PLC0415
+
+    _vp_cfg = _get_cfg_vp().get_section("voice") or {}
+    _disfluency_enabled: bool = bool(_vp_cfg.get("disfluencies_enabled", False))
+    _disfluency_prob: float = float(_vp_cfg.get("disfluency_probability", 0.20))
+    _prosody_enabled: bool = bool(_vp_cfg.get("prosody_enabled", True))
+
+    from audio.disfluency import maybe_prepend_disfluency as _prepend_disfluency  # noqa: PLC0415
+    from audio.prosody import get_prosody_hint as _get_prosody  # noqa: PLC0415
+
+    _prosody_hint = _get_prosody(enabled=_prosody_enabled)
+    _first_sentence_sent: bool = False  # track whether we've already prepended disfluency
 
     async def _token_stream():
         """Yield incremental new_text tokens from the orchestrator stream."""
@@ -2114,8 +2187,19 @@ async def _run_voice_pipeline_body(
             if not tts_text.strip():
                 continue
 
+            # Item 3: prepend disfluency to the very first sentence only.
+            if not _first_sentence_sent and _disfluency_enabled:
+                tts_text = _prepend_disfluency(
+                    tts_text,
+                    result.language or "de",
+                    enabled=True,
+                    probability=_disfluency_prob,
+                )
+            _first_sentence_sent = True
+
             try:
-                audio_bytes = await _fish_tts.synthesize(tts_text)
+                # Item 4: pass prosody_hint so Fish Audio adjusts speed.
+                audio_bytes = await _fish_tts.synthesize(tts_text, prosody_hint=_prosody_hint)
                 audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
                 if not first_audio_sent:
@@ -2430,7 +2514,9 @@ async def _process_audio_for_client(
             eot_threshold_s = _silence_duration_ms / 1000
             backchannel_threshold_s = _backchannel_silence_threshold_ms / 1000
             if backchannel_threshold_s <= silence_duration_s < eot_threshold_s:
-                lang = "de"  # TODO(language): per-connection language tracking — currently pinned to "de" because STT result language is only available inside _run_voice_pipeline_body. Threading it through requires connection-state plumbing.
+                # Use the STT-detected language stored after the previous
+                # pipeline turn.  Falls back to "de" when not yet known.
+                lang: str = state.get("detected_language") or "de"
                 await _maybe_play_backchannel(state, lang)
 
         # After speech started, stop when we have enough silence
@@ -2684,6 +2770,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         # Calendar operation pending state — set when JARVIS proposes a
         # create/update/delete and is waiting for verbal confirmation.
         "pending_calendar_op": None,
+        # STT-detected language from the most recent successful pipeline run.
+        # Used by backchannel playback so language-specific clips are played.
+        # Defaults to None; "de" is used as fallback when unset.
+        "detected_language": None,
     }
     if _wake_word_detector:
         _wake_word_detector.reset()
@@ -2848,6 +2938,86 @@ def _is_loopback(request: web.Request) -> bool:
     return host in {"127.0.0.1", "::1", "localhost"}
 
 
+async def voice_metrics_handler(request: web.Request) -> web.Response:
+    """GET /api/metrics/voice — phrase-cache hit/miss statistics.
+
+    Returns a JSON object with raw counters plus a computed ``hit_rate``
+    for each tracked cache category.  Safe to call at any time; counters
+    are module-level and accumulate for the process lifetime.
+
+    Returns:
+        200 JSON with ``stats`` (raw counters) and ``summary`` (per-category
+        hit rates and an aggregate ``overall_hit_rate``).
+    """
+    stats = dict(_phrase_cache_stats)
+
+    def _rate(hits_key: str, misses_key: str) -> float:
+        hits = stats.get(hits_key, 0)
+        misses = stats.get(misses_key, 0)
+        total = hits + misses
+        return round(hits / total, 4) if total > 0 else 0.0
+
+    summary = {
+        "filler_hit_rate": _rate("filler_hits", "filler_misses"),
+        "ack_hit_rate": _rate("ack_hits", "ack_misses"),
+        "backchannel_hit_rate": _rate("backchannel_hits", "backchannel_misses"),
+    }
+
+    total_hits = (
+        stats.get("filler_hits", 0)
+        + stats.get("ack_hits", 0)
+        + stats.get("backchannel_hits", 0)
+    )
+    total_misses = (
+        stats.get("filler_misses", 0)
+        + stats.get("ack_misses", 0)
+        + stats.get("backchannel_misses", 0)
+    )
+    overall_total = total_hits + total_misses
+    summary["overall_hit_rate"] = (
+        round(total_hits / overall_total, 4) if overall_total > 0 else 0.0
+    )
+
+    return web.json_response({"stats": stats, "summary": summary})
+
+
+async def _cache_stats_log_loop(interval_seconds: float) -> None:
+    """Background coroutine: log phrase-cache hit/miss summary periodically.
+
+    Args:
+        interval_seconds: Seconds between log emissions.
+    """
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+        except asyncio.CancelledError:
+            logger.info("Cache-stats log loop cancelled")
+            return
+
+        stats = _phrase_cache_stats
+        total_hits = (
+            stats.get("filler_hits", 0)
+            + stats.get("ack_hits", 0)
+            + stats.get("backchannel_hits", 0)
+        )
+        total_misses = (
+            stats.get("filler_misses", 0)
+            + stats.get("ack_misses", 0)
+            + stats.get("backchannel_misses", 0)
+        )
+        overall_total = total_hits + total_misses
+        hit_rate = round(total_hits / overall_total, 3) if overall_total > 0 else 0.0
+        logger.info(
+            f"[cache-stats] filler={stats.get('filler_hits', 0)}h/"
+            f"{stats.get('filler_misses', 0)}m "
+            f"ack={stats.get('ack_hits', 0)}h/{stats.get('ack_misses', 0)}m "
+            f"bc={stats.get('backchannel_hits', 0)}h/"
+            f"{stats.get('backchannel_misses', 0)}m "
+            f"sleep={stats.get('sleep_match_hits', 0)} "
+            f"overall_hit_rate={hit_rate:.1%}"
+        )
+
+
 async def config_repos_get_handler(request: web.Request) -> web.Response:
     """GET /api/config/repos — return current github.repos and gitlab.projects.
 
@@ -2977,7 +3147,7 @@ async def start_ws_server(
     global _spotify_client, _spotify_poller_task
     global _github_poller, _github_session
     global _gitlab_client, _gitlab_poller, _gitlab_poller_task
-    global _calendar_poller_task
+    global _calendar_poller_task, _cache_stats_log_task
 
     from dotenv import load_dotenv
 
@@ -3137,6 +3307,7 @@ async def start_ws_server(
     http_app.router.add_get("/oauth/spotify/callback", spotify_oauth_callback_handler)
     http_app.router.add_get("/api/config/repos", config_repos_get_handler)
     http_app.router.add_post("/api/config/repos", config_repos_post_handler)
+    http_app.router.add_get("/api/metrics/voice", voice_metrics_handler)
 
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)
@@ -3164,6 +3335,15 @@ async def start_ws_server(
     # Background metrics broadcast — 2 s interval via SystemMetricsCollector.
     _metrics_collector = SystemMetricsCollector(interval_seconds=2.0)
     _metrics_task = asyncio.create_task(_metrics_collector.run(_on_metrics_snapshot))
+
+    # Phrase-cache stats logger — logs a summary every N seconds.
+    _cache_log_interval = float(
+        voice_config.get("cache_stats_log_interval_seconds", 300)
+    )
+    _cache_stats_log_task = asyncio.create_task(
+        _cache_stats_log_loop(_cache_log_interval)
+    )
+    logger.info(f"Phrase-cache stats logger started (interval={_cache_log_interval:.0f}s)")
 
     # Gmail mail poller — start only when gmail.enabled is true.
     gmail_cfg = cfg.get_section("gmail") or {}
@@ -3288,6 +3468,15 @@ async def start_ws_server(
                 pass
         _metrics_collector = None
         _metrics_task = None
+
+        # Cancel the phrase-cache stats logger task.
+        if _cache_stats_log_task is not None and not _cache_stats_log_task.done():
+            _cache_stats_log_task.cancel()
+            try:
+                await _cache_stats_log_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        _cache_stats_log_task = None
 
         # Cancel the mail poller task if running.
         if _mail_poller_task is not None and not _mail_poller_task.done():

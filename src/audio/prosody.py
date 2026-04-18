@@ -1,36 +1,109 @@
-"""Prosody configuration for JARVIS TTS.
+"""Prosody context steering for JARVIS TTS.
 
-Context-aware voice settings that adjust based on:
-- Time of day (morning energy, night calm)
-- Error context (serious tone)
-- User activity state
+Provides time-of-day aware prosody hints that are passed into
+``FishTTSClient.synthesize()`` when ``voice.prosody_enabled`` is true.
 
-Example usage:
-    from audio.prosody import get_voice_mood, get_fish_audio_params
+The hint dict always has two keys:
+- ``speed``  (float 0.8–1.2) — speaking rate multiplier.
+- ``energy`` (``"calm"`` | ``"neutral"`` | ``"bright"``) — semantic tone.
 
-    mood = get_voice_mood(orb_state="speaking", error_context=False)
-    params = get_fish_audio_params(mood)
+``FishTTSClient`` maps ``speed`` to the Fish Audio ``speed`` request
+parameter.  ``energy`` is informational; Fish Audio does not have a
+direct energy/mood parameter, so it is logged once at startup and then
+used only if a future TTS backend supports it.
 
-    audio = await tts.synthesize(text, **params)
+Usage::
+
+    from audio.prosody import get_prosody_hint
+
+    hint = get_prosody_hint()              # uses datetime.now().hour
+    hint = get_prosody_hint(hour=8)        # morning
+    hint = get_prosody_hint(enabled=False) # always returns neutral hint
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import TypedDict
 
 from utils.logger import get_logger
 
 logger = get_logger("prosody")
 
+# ---------------------------------------------------------------------------
+# Public typed hint dict
+# ---------------------------------------------------------------------------
+
+
+class ProsodyHint(TypedDict):
+    """Typed dict returned by :func:`get_prosody_hint`."""
+
+    speed: float
+    energy: str  # "calm" | "neutral" | "bright"
+
+
+# ---------------------------------------------------------------------------
+# Legacy mood enum — kept for backward-compat with existing tests
+# ---------------------------------------------------------------------------
+
 
 class VoiceMood(Enum):
     """Voice mood states for TTS prosody."""
 
-    CALM = "calm"  # Night time, relaxed
-    BRIGHT = "bright"  # Morning, energetic
-    SERIOUS = "serious"  # Error context, urgent
-    NEUTRAL = "neutral"  # Default state
+    CALM = "calm"
+    BRIGHT = "bright"
+    SERIOUS = "serious"
+    NEUTRAL = "neutral"
+
+
+# ---------------------------------------------------------------------------
+# Time-of-day prosody table
+# ---------------------------------------------------------------------------
+
+# Maps (start_hour_inclusive, end_hour_exclusive) → (speed, energy)
+_TIME_TABLE: list[tuple[tuple[int, int], float, str]] = [
+    ((0, 6), 0.92, "calm"),    # Night
+    ((6, 10), 1.05, "bright"),  # Morning
+    ((10, 20), 1.0, "neutral"), # Day
+    ((20, 24), 0.95, "calm"),  # Evening
+]
+
+_NEUTRAL_HINT: ProsodyHint = {"speed": 1.0, "energy": "neutral"}
+
+
+def get_prosody_hint(
+    hour: int | None = None,
+    enabled: bool = True,
+) -> ProsodyHint:
+    """Return a prosody hint dict for the given hour of the day.
+
+    Args:
+        hour: Local hour (0–23).  When ``None`` the current wall-clock
+            hour is used.
+        enabled: When ``False`` the function immediately returns the
+            neutral hint so existing TTS behaviour is unchanged.
+
+    Returns:
+        :class:`ProsodyHint` with ``speed`` and ``energy`` keys.
+    """
+    if not enabled:
+        return _NEUTRAL_HINT
+
+    if hour is None:
+        hour = datetime.now().hour
+
+    for (start, end), speed, energy in _TIME_TABLE:
+        if start <= hour < end:
+            return ProsodyHint(speed=speed, energy=energy)
+
+    # Fallback (should never happen for valid hours 0–23)
+    return _NEUTRAL_HINT
+
+
+# ---------------------------------------------------------------------------
+# Legacy helpers — preserved so existing tests pass unchanged
+# ---------------------------------------------------------------------------
 
 
 def get_voice_mood(
@@ -38,42 +111,31 @@ def get_voice_mood(
     hour: int | None = None,
     error_context: bool = False,
 ) -> VoiceMood:
-    """Determine voice mood based on context.
-
-    Priority order:
-    1. Error context overrides all
-    2. Time-based mood if no special context
+    """Determine voice mood based on context (legacy helper).
 
     Args:
-        orb_state: Current orb visualization state.
-        hour: Hour of day (0-23), or None for current time.
+        orb_state: Current orb visualization state (unused by this impl).
+        hour: Hour of day (0–23), or None for current time.
         error_context: Whether responding to an error.
 
     Returns:
         Appropriate VoiceMood for the context.
     """
-    # Error context overrides everything
     if error_context:
         return VoiceMood.SERIOUS
 
-    # Get current hour if not provided
     if hour is None:
         hour = datetime.now().hour
 
-    # Time-based mood selection
     if 6 <= hour < 10:
-        return VoiceMood.BRIGHT  # Morning energy
-    elif 22 <= hour or hour < 6:
-        return VoiceMood.CALM  # Night calm
-    else:
-        return VoiceMood.NEUTRAL
+        return VoiceMood.BRIGHT
+    if 22 <= hour or hour < 6:
+        return VoiceMood.CALM
+    return VoiceMood.NEUTRAL
 
 
 def get_fish_audio_params(mood: VoiceMood) -> dict:
-    """Map mood to Fish Audio API parameters.
-
-    Adjusts speed, pitch, and volume based on mood for
-    more natural and context-appropriate speech.
+    """Map mood to Fish Audio API parameters (legacy helper).
 
     Args:
         mood: Voice mood to map.
@@ -81,64 +143,37 @@ def get_fish_audio_params(mood: VoiceMood) -> dict:
     Returns:
         Dictionary of Fish Audio synthesis parameters.
     """
-    params = {
-        VoiceMood.CALM: {
-            "speed": 0.9,
-            "pitch": -2,
-            "volume": 0.8,
-        },
-        VoiceMood.BRIGHT: {
-            "speed": 1.05,
-            "pitch": 1,
-            "volume": 1.0,
-        },
-        VoiceMood.SERIOUS: {
-            "speed": 0.95,
-            "pitch": -3,
-            "volume": 0.9,
-        },
-        VoiceMood.NEUTRAL: {
-            "speed": 1.0,
-            "pitch": 0,
-            "volume": 1.0,
-        },
+    params: dict[VoiceMood, dict] = {
+        VoiceMood.CALM: {"speed": 0.9, "pitch": -2, "volume": 0.8},
+        VoiceMood.BRIGHT: {"speed": 1.05, "pitch": 1, "volume": 1.0},
+        VoiceMood.SERIOUS: {"speed": 0.95, "pitch": -3, "volume": 0.9},
+        VoiceMood.NEUTRAL: {"speed": 1.0, "pitch": 0, "volume": 1.0},
     }
     return params.get(mood, params[VoiceMood.NEUTRAL])
 
 
-def get_prosody_hints(
-    mood: VoiceMood,
-    language: str = "en",
-) -> str:
-    """Get SSML-style prosody hints for TTS.
+def get_prosody_hints(mood: VoiceMood, language: str = "en") -> str:
+    """Get SSML-style prosody hints for TTS (legacy stub).
 
-    Returns text hints that can be prepended to TTS input
-    for providers that support them.
+    Fish Audio does not use SSML.  Returns empty string for all inputs.
 
     Args:
         mood: Voice mood.
         language: Language code.
 
     Returns:
-        Prosody hint string (may be empty).
+        Empty string (Fish Audio doesn't support SSML hints).
     """
-    # Fish Audio doesn't use SSML, but this function
-    # is here for future TTS providers that might
-    hints = {
-        VoiceMood.CALM: "",
-        VoiceMood.BRIGHT: "",
-        VoiceMood.SERIOUS: "",
-        VoiceMood.NEUTRAL: "",
-    }
-    return hints.get(mood, "")
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# ProsodyConfig class — kept for backward-compat
+# ---------------------------------------------------------------------------
 
 
 class ProsodyConfig:
-    """Manages prosody configuration and state.
-
-    Tracks context for consistent mood selection across
-    a conversation or session.
-    """
+    """Manages prosody configuration and state."""
 
     def __init__(self) -> None:
         """Initialize prosody config."""

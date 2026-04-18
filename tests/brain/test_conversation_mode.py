@@ -498,7 +498,7 @@ async def test_sleep_phrase_short_circuits_pipeline(
 
     # Fake TTS
     class _FakeTTS:
-        async def synthesize(self, _text: str) -> bytes:
+        async def synthesize(self, _text: str, **_kwargs: Any) -> bytes:
             return b"\x00" * 4000
 
     mod._fish_tts = _FakeTTS()  # type: ignore[assignment]
@@ -591,7 +591,7 @@ async def test_successful_turn_arms_follow_up(
             return SimpleNamespace(text="was ist das wetter", language="de")
 
     class _FakeTTS:
-        async def synthesize(self, _text: str) -> bytes:
+        async def synthesize(self, _text: str, **_kwargs: Any) -> bytes:
             return b"REAL-AUDIO-BYTES" * 64
 
     class _FakeIntent:

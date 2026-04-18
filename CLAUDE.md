@@ -4,7 +4,7 @@
 Voice-activated AI assistant. Wake word → STT → Claude API → TTS. PC control + Smart Home. Runs locally, Docker, Raspberry Pi.
 
 ## Conventions
-- **Async-first**: all I/O and API calls `async`. Entrypoint: `uvicorn main:app` (FastAPI + lifespan).
+- **Async-first**: all I/O and API calls `async`. Entrypoint: `python -m main` (aiohttp WS server on 8765 / HTTP on 8766; FastAPI is NOT used).
 - **Config**: tunable values in `config/config.yaml`. Secrets only via `.env`.
 - **Logging**: `loguru` via `src/utils/logger.py`. Never use `print()`.
 - **Code style**: `black` + `ruff`, max line 100. Type hints everywhere. Docstrings on all public functions/classes.
@@ -13,7 +13,7 @@ Voice-activated AI assistant. Wake word → STT → Claude API → TTS. PC contr
 
 ## Run
 ```bash
-PYTHONPATH=src .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload   # backend → :8000
+PYTHONPATH=src .venv/bin/python -m main                                            # backend WS → :8765, HTTP → :8766
 cd frontend && npm run dev                                                         # frontend → :5173
 docker-compose up --build                                                          # docker
 docker-compose -f docker-compose.rpi.yml up --build                               # rpi

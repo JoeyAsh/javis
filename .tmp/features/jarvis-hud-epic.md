@@ -1,5 +1,34 @@
 # Feature Spec: JARVIS HUD Epic
 
+## Status (Stand 2026-04-17)
+
+**Frontend-Gerüst und Live-Backend-Wiring stehen. Die meisten Panels haben aber noch Mock-Daten — die echten Integrationen (Gmail, Calendar, Spotify, Govee, GitHub/Docker) sind separate Specs und stehen als eigenständige offene Items im `.tmp/features/` Ordner.**
+
+### Umgesetzt (Frontend-Framework)
+- **Floating-Window-Paradigma** mit Slot-Grid (3 L / 3 R / 3 Bottom-Strip), Drag-to-Swap im Grid, Maximize pop-out, Win11-Snap mit 5 Zonen, per-Window Reset-Button (`da97916`)
+- **TopBar** mit Live-Uhr + Datum + Wetter (Open-Meteo, kein API-Key)
+- **Orb** als Backdrop mit Follow-Up-State + 5-s Countdown-Ring (`5f0cc00`), Dev-Menu mit IDLE/LISTEN/THINK/SPEAK/LIVE overrides + STOP-Button (`ccb4d6e`)
+- **Design-System** strikt durchgehalten (CSS-Vars, JetBrains Mono, sharp corners ≤ 4 px, Accent-Border + Glow auf Focus/Hover, dezenter 3D-Tilt auf Unfokussierten)
+
+### Umgesetzt (Live-Backend-Wiring)
+- **SystemPanel** live via psutil + GPUtil (CPU/RAM/GPU/Temp/Net/Disk Sparklines, 2 s Tick) (`f70dc46`)
+- **TranscriptPanel + NotificationsPanel** subscribed auf WS-Streams, Fallback auf Mock wenn offline (`97a3f98`)
+- **NotificationsPanel** fed by ProactiveScheduler via EventBus (`647ba65`), Startup-Welcome-Notification per-connection (`48ae0a9`)
+
+### Offen — Panels brauchen noch Backend
+- **AgendaPanel** — aktuell Mock. Verlangt `google-calendar-integration.md` (separate Spec, nicht begonnen).
+- **MailPanel** — aktuell Mock. Verlangt `gmail-integration.md` (separate Spec, nicht begonnen). Gmail-MCP-Tools sind in der Session verfügbar — das könnte der kürzeste Pfad sein.
+- **NowPlayingPanel** — aktuell Mock. Verlangt `spotify-integration.md`.
+- **LightsPanel** — aktuell Mock. Verlangt `govee-led-integration.md`.
+- **DevPanel** — aktuell Mock. Verlangt `dev-toolkit-panels.md` (GitHub PRs, lokale Repos, Docker, CI).
+- **SelfFixPanel** — aktuell Mock. Wäre Teil von `claude-code-integration.md` (Self-Debug-Loop), aber das Spec-File ist mittlerweile überwiegend überholt — siehe dessen eigenen Status-Block.
+
+### Small polish todos — Stand 2026-04-17 nach Streaming-Batch
+- ~~**Sleep-Phrase False-Positive**~~ ✅ **erledigt** — 3-Branch-Logik (exact / ≤4 Tokens / phrase-at-end) in `src/brain/conversation_mode.py`. „Danke für die Info, kannst du…" continued statt geschlossen. 12 neue Tests.
+- ~~**WS-Error-Noise**~~ ✅ **erledigt** — `frontend/src/hooks/useWebSocket.ts`: erste 3 Reconnect-Errors auf `console.debug`, danach exakt einmal `console.warn`, Counter-Reset bei `onopen`. Backend-Restart erzeugt jetzt höchstens eine Info-Zeile.
+- ~~**Subprocess-Zombie beim STOP**~~ ✅ **erledigt durch Streaming-Batch** — kein Subprocess mehr, STOP geht über `chat.abort` ans Gateway-WS. `_cancel_current_turn` ruft `openclaw_client.abort_current_run(session_id, run_id)`.
+- **Console-/Log-Panel im HUD** — Dev-Wunsch (Stand 2026-04-17), eigenes Spec, hier nicht abgedeckt.
+
 ## Summary
 Transform JARVIS from a voice-only assistant into a full Iron Man-style HUD OS tailored for a software engineer. The orb remains the visual centerpiece, but panels float around it providing real-time information: calendar, email, Spotify playback, Govee lighting, GitHub notifications, Docker containers, system metrics, and proactive JARVIS interjections.
 

@@ -1,9 +1,35 @@
 # Feature: Claude Agent SDK Integration & JARVIS Self-Debugging
 
-## Status
-Planned — awaiting implementation authorization
+## Status (Stand 2026-04-17)
 
-## Goal
+**Der LLM-Migrations-Teil ist komplett erledigt — aber über einen anderen Weg als hier ursprünglich spezifiziert (OpenClaw-Gateway statt Claude Agent SDK direkt). Der Self-Debug-Loop ist nicht begonnen und braucht ein frisches, verkürztes Spec wenn er noch gewünscht ist.**
+
+### Erledigt — aber via OpenClaw statt Claude Agent SDK
+Der Migrations-Pfad lief über den `OpenClawClient`-Bridge (`src/integrations/openclaw/`), nicht über das hier spezifizierte `claude-agent-sdk` pip-Paket. Netto-Effekt für JARVIS ist derselbe: weg von der direkten Anthropic-SDK, hin zu einem persistenten Session-basierten LLM-Runtime mit built-in Memory + Tools.
+
+- **`brain/claude_client.py`** — public surface unverändert, Internals routen alle Calls auf `OpenClawClient.query_agent(session=jarvis-main)` (`9208977`)
+- **Persistent Session-Memory** — OpenClaw hält den Kontext unter `jarvis-main` session ID
+- **Persona via workspace-files** — `SOUL.md` + `CAPABILITIES.md` + `IDENTITY.md` werden beim Turn-Start automatisch in den System-Prompt injected (`83526f3`)
+- **Offline-Fallback** — lokalisierte Voice-Message wenn Gateway offline (`9208977`)
+- **Auth** — `claude login` owns durch OpenClaw, kein ANTHROPIC_API_KEY mehr nötig
+- **Utility-Lane vs Main-Lane** — kurze JSON/routing Calls auf ephemere `jarvis-util-*` Sessions so dass Main-Conversation nicht verunreinigt wird (später via Single-Call-Pipeline `39f546d` dramatisch reduziert)
+
+### Offen — Self-Debug-Loop komplett unberührt
+Der eigentliche "killer feature"-Teil dieses Specs ist **nicht begonnen**:
+
+- **Dev-Session-Runner** — separate OpenClaw-Session für destruktive Code-Operationen
+- **Voice-triggered Self-Debug** — "Hey JARVIS, da ist ein Fehler in X" → Problem-Analyse + plain-language Erklärung + Voice-Confirmation („ja"/„soll ich das fixen?") → autonomer Edit + Commit + Test + Reload
+- **Error-Hook auf Logger** — Loguru-Sink der ERROR/CRITICAL Records einqueued für auto-debug
+- **Safety-Rails** — Commits auf `self-fix/*` Branch, pytest + ruff nach jedem Fix, auto-Revert bei Test-Fail, Cooldown pro Error-Signatur
+- **SelfFixPanel-Live-Wiring** — Panel existiert im HUD mit Mock-Daten, braucht WS-Events `self_fix_started/progress/done`
+- **Restart-Strategie** — geklärt als Prozess-Restart via uvicorn-Reloader
+
+### Empfehlung für die nächste Session
+Dieses Spec-File ist 49 kB gross und grossteils überholt. Wenn Self-Debug das Ziel ist:
+1. Dieses File löschen
+2. Frisches, auf OpenClaw-Skills basierendes Spec schreiben: "JARVIS-Self-Debug via OpenClaw Dev-Session + Claude-CLI Code-Tools" — der OpenClaw-Skill-Mechanismus + das built-in Code-Editing von Claude-CLI decken vieles davon direkt ab ohne dass wir Custom-Infra bauen müssen.
+
+## Goal (historisch)
 Replace the raw Anthropic API client in `src/brain/claude_client.py` with the Claude Agent SDK
 (`claude-agent-sdk` pip package), enabling JARVIS to run its conversation intelligence through
 a persistent SDK session. The killer feature unlocked by this change is self-debugging: when the

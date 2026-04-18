@@ -1,7 +1,36 @@
 # Feature Spec: Voice Realism UX
 
-## Status
-Planned — awaiting implementation authorization
+## Status (Stand 2026-04-17 — nach Streaming-Batch)
+
+**Kern „human-feel"-Pipeline jetzt live.** Persistente WebSocket-Verbindung zum OpenClaw-Gateway, Streaming-TTS pro Satz, Barge-In, Backchannels und kontext-sensitive Quick-Acks sind verdrahtet. Latenz pro Turn von ~12 s auf **~6 s zur ersten Audio-Silbe** halbiert (gemessen 5040 ms Time-To-First-Token + ~1 s erste Satz-TTS).
+
+### Umgesetzt — Foundation
+- **Conversation-Mode / Follow-Up-Window** — 18 s Fenster nach jedem Turn (`cf587c1`)
+- **Sleep-Phrases + Closing** — kuratierte Abschiedsphrasen, Sir/Johannes-Rotation (`cf587c1`)
+- **Quick-Ack-Filler** — 8 vorgerenderte MP3s, ~300 ms nach STT (`b748a5a`)
+- **STT auf Deutsch gepinnt** (`2f0cdde`)
+- **Single-Call-Pipeline** (`39f546d`)
+- **Emergency STOP-Button** (`ccb4d6e`)
+
+### Umgesetzt — Streaming-Batch (2026-04-17)
+- **Persistent WebSocket-Streaming-Client** — `src/integrations/openclaw/ws_client.py`. Ed25519-Handshake, Auto-Reconnect mit Backoff, Per-Run-Queue-Fanout, Cumulative→Incremental-Conversion, Stall-Timeout, sauber abortbar. Subprocess-Startup-Overhead (~3.7 s/Turn) komplett eliminiert.
+- **Sentence-by-Sentence Streaming-TTS** — `_run_voice_pipeline_body` füttert Stream-Deltas in `StreamSplitter` (`min_chars=40`); jeder fertige Satz geht direkt an Fish-TTS und broadcastet als eigenes `audio`-Frame. Frontend-Audio-Queue (existiert bereits) spielt sequentiell ab.
+- **Barge-In live** — neue Connection-State `mode="speaking"`. RMS-VAD auf eingehenden Chunks während TTS; nach 150 ms anhaltendem User-Speech: `chat.abort` ans Gateway, neue WS-Message `{"type":"barge_in"}` ans Frontend (clear AudioQueue + `stopAll()` auf den Gain-Nodes), Übergang in `listening`-Mode für die Folge-Utterance. Re-entrancy via `barge_in_pending`-Guard.
+- **Backchannels live** — pre-cached `mhm/ja/ok/verstehe`-MP3s (`data/voice_cache/backchannel_*.mp3`) werden während User-Pause >1.2 s gespielt, mit 3 s Min-Interval. Volume-Hint per `channel: "backchannel"` im Audio-Frame, Frontend setzt GainNode auf 0.3.
+- **Quick-Ack-Routing** — `QuickAckGenerator.should_ack` matcht komplexe Queries („erklär mir wie…") und routet auf `ack_*.mp3` (substantive „Klar.") statt generischem `filler_*.mp3`. Gate via `voice.quick_ack_enabled`.
+- **Sleep-Phrase-False-Positive gefixt** — „Danke für die Info, kannst du noch…" schließt nicht mehr. 3-Branch-Logik: exact / ≤4 Tokens / phrase-at-end (`src/brain/conversation_mode.py`).
+- **Sauberer Shutdown** — Pipeline-Tasks werden vor Runner-Cleanup gecanceled, Clients hart geschlossen, alle Cleanup-Steps mit 5 s Timeout. SIGINT → Prozess-Exit in 2 s mit `JARVIS shutdown complete` + `OpenClaw WS client closed` im Log.
+
+### Offen (Feinschliff, deferred)
+- **Backchannel-Sprache pinned auf „de"** — STT-Sprache ist im Audio-Chunk-Handler aktuell nicht erreichbar; per-Connection-Language-State wäre das Plumbing. Audio-Files sind sprach-neutral genug („mhm") dass es nicht jarrend ist.
+- **Prosody-Kontextsteuerung** (ruhig nachts, wach morgens) — nicht implementiert.
+- **Disfluencies (opt-in)** — config-Flag vorhanden, Logik nicht implementiert.
+- **Natural End-of-Turn-Detection mit Prosodic-Hints** — aktuell nur VAD-Silence.
+- **Phrase-Cache-Treffer tracking** — keine Metriken.
+- **Concurrent-Subscribe-Race in `query_agent_stream`** — low-probability, von Reviewer dokumentiert, deferred.
+
+### Bottleneck nach diesem Batch
+Die ~5 s vor dem ersten Token sind **Claude-API TTFT**, nicht mehr unsere Pipeline. Weitere Reduktion bräuchte ein anderes Modell (Haiku-Tier) für die ersten Tokens oder serverseitige Pre-Warming-Optimierungen.
 
 ## Summary
 Optimize the JARVIS voice interaction pipeline for sub-second perceived latency, natural conversation flow, and token efficiency. The goal is to make voice interactions feel like talking to a real human assistant rather than a chatbot.

@@ -7,4 +7,5 @@
 ### repos auswählen und anhängen
 ### claude code terminal
 ### button zum sprechen optional zum wake up word
-
+### gitlab integration mit workitems etc
+### jarvis soll mich kennen und wissen dass er mir gehört nicht tony stark

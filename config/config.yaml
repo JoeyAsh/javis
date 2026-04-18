@@ -105,10 +105,12 @@ spotify:
   # null lets the API return the currently active device.
   default_device: null
   # OAuth scopes required by the integration.
+  # Note: user-read-currently-playing is implicit in user-read-playback-state;
+  # requesting both causes Spotify to return only the broader one, triggering
+  # a scope-mismatch re-auth loop in spotipy. Keep these two only.
   scopes:
     - "user-read-playback-state"
     - "user-modify-playback-state"
-    - "user-read-currently-playing"
 
 github:
   # Token-gated: requires GITHUB_TOKEN in .env (classic PAT, scopes

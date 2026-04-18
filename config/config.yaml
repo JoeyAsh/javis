@@ -93,6 +93,15 @@ openclaw:
   # Patience between deltas after streaming has begun.
   stream_inter_delta_timeout_seconds: 20
 
+google:
+  # Path where the OAuth token is cached after first-use browser consent.
+  # Tilde is expanded at runtime. Override with GOOGLE_TOKEN_CACHE env var.
+  token_cache_path: "~/.jarvis/google_token.json"
+  # Seconds the user has to complete the interactive browser/console consent
+  # before the flow times out. Applies to the interactive flow only;
+  # silent refresh calls use the google-auth library's default socket timeout.
+  timeout_seconds: 120
+
 persona:
   enabled: true
   salutation_mode: "random"  # "random" | "fixed"

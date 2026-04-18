@@ -181,8 +181,11 @@ function StreamView({ paused }: StreamViewProps): ReactElement {
             Waiting for log stream…
           </div>
         ) : (
-          visible.map((entry) => (
-            <LogRow key={`${entry.timestamp}-${entry.message.slice(0, 16)}`} entry={entry} />
+          visible.map((entry, idx) => (
+            <LogRow
+              key={`${entry.timestamp}-${idx}-${entry.message.slice(0, 16)}`}
+              entry={entry}
+            />
           ))
         )}
       </div>

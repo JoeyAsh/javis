@@ -1,0 +1,19 @@
+[Unit]
+Description=JARVIS Backend (voice pipeline + HUD WS)
+After=network-online.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/paps/Repos/Jarvis
+Environment=PYTHONPATH=src
+ExecStart=/home/paps/Repos/Jarvis/.venv/bin/python -m main
+Restart=always
+RestartSec=3
+StandardOutput=append:/tmp/jarvis-run.log
+StandardError=append:/tmp/jarvis-run.log
+# Increase limits for audio/ML libs
+LimitNOFILE=65536
+
+[Install]
+WantedBy=default.target

@@ -13,7 +13,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioAnalyser } from './hooks/useAudioAnalyser';
 import { useMicStream } from './hooks/useMicStream';
 import { useConversationMode } from './hooks/useConversationMode';
-import type { OrbState } from './types';
+import type { AppOrbState } from './types';
 
 /**
  * Main JARVIS application component.
@@ -30,16 +30,30 @@ export function App(): ReactElement {
 function AppInner(): ReactElement {
   const [muted, setMuted] = useState(false);
   const [idle, setIdle] = useState(false);
-  const [orbOverride, setOrbOverride] = useState<OrbState | null>(null);
+  const [orbOverride, setOrbOverride] = useState<AppOrbState | null>(null);
   const {
     orbState,
-    setOrbState,
     audioQueue,
     consumeAudio,
     wsRef,
     sendCancelTurn,
+    registerStopAudio,
+    notifyAudioPlaying,
+    currentToolSummary,
   } = useWebSocket();
-  const { analyser, isSpeaking, enqueue } = useAudioAnalyser();
+  const { analyser, isSpeaking, enqueue, stopAll } = useAudioAnalyser();
+
+  // Register the audio-stop callback so barge_in messages can stop playback.
+  useEffect(() => {
+    registerStopAudio(stopAll);
+  }, [registerStopAudio, stopAll]);
+
+  // Keep the WS hook informed of actual audio playback state so it can hold
+  // the orb in `speaking` until the last clip finishes, even after the backend
+  // has sent `status=idle`.
+  useEffect(() => {
+    notifyAudioPlaying(isSpeaking);
+  }, [isSpeaking, notifyAudioPlaying]);
   const { resetAll } = useWindowManager();
   const followUp = useConversationMode();
 
@@ -47,27 +61,24 @@ function AppInner(): ReactElement {
   // orb follows the real pipeline (WebSocket → setOrbState). When a
   // follow-up window is active and no explicit state is set, fold that
   // into the orb state so it picks the `follow_up` visual preset.
-  const effectiveOrbState: OrbState =
+  const effectiveOrbState: AppOrbState =
     orbOverride ?? (followUp.active && orbState === 'listening' ? 'follow_up' : orbState);
 
   // Stream raw PCM audio from the browser mic to the backend via WebSocket.
-  // Paused while JARVIS is speaking (to prevent feedback) or while muted.
-  useMicStream({ wsRef, paused: muted || isSpeaking });
+  // Only pause when explicitly muted. Keep streaming during TTS so the
+  // backend barge-in monitor can actually see the user interrupt; echo
+  // is handled by browser AEC (echoCancellation: true) plus the
+  // backend's post-TTS grace window.
+  useMicStream({ wsRef, paused: muted });
 
-  // Feed incoming audio to the audio analyser queue
+  // Feed incoming audio to the audio analyser queue (with per-clip volume).
   useEffect(() => {
     if (audioQueue.length > 0) {
-      enqueue(audioQueue[0]);
+      const item = audioQueue[0];
+      enqueue(item.data, item.volume);
       consumeAudio();
     }
   }, [audioQueue, enqueue, consumeAudio]);
-
-  // When audio finishes playing, transition orb back to idle
-  useEffect(() => {
-    if (!isSpeaking && orbState === 'speaking') {
-      setOrbState('idle');
-    }
-  }, [isSpeaking, orbState, setOrbState]);
 
   // Ctrl+. toggles idle mode
   useEffect(() => {
@@ -102,7 +113,9 @@ function AppInner(): ReactElement {
           ? 'speaking...'
           : effectiveOrbState === 'follow_up'
             ? 'follow-up...'
-            : '';
+            : effectiveOrbState === 'working'
+              ? (currentToolSummary ?? 'working...')
+              : '';
 
   return (
     <div

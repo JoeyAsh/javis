@@ -31,6 +31,10 @@
   --success: #4ce88a;
   --info: #4ca8e8;
 
+  /* Orb working state — amber tint applied via mix-blend-mode:color overlay
+     on the Three.js canvas. Visually separates tool-execution from thinking. */
+  --orb-working: rgba(232, 168, 76, 0.55);
+
   /* Font */
   --font: 'JetBrains Mono', ui-monospace, monospace;
 

@@ -13,8 +13,14 @@ and conversational context all live inside the OpenClaw ``jarvis-main``
 session (``SOUL.md`` + session memory).
 """
 
+from __future__ import annotations
+
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from integrations.openclaw.ws_client import StreamChunk
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent
@@ -92,9 +98,7 @@ class Orchestrator:
         self.orchestrator_model = agents_config.get(
             "orchestrator_model", "claude-opus-4-5"
         )
-        self.orchestrator_max_tokens = agents_config.get(
-            "orchestrator_max_tokens", 150
-        )
+        self.orchestrator_max_tokens = agents_config.get("orchestrator_max_tokens", 150)
         self.skip_on_clear_intent = agents_config.get(
             "skip_orchestrator_on_clear_intent", True
         )
@@ -180,6 +184,84 @@ class Orchestrator:
             )
         )
         return await self._agents["chat"].run(text, {}, language)
+
+    async def process_stream(
+        self,
+        text: str,
+        language: str,
+        intent_result: IntentResult | None = None,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """Stream a single user turn through the agent pipeline.
+
+        Local intents (PC / smart-home / system) run their dedicated agent
+        and emit a single synthetic ``final`` chunk.  Conversational turns
+        delegate to ``openclaw_client.query_agent_stream`` for true streaming.
+
+        Args:
+            text: User input text (STT output).
+            language: Detected language (``"en"`` / ``"de"``).
+            intent_result: Pre-classified intent (optional).
+
+        Yields:
+            :class:`~integrations.openclaw.ws_client.StreamChunk` objects.
+        """
+        from integrations.openclaw.ws_client import StreamChunk  # local import
+
+        # --- Local UI / action commands (no streaming, single result) ----
+        if (
+            intent_result is not None
+            and intent_result.intent in _LOCAL_INTENTS
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            agent_name = _intent_to_agent_name(intent_result.intent)
+            agent = self._agents.get(agent_name)
+            if agent is not None:
+                logger.info(
+                    f"Local dispatch (stream): {agent_name} "
+                    f"(intent={intent_result.intent.value}, "
+                    f"conf={intent_result.confidence:.2f})"
+                )
+                result = await agent.run(text, intent_result.params, language)
+                yield StreamChunk(
+                    type="final",
+                    run_id="local",
+                    new_text=result.spoken_response,
+                    full_text=result.spoken_response,
+                )
+                return
+            logger.warning(
+                f"Local intent {intent_result.intent.value} had no agent wired; "
+                "falling back to chat path"
+            )
+
+        # --- Conversational path (OpenClaw WS streaming) -----------------
+        logger.info(
+            "Chat dispatch (stream): jarvis-main session"
+            + (
+                f" (intent={intent_result.intent.value}, "
+                f"conf={intent_result.confidence:.2f})"
+                if intent_result is not None
+                else ""
+            )
+        )
+
+        from brain.claude_client import _with_language_hint  # local import
+
+        openclaw = self.claude_client.openclaw
+        if openclaw is None:
+            # Fallback: run one-shot chat and emit final chunk.
+            response_text = await self.claude_client.chat(text, language=language)
+            yield StreamChunk(
+                type="final",
+                run_id="chat-fallback",
+                new_text=response_text,
+                full_text=response_text,
+            )
+            return
+
+        prompt = _with_language_hint(text, language)
+        async for chunk in openclaw.query_agent_stream(prompt):
+            yield chunk
 
     def get_agent(self, name: str) -> BaseAgent | None:
         """Return a specific agent by name (``chat`` / ``pc`` / …)."""

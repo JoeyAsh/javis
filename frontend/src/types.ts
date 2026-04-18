@@ -1,3 +1,8 @@
+/**
+ * States that the Three.js orb engine (`lib/orb.ts`) natively understands.
+ * This type is kept in sync with the engine's switch statement — do NOT add
+ * states here unless you also add a corresponding case in `orb.ts`.
+ */
 export type OrbState =
   | 'idle'
   | 'listening'
@@ -10,6 +15,24 @@ export type OrbState =
    * than full `listening` — see `setFollowUp` in ``lib/orb.ts``.
    */
   | 'follow_up';
+
+/**
+ * Full app-layer orb state — a superset of {@link OrbState} that includes
+ * states which are handled above the engine layer (e.g. via CSS overlays or
+ * by remapping to a base engine state before calling `orb.setState`).
+ *
+ * Components and hooks should use `AppOrbState` for their props / return
+ * values; only the `OrbCanvas` → engine boundary uses `OrbState`.
+ */
+export type AppOrbState =
+  | OrbState
+  /**
+   * JARVIS is executing a tool call (file read, shell, edit, etc.) in the
+   * background. Mapped to `thinking` when passed to the orb engine; the
+   * amber CSS mix-blend overlay on `OrbCanvas` provides the visual
+   * distinction. Orb stays `working` while any tool call is in-flight.
+   */
+  | 'working';
 
 // ============ HUD window system ============
 
@@ -73,14 +96,33 @@ export interface ConversationModePayload {
   seconds_remaining: number;
 }
 
+/** Payload for an OpenClaw tool-call lifecycle event. */
+export interface ToolCallPayload {
+  state: 'started' | 'finished';
+  tool_name: string;
+  /** Human-readable description of what the tool is doing, e.g. "Lese config/config.yaml". */
+  summary: string;
+}
+
 export type WsIncoming =
-  | { type: 'audio'; data: string; text: string }
+  | {
+      type: 'audio';
+      data: string;
+      text: string;
+      /** Optional channel tag — ``"backchannel"`` means lower volume (0.3). */
+      channel?: 'backchannel';
+    }
   | { type: 'status'; state: OrbState }
   | { type: 'text'; text: string }
   | { type: 'system'; payload: SystemMetricsPayload }
   | { type: 'transcript'; payload: TranscriptPayload }
   | { type: 'notification'; payload: NotificationPayload }
-  | { type: 'conversation_mode'; payload: ConversationModePayload };
+  | { type: 'conversation_mode'; payload: ConversationModePayload }
+  /** Backend detected user speech during TTS playback. Frontend must clear
+   *  the audio queue and stop any currently playing clip. */
+  | { type: 'barge_in' }
+  /** OpenClaw tool-call lifecycle event. Used to drive the `working` orb state. */
+  | { type: 'tool_call'; payload: ToolCallPayload };
 
 export type WsOutgoing =
   | { type: 'transcript'; text: string; isFinal: boolean }

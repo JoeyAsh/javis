@@ -8,7 +8,7 @@ audio:
   sample_rate: 16000
   chunk_size: 1024
   silence_threshold: 300
-  silence_duration_ms: 1500
+  silence_duration_ms: 2000  # End-of-utterance threshold. 1500ms still cut natural thinking pauses mid-sentence ("…von meinem Jetz,"); 2000ms gives 500ms more grace. Backchannel at 1200ms still fires inside the pause window.
 
 stt:
   model: "small"
@@ -83,6 +83,15 @@ openclaw:
   # `<provider>/<model-id>` convention (e.g. "claude-cli/claude-opus-4-7",
   # "anthropic/claude-sonnet-4-6"). Leave blank to use OpenClaw's default.
   agent_model: "claude-cli/claude-opus-4-7"
+  # Persistent WebSocket streaming — eliminates ~3.7s subprocess startup per turn.
+  # Set to false to fall back to subprocess mode (slower but no WS dependency).
+  streaming_enabled: true
+  # Maximum backoff cap in seconds for WS auto-reconnect.
+  ws_reconnect_max_seconds: 30
+  # Patience before the first token arrives (covers thinking + tool-calls).
+  stream_time_to_first_token_seconds: 60
+  # Patience between deltas after streaming has begun.
+  stream_inter_delta_timeout_seconds: 20
 
 persona:
   enabled: true
@@ -147,7 +156,8 @@ voice:
 
   # Barge-in
   barge_in_enabled: true
-  barge_in_sensitivity_ms: 150
+  barge_in_sensitivity_ms: 300  # 300ms is the sweet spot — 150ms triggered on breath/keys, 400ms missed real "stopp"/"moment" interrupts.
+  barge_in_vad_rms_threshold: 0.003  # Measured from live logs: user's speech peaks at ~0.005 RMS, silence stays at <0.0005. 0.003 catches speech reliably while ignoring ambient noise. Was 0.02 (far too high for this mic gain).
 
   # Backchannels
   backchannels_enabled: true
@@ -185,7 +195,10 @@ voice:
   response_cache_max_size: 100
 
   # Turn detection
-  silence_threshold_ms: 800
+  silence_threshold_ms: 2000  # DEAD CONFIG — never read in Python. Live end-of-utterance is audio.silence_duration_ms (currently 2000). Kept here for documentation parity only.
+  # NOTE: silence_threshold_ms is NOT read by the production ws_server.py pipeline.
+  # The live end-of-utterance duration is audio.silence_duration_ms (currently 1500ms).
+  # This key is preserved here for documentation and future wiring.
   use_prosodic_hints: false
 
   # Phrase cache

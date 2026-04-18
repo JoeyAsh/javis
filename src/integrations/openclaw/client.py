@@ -14,13 +14,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import subprocess
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 import httpx
 
 from utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from integrations.openclaw.ws_client import OpenClawWSClient, StreamChunk
 
 logger = get_logger("openclaw_client")
 
@@ -97,6 +99,8 @@ class OpenClawClient:
                   and legacy aliases (``normal`` → ``medium``,
                   ``none`` → ``off``). Default: ``medium``.
                 - timeout_seconds: Request timeout (default: 30)
+                - streaming_enabled: Use persistent WS streaming (default: True)
+                - ws_reconnect_max_seconds: WS reconnect backoff cap (default: 30)
         """
         self._config = config
         self._gateway_url = config.get("gateway_url", "http://127.0.0.1:18789")
@@ -107,6 +111,8 @@ class OpenClawClient:
         self._timeout = config.get("timeout_seconds", 30)
         self._http: httpx.AsyncClient | None = None
         self._enabled = config.get("enabled", True)
+        self._streaming_enabled = config.get("streaming_enabled", True)
+        self.ws_client: OpenClawWSClient | None = None
 
     @classmethod
     def _normalize_thinking(cls, level: str) -> str:
@@ -174,12 +180,122 @@ class OpenClawClient:
         else:
             logger.info("OpenClaw gateway connection verified")
 
+        # Optionally set up a persistent WS client for streaming.
+        if self._streaming_enabled and self._enabled:
+            await self._init_ws_client()
+
     async def close(self) -> None:
-        """Close HTTP client."""
+        """Close HTTP client and WS client."""
+        if self.ws_client is not None:
+            try:
+                await self.ws_client.close()
+            except Exception as exc:
+                logger.warning(f"WS client close error: {exc}")
+            self.ws_client = None
+
         if self._http:
             await self._http.aclose()
             self._http = None
             logger.debug("OpenClaw client closed")
+
+    async def _init_ws_client(self) -> None:
+        """Attempt to connect the persistent WS client; log and continue on failure."""
+        from integrations.openclaw.ws_client import OpenClawWSClient
+
+        ws_url = self._gateway_url.replace("http://", "ws://").replace(
+            "https://", "wss://"
+        )
+        try:
+            self.ws_client = OpenClawWSClient(
+                gateway_url=ws_url,
+                agent_id="main",
+                time_to_first_token_s=self._config.get(
+                    "stream_time_to_first_token_seconds", 60
+                ),
+                inter_delta_timeout_s=self._config.get(
+                    "stream_inter_delta_timeout_seconds", 20
+                ),
+            )
+            await self.ws_client.connect()
+            logger.info(f"OpenClaw WS streaming client connected to {ws_url}")
+        except Exception as exc:
+            logger.warning(
+                f"OpenClaw WS client failed to connect ({exc}); "
+                "falling back to subprocess mode"
+            )
+            self.ws_client = None
+
+    async def query_agent_stream(
+        self,
+        message: str,
+        session_id: str | None = None,
+        thinking: str | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream agent response chunks.
+
+        Delegates to the persistent WS client when available; otherwise
+        calls :meth:`query_agent` and wraps the result in a single
+        ``final`` :class:`~integrations.openclaw.ws_client.StreamChunk`.
+
+        Args:
+            message: User message.
+            session_id: Session ID (default: configured session).
+            thinking: Thinking level override.
+
+        Yields:
+            :class:`~integrations.openclaw.ws_client.StreamChunk` objects.
+        """
+        from integrations.openclaw.ws_client import StreamChunk  # local import
+
+        session = session_id or self._session_id
+
+        if self.ws_client is not None and self.ws_client.is_connected:
+            think_level = (
+                self._normalize_thinking(thinking) if thinking else self._thinking
+            )
+            async for chunk in self.ws_client.query_agent_stream(
+                message, session_id=session, thinking=think_level
+            ):
+                yield chunk
+            return
+
+        # Fallback: one-shot subprocess call → single final chunk.
+        logger.debug("WS streaming unavailable — falling back to subprocess query")
+        response = await self.query_agent(
+            message, session_id=session, thinking=thinking
+        )
+
+        if response.error:
+            yield StreamChunk(
+                type="error",
+                run_id="subprocess",
+                new_text="",
+                full_text="",
+                error=response.error,
+            )
+        else:
+            yield StreamChunk(
+                type="final",
+                run_id="subprocess",
+                new_text=response.text,
+                full_text=response.text,
+            )
+
+    async def abort_current_run(self, session_id: str, run_id: str) -> None:
+        """Abort a running agent turn via the WS gateway.
+
+        No-op if the WS client is not available.
+
+        Args:
+            session_id: Session containing the run.
+            run_id: The run ID to abort.
+        """
+        if self.ws_client is not None and self.ws_client.is_connected:
+            await self.ws_client.abort(session_id, run_id)
+        else:
+            logger.debug(
+                f"abort_current_run: WS unavailable — no-op for run_id={run_id}"
+            )
 
     async def _is_cli_available(self) -> bool:
         """Check if OpenClaw CLI is installed.

@@ -33,6 +33,14 @@ from utils.logger import get_logger
 
 logger = get_logger("conversation_mode")
 
+_TOKEN_SEP = re.compile(r"[\s,\.\!\?\-—;:]+")
+
+
+def _tokenize(text: str) -> list[str]:
+    """Split *text* on whitespace and punctuation, dropping empty strings."""
+    return [t for t in _TOKEN_SEP.split(text) if t]
+
+
 _DEFAULT_SLEEP_PHRASES: dict[str, list[str]] = {
     "de": [
         "danke",
@@ -101,7 +109,9 @@ class ConversationMode:
         default_factory=lambda: {k: list(v) for k, v in _DEFAULT_SLEEP_PHRASES.items()}
     )
     closing_phrases: dict[str, list[str]] = field(
-        default_factory=lambda: {k: list(v) for k, v in _DEFAULT_CLOSING_PHRASES.items()}
+        default_factory=lambda: {
+            k: list(v) for k, v in _DEFAULT_CLOSING_PHRASES.items()
+        }
     )
     _follow_up_until: float = field(default=0.0, init=False)
 
@@ -142,9 +152,7 @@ class ConversationMode:
         if not self.enabled:
             return
         self._follow_up_until = time.time() + self.window_seconds
-        logger.debug(
-            f"Follow-up window armed for {self.window_seconds:.1f}s"
-        )
+        logger.debug(f"Follow-up window armed for {self.window_seconds:.1f}s")
 
     def end_window(self) -> None:
         """Close the window immediately (e.g. on sleep phrase)."""
@@ -163,9 +171,18 @@ class ConversationMode:
     def detect_sleep_phrase(self, text: str, language: str) -> bool:
         """Return ``True`` iff the user's spoken text signals "we're done".
 
-        Matches are case-insensitive and word-boundary anchored, so
-        ``"danke schon für den hinweis"`` correctly matches ``"danke"``
-        while ``"dankbar"`` would not.
+        A phrase matches only when at least one of three conditions holds:
+
+        1. The normalised utterance is exactly the phrase (standalone).
+        2. The normalised utterance contains ≤ 4 tokens AND the phrase
+           appears in it at a word boundary.
+        3. The phrase appears at the very end of the utterance (terminal
+           position) at a word boundary.
+
+        This prevents mid-sentence occurrences such as
+        ``"Danke für die Info, kannst du noch das Licht anmachen?"``
+        from falsely closing the session.  ``dankbar`` still does not
+        match ``danke`` because all branches use word-boundary anchors.
         """
         if not text:
             return False
@@ -178,18 +195,29 @@ class ConversationMode:
                 "en", []
             )
 
-        normalised = text.lower().strip().rstrip(".!?,")
-        # Exact-ish match: trimmed text equals one of the phrases, OR
-        # text contains the phrase as a whole-word boundary.
+        normalised = text.lower().strip().rstrip(".!?,;—-")
+        tokens = _tokenize(normalised)
+
         for phrase in phrases:
             p = phrase.lower().strip()
             if not p:
                 continue
+
+            # Branch 1: exact match after normalisation.
             if normalised == p:
                 return True
+
             pattern = r"\b" + re.escape(p) + r"\b"
-            if re.search(pattern, normalised):
+
+            # Branch 2: short utterance (≤ 4 tokens) containing the phrase.
+            if len(tokens) <= 4 and re.search(pattern, normalised):
                 return True
+
+            # Branch 3: phrase is terminal — utterance ends with the phrase.
+            end_pattern = pattern + r"\s*$"
+            if re.search(end_pattern, normalised):
+                return True
+
         return False
 
     # ---------------------------------------------------------- closing phrase

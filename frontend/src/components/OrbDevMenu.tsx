@@ -1,11 +1,11 @@
 import type { ReactElement } from 'react';
-import type { OrbState } from '../types';
+import type { AppOrbState } from '../types';
 
 export interface OrbDevMenuProps {
   /** Current override — null means "live" (follow real pipeline). */
-  override: OrbState | null;
+  override: AppOrbState | null;
   /** Called with new override state, or null to return to live mode. */
-  onSet: (override: OrbState | null) => void;
+  onSet: (override: AppOrbState | null) => void;
   /**
    * Optional STOP handler. When supplied, renders an extra button that
    * aborts any in-flight voice turn on the backend. Hidden when omitted.
@@ -14,7 +14,7 @@ export interface OrbDevMenuProps {
 }
 
 interface StateOption {
-  key: OrbState | 'live';
+  key: AppOrbState | 'live';
   label: string;
   title: string;
 }
@@ -24,6 +24,7 @@ const OPTIONS: ReadonlyArray<StateOption> = [
   { key: 'listening', label: 'LISTEN', title: 'Force orb to listening state' },
   { key: 'thinking', label: 'THINK', title: 'Force orb to thinking state' },
   { key: 'speaking', label: 'SPEAK', title: 'Force orb to speaking state' },
+  { key: 'working', label: 'WORK', title: 'Force orb to working state (tool execution)' },
   { key: 'live', label: 'LIVE', title: 'Follow real pipeline state' },
 ];
 
@@ -32,7 +33,7 @@ export function OrbDevMenu({
   onSet,
   onStop,
 }: OrbDevMenuProps): ReactElement {
-  const active: OrbState | 'live' = override ?? 'live';
+  const active: AppOrbState | 'live' = override ?? 'live';
   return (
     <div
       className="orb-devmenu"

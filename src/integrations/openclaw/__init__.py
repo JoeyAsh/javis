@@ -35,9 +35,12 @@ from integrations.openclaw.client import (
     OpenClawNotInstalledError,
     SessionInfo,
 )
+from integrations.openclaw.ws_client import OpenClawWSClient, StreamChunk
 
 __all__ = [
     "OpenClawClient",
+    "OpenClawWSClient",
+    "StreamChunk",
     "AgentResponse",
     "SessionInfo",
     "OpenClawConnectionError",

@@ -42,6 +42,8 @@ def _fresh_state() -> dict[str, Any]:
         "skip_remaining": 0,
         "follow_up_timer_task": None,
         "pipeline_task": None,
+        "current_run_id": None,
+        "current_session_id": None,
     }
 
 

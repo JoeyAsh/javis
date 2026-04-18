@@ -3,13 +3,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 interface UseAudioAnalyserReturn {
   analyser: AnalyserNode | null;
   isSpeaking: boolean;
-  enqueue: (base64Mp3: string) => void;
+  enqueue: (base64Mp3: string, volume?: number) => void;
+  /** Stop the currently playing clip and clear the entire queue. */
+  stopAll: () => void;
 }
 
 /**
  * Hook for decoding and playing back base64 MP3 audio from the backend.
  * Creates an AnalyserNode connected to playback for orb visualization.
  * Manages a queue so clips play sequentially.
+ * Exposes stopAll() so barge-in can instantly silence any in-progress audio.
  */
 export function useAudioAnalyser(): UseAudioAnalyserReturn {
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
@@ -17,8 +20,12 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const queueRef = useRef<string[]>([]);
+  // Queue items carry optional volume so backchannel clips play at 0.3.
+  const queueRef = useRef<Array<{ data: string; volume: number }>>([]);
   const playingRef = useRef(false);
+  // Track the active BufferSourceNode so stopAll can stop it immediately.
+  const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
 
   // Lazily initialize AudioContext (must be after user gesture in some browsers)
   const getAudioContext = useCallback((): AudioContext => {
@@ -38,7 +45,7 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
   const playNext = useCallback(async () => {
     if (playingRef.current || queueRef.current.length === 0) return;
 
-    const base64 = queueRef.current[0];
+    const item = queueRef.current[0];
     playingRef.current = true;
     setIsSpeaking(true);
 
@@ -51,7 +58,7 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
       }
 
       // Decode base64 → ArrayBuffer
-      const binary = atob(base64);
+      const binary = atob(item.data);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) {
         bytes[i] = binary.charCodeAt(i);
@@ -61,47 +68,77 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
 
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
-      // Connect source → analyser (analyser already connected to destination)
-      source.connect(analyserRef.current!);
+
+      // Per-clip gain node for volume control (backchannels at 0.3).
+      const gain = ctx.createGain();
+      gain.gain.value = item.volume;
+      gainRef.current = gain;
+      activeSourceRef.current = source;
+
+      // Connect source → gain → analyser → destination
+      source.connect(gain);
+      const analyserNode = analyserRef.current;
+      if (!analyserNode) return;
+      gain.connect(analyserNode);
 
       source.onended = () => {
+        activeSourceRef.current = null;
+        gainRef.current = null;
         queueRef.current = queueRef.current.slice(1);
         playingRef.current = false;
         if (queueRef.current.length === 0) {
           setIsSpeaking(false);
         } else {
-          playNext();
+          void playNext();
         }
       };
 
       source.start();
     } catch (err) {
       console.error('[audio] playback error:', err);
+      activeSourceRef.current = null;
+      gainRef.current = null;
       queueRef.current = queueRef.current.slice(1);
       playingRef.current = false;
       if (queueRef.current.length === 0) {
         setIsSpeaking(false);
       } else {
-        playNext();
+        void playNext();
       }
     }
   }, [getAudioContext]);
 
   const enqueue = useCallback(
-    (base64Mp3: string) => {
-      queueRef.current = [...queueRef.current, base64Mp3];
-      playNext();
+    (base64Mp3: string, volume = 1.0) => {
+      queueRef.current = [...queueRef.current, { data: base64Mp3, volume }];
+      void playNext();
     },
-    [playNext]
+    [playNext],
   );
+
+  const stopAll = useCallback(() => {
+    // Silence the active source immediately.
+    try {
+      activeSourceRef.current?.stop();
+    } catch {
+      // Already stopped — safe to ignore.
+    }
+    activeSourceRef.current = null;
+    gainRef.current = null;
+    // Clear pending queue.
+    queueRef.current = [];
+    playingRef.current = false;
+    setIsSpeaking(false);
+  }, []);
 
   useEffect(() => {
     return () => {
+      stopAll();
       audioCtxRef.current?.close();
       audioCtxRef.current = null;
       analyserRef.current = null;
     };
-  }, []);
+  }, [stopAll]);
 
-  return { analyser, isSpeaking, enqueue };
+  return { analyser, isSpeaking, enqueue, stopAll };
 }

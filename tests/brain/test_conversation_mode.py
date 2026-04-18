@@ -123,6 +123,106 @@ class TestSleepPhraseDetection:
         assert cm.detect_sleep_phrase("what's the weather", "en") is False
 
 
+class TestSleepPhraseTerminalAndShortUtterance:
+    """Regression suite: mid-sentence phrases must NOT trigger close.
+
+    Rules enforced:
+      1. Exact match → close.
+      2. ≤ 4 tokens containing the phrase → close.
+      3. Phrase at end of utterance → close.
+      Otherwise → do NOT close.
+    """
+
+    # ---- cases that MUST match (return True) --------------------------------
+
+    def test_standalone_danke(self) -> None:
+        """Exact match, single token."""
+        cm = ConversationMode()
+        assert cm.detect_sleep_phrase("danke", "de") is True
+
+    def test_standalone_tschuess(self) -> None:
+        """Exact match with trailing punctuation stripped."""
+        cm = ConversationMode()
+        assert cm.detect_sleep_phrase("tschüss!", "de") is True
+
+    def test_terminal_ok_jarvis_danke(self) -> None:
+        """'danke' is the last token → terminal match."""
+        cm = ConversationMode()
+        assert cm.detect_sleep_phrase("ok jarvis, danke", "de") is True
+
+    def test_short_utterance_danke_dir(self) -> None:
+        """2 tokens, phrase present → short-utterance match."""
+        cm = ConversationMode()
+        assert cm.detect_sleep_phrase("danke dir", "de") is True
+
+    def test_terminal_das_wars_tschuess(self) -> None:
+        """Multi-word phrase terminal: 'das war's, tschüss'."""
+        cm = ConversationMode()
+        assert cm.detect_sleep_phrase("das war's, tschüss", "de") is True
+
+    def test_short_utterance_en_thanks_jarvis(self) -> None:
+        """2-token EN utterance containing 'thanks'."""
+        cm = ConversationMode()
+        assert cm.detect_sleep_phrase("thanks jarvis", "en") is True
+
+    def test_terminal_en_phrase(self) -> None:
+        """'ok, see you' — 'see you' is terminal."""
+        cm = ConversationMode()
+        assert cm.detect_sleep_phrase("ok, see you", "en") is True
+
+    # ---- cases that must NOT match (return False) ---------------------------
+
+    def test_no_match_danke_mid_long_de(self) -> None:
+        """'danke' appears mid-sentence in a long DE utterance → no close."""
+        cm = ConversationMode()
+        assert (
+            cm.detect_sleep_phrase(
+                "Danke für die Info, kannst du noch das Licht anmachen?", "de"
+            )
+            is False
+        )
+
+    def test_no_match_danke_mid_long_de_variant(self) -> None:
+        """Second DE long-utterance variant."""
+        cm = ConversationMode()
+        assert (
+            cm.detect_sleep_phrase(
+                "Danke, dass du mir das erklärst — kannst du mir noch was zeigen?", "de"
+            )
+            is False
+        )
+
+    def test_no_match_danke_mid_conjunction(self) -> None:
+        """'Danke, und kannst du...' — phrase is not terminal, >4 tokens."""
+        cm = ConversationMode()
+        assert (
+            cm.detect_sleep_phrase(
+                "Danke, und kannst du die Lichter bitte einschalten?", "de"
+            )
+            is False
+        )
+
+    def test_no_match_thanks_mid_long_en(self) -> None:
+        """'thanks' in the middle of a long EN sentence."""
+        cm = ConversationMode()
+        assert (
+            cm.detect_sleep_phrase(
+                "thanks for the update, can you also tell me the weather?", "en"
+            )
+            is False
+        )
+
+    def test_no_match_thanks_non_terminal_en(self) -> None:
+        """'thanks' appears but is not terminal; utterance is long."""
+        cm = ConversationMode()
+        assert (
+            cm.detect_sleep_phrase(
+                "I was going to say thanks but actually wait", "en"
+            )
+            is False
+        )
+
+
 class TestClosingPhrase:
     """closing_phrase salutation interpolation."""
 
@@ -411,6 +511,12 @@ async def test_sleep_phrase_short_circuits_pipeline(
             called["orchestrator"] = True
             return SimpleNamespace(spoken_response="should-not-speak")
 
+        async def process_stream(self, **_kwargs: Any):
+            called["orchestrator"] = True
+            from integrations.openclaw.ws_client import StreamChunk
+            yield StreamChunk(type="final", run_id="local",
+                              new_text="should-not-speak", full_text="should-not-speak")
+
     class _FakeIntent:
         async def classify_intent(self, _text: str, _lang: str) -> Any:
             return SimpleNamespace(intent="chat", confidence=1.0)
@@ -434,6 +540,9 @@ async def test_sleep_phrase_short_circuits_pipeline(
         "total_samples": 0,
         "skip_remaining": 0,
         "follow_up_timer_task": None,
+        "pipeline_task": None,
+        "current_run_id": None,
+        "current_session_id": None,
     }
 
     # Feed enough synthetic audio for the length guard (>= 0.5 s at 16 kHz).
@@ -493,10 +602,18 @@ async def test_successful_turn_arms_follow_up(
         async def process(self, **_kwargs: Any) -> Any:
             return SimpleNamespace(spoken_response="Es ist sonnig.")
 
+        async def process_stream(self, **_kwargs: Any):
+            from integrations.openclaw.ws_client import StreamChunk
+            yield StreamChunk(
+                type="final", run_id="local",
+                new_text="Es ist sonnig.", full_text="Es ist sonnig.",
+            )
+
     mod._stt_engine = _FakeSTT()  # type: ignore[assignment]
     mod._fish_tts = _FakeTTS()  # type: ignore[assignment]
     mod._intent_parser = _FakeIntent()  # type: ignore[assignment]
     mod._orchestrator = _FakeOrchestrator()  # type: ignore[assignment]
+    mod._openclaw_client = SimpleNamespace(session_id="jarvis-main")  # type: ignore[assignment]
 
     async def _fast_sleep(_s: float) -> None:
         return None
@@ -513,6 +630,9 @@ async def test_successful_turn_arms_follow_up(
         "total_samples": 0,
         "skip_remaining": 0,
         "follow_up_timer_task": None,
+        "pipeline_task": None,
+        "current_run_id": None,
+        "current_session_id": None,
     }
 
     chunks = [np.zeros(8000, dtype=np.float32), np.zeros(8000, dtype=np.float32)]
@@ -531,11 +651,13 @@ async def test_successful_turn_arms_follow_up(
         cm_frames = [f for f in frames if f["type"] == "conversation_mode"]
         assert cm_frames[-1]["payload"]["active"] is True
 
-        # Two audio frames: the filler (broadcast first) + the real answer.
+        # At least two audio frames: the filler (broadcast first) + the real answer.
         audio_frames = [f for f in frames if f["type"] == "audio"]
-        assert len(audio_frames) == 2
+        assert len(audio_frames) >= 2
         assert audio_frames[0]["text"] == "Moment"
-        assert audio_frames[1]["text"] == "Es ist sonnig."
+        # The response sentence should appear in one of the subsequent audio frames.
+        real_audio = [f for f in audio_frames[1:] if "sonnig" in f.get("text", "")]
+        assert real_audio, "Expected a frame containing the TTS sentence 'Es ist sonnig.'"
     finally:
         timer = mod._connection_state[id(ws)].get("follow_up_timer_task")
         if timer is not None and not timer.done():

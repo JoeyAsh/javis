@@ -1,11 +1,16 @@
 import type { ReactElement } from 'react';
 import { devMock } from '../../mock/devMock';
 import type {
-  DevToolkitMock,
-  RepoSyncStatus,
   CIStatus,
+  DevToolkitMock,
+  GithubCIRunLive,
+  GithubIssueLive,
+  GithubPRLive,
+  GitHubStatePayload,
   PanelMode,
+  RepoSyncStatus,
 } from '../../types';
+import { useGitHubState } from '../../hooks/useGitHubState';
 
 export interface DevPanelProps {
   data?: DevToolkitMock;
@@ -48,7 +53,15 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function SectionHeader({ label, right }: { label: string; right?: string }): ReactElement {
+function SectionHeader({
+  label,
+  right,
+  stale,
+}: {
+  label: string;
+  right?: string;
+  stale?: boolean;
+}): ReactElement {
   return (
     <div
       style={{
@@ -69,52 +82,39 @@ function SectionHeader({ label, right }: { label: string; right?: string }): Rea
         }}
       >
         {label}
+        {stale && (
+          <span
+            style={{
+              marginLeft: 6,
+              fontSize: 8,
+              color: 'var(--warning)',
+              fontWeight: 400,
+              textTransform: 'none',
+              letterSpacing: 0,
+            }}
+          >
+            [stale]
+          </span>
+        )}
       </span>
       {right !== undefined && <span className="mono-small">{right}</span>}
     </div>
   );
 }
 
-function DevCompact({ data }: { data: DevToolkitMock }): ReactElement {
-  const prs = data.prs.length;
-  const dirty = data.repos.filter((r) => r.status === 'dirty' || r.status === 'behind').length;
-  const containers = data.docker.filter((c) => c.status === 'running').length;
-  return (
-    <>
-      <div className="window-compact-row" style={{ gap: 10, fontSize: 11 }}>
-        <span>
-          <span style={{ color: 'var(--accent-bright)', fontWeight: 500 }}>{prs}</span>
-          <span className="mono-small" style={{ marginLeft: 4 }}>PRs</span>
-        </span>
-        <span>
-          <span style={{ color: 'var(--warning)', fontWeight: 500 }}>{dirty}</span>
-          <span className="mono-small" style={{ marginLeft: 4 }}>Repos dirty</span>
-        </span>
-        <span>
-          <span style={{ color: 'var(--success)', fontWeight: 500 }}>{containers}</span>
-          <span className="mono-small" style={{ marginLeft: 4 }}>Containers</span>
-        </span>
-      </div>
-      {data.prs[0] && (
-        <div
-          className="window-compact-row truncate"
-          style={{ fontSize: 10, color: 'var(--text-muted)' }}
-        >
-          {data.prs[0].repo} · {data.prs[0].title}
-        </div>
-      )}
-    </>
-  );
-}
+// ---------------------------------------------------------------------------
+// Live GitHub sub-sections
+// ---------------------------------------------------------------------------
 
-function DevExpanded({ data }: { data: DevToolkitMock }): ReactElement {
+function LivePRList({ prs, stale }: { prs: GithubPRLive[]; stale: boolean }): ReactElement {
   return (
     <>
       <SectionHeader
-        label="GitHub"
-        right={`${data.prs.length} PRs · ${data.notifications.length} notifs`}
+        label="GitHub PRs"
+        right={`${prs.length} open`}
+        stale={stale}
       />
-      {data.prs.map((pr) => (
+      {prs.slice(0, 3).map((pr) => (
         <div className="list-item" key={pr.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
           <div
             style={{
@@ -138,28 +138,235 @@ function DevExpanded({ data }: { data: DevToolkitMock }): ReactElement {
             <span>
               {pr.repo} · {pr.author}
             </span>
-            <span>{pr.age}</span>
+            <span>{relativeTime(pr.updated_at)}</span>
           </div>
         </div>
       ))}
-      {data.notifications.map((nf) => (
-        <div className="list-item" key={nf.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
+      {prs.length === 0 && (
+        <div
+          className="list-item"
+          style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 4 }}
+        >
+          No open PRs
+        </div>
+      )}
+    </>
+  );
+}
+
+function LiveIssueList({
+  issues,
+  stale,
+}: {
+  issues: GithubIssueLive[];
+  stale: boolean;
+}): ReactElement {
+  return (
+    <>
+      <SectionHeader
+        label="GitHub Issues"
+        right={`${issues.length} assigned`}
+        stale={stale}
+      />
+      {issues.slice(0, 3).map((issue) => (
+        <div className="list-item" key={issue.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
           <div
             style={{
-              fontSize: 10,
-              color: 'var(--text-secondary)',
+              fontSize: 11,
+              color: 'var(--text)',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}
           >
-            [{nf.reason}] {nf.title}
+            {issue.title}
           </div>
-          <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>
-            {nf.repo} · {nf.age}
+          <div
+            style={{
+              fontSize: 9,
+              color: 'var(--text-muted)',
+              display: 'flex',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>{issue.repo}</span>
+            <span>{relativeTime(issue.updated_at)}</span>
           </div>
         </div>
       ))}
+      {issues.length === 0 && (
+        <div
+          className="list-item"
+          style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 4 }}
+        >
+          No assigned issues
+        </div>
+      )}
+    </>
+  );
+}
+
+function LiveCIList({ ci, stale }: { ci: GithubCIRunLive[]; stale: boolean }): ReactElement {
+  return (
+    <>
+      <SectionHeader label="CI" stale={stale} />
+      {ci.map((run) => (
+        <div
+          className="list-item"
+          key={run.repo}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            paddingTop: 4,
+            paddingBottom: 4,
+          }}
+        >
+          <span className={ciPillClass(run.status)}>{run.status}</span>
+          <span style={{ fontSize: 11, color: 'var(--text)', flex: 1 }}>{run.repo}</span>
+          <span className="mono-small">{relativeTime(run.ran_at)}</span>
+        </div>
+      ))}
+      {ci.length === 0 && (
+        <div
+          className="list-item"
+          style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 4 }}
+        >
+          No CI runs
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Compact view
+// ---------------------------------------------------------------------------
+
+function DevCompact({
+  data,
+  liveData,
+}: {
+  data: DevToolkitMock;
+  liveData: GitHubStatePayload | null;
+}): ReactElement {
+  const prs = liveData !== null ? liveData.prs.length : data.prs.length;
+  const issues = liveData !== null ? liveData.issues.length : 0;
+  const dirty = data.repos.filter((r) => r.status === 'dirty' || r.status === 'behind').length;
+  const containers = data.docker.filter((c) => c.status === 'running').length;
+
+  const firstPR =
+    liveData !== null ? liveData.prs[0] : data.prs[0];
+
+  return (
+    <>
+      <div className="window-compact-row" style={{ gap: 10, fontSize: 11 }}>
+        <span>
+          <span style={{ color: 'var(--accent-bright)', fontWeight: 500 }}>{prs}</span>
+          <span className="mono-small" style={{ marginLeft: 4 }}>PRs</span>
+        </span>
+        {liveData !== null ? (
+          <span>
+            <span style={{ color: 'var(--warning)', fontWeight: 500 }}>{issues}</span>
+            <span className="mono-small" style={{ marginLeft: 4 }}>Issues</span>
+          </span>
+        ) : (
+          <span>
+            <span style={{ color: 'var(--warning)', fontWeight: 500 }}>{dirty}</span>
+            <span className="mono-small" style={{ marginLeft: 4 }}>Repos dirty</span>
+          </span>
+        )}
+        <span>
+          <span style={{ color: 'var(--success)', fontWeight: 500 }}>{containers}</span>
+          <span className="mono-small" style={{ marginLeft: 4 }}>Containers</span>
+        </span>
+      </div>
+      {firstPR && (
+        <div
+          className="window-compact-row truncate"
+          style={{ fontSize: 10, color: 'var(--text-muted)' }}
+        >
+          {liveData !== null
+            ? `${(firstPR as GithubPRLive).repo} · ${(firstPR as GithubPRLive).title}`
+            : `${data.prs[0]?.repo} · ${data.prs[0]?.title}`}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Expanded view
+// ---------------------------------------------------------------------------
+
+function DevExpanded({
+  data,
+  liveData,
+}: {
+  data: DevToolkitMock;
+  liveData: GitHubStatePayload | null;
+}): ReactElement {
+  return (
+    <>
+      {liveData !== null ? (
+        <>
+          <LivePRList prs={liveData.prs} stale={liveData.stale} />
+          <LiveIssueList issues={liveData.issues} stale={liveData.stale} />
+        </>
+      ) : (
+        <>
+          <SectionHeader
+            label="GitHub"
+            right={`${data.prs.length} PRs · ${data.notifications.length} notifs`}
+          />
+          {data.prs.map((pr) => (
+            <div className="list-item" key={pr.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {pr.title}
+              </div>
+              <div
+                style={{
+                  fontSize: 9,
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span>
+                  {pr.repo} · {pr.author}
+                </span>
+                <span>{pr.age}</span>
+              </div>
+            </div>
+          ))}
+          {data.notifications.map((nf) => (
+            <div className="list-item" key={nf.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-secondary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                [{nf.reason}] {nf.title}
+              </div>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                {nf.repo} · {nf.age}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
 
       <SectionHeader label="Local Repos" />
       {data.repos.map((r) => (
@@ -258,31 +465,55 @@ function DevExpanded({ data }: { data: DevToolkitMock }): ReactElement {
         </div>
       ))}
 
-      <SectionHeader label="CI" />
-      {data.ci.map((run) => (
-        <div
-          className="list-item"
-          key={run.id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            paddingTop: 4,
-            paddingBottom: 4,
-          }}
-        >
-          <span className={ciPillClass(run.status)}>{run.status}</span>
-          <span style={{ fontSize: 11, color: 'var(--text)', flex: 1 }}>{run.repo}</span>
-          <span className="mono-small">{run.duration}</span>
-          <span className="mono-small">{relativeTime(run.ranAt)}</span>
-        </div>
-      ))}
+      {liveData !== null ? (
+        <LiveCIList ci={liveData.ci} stale={liveData.stale} />
+      ) : (
+        <>
+          <SectionHeader label="CI" />
+          {data.ci.map((run) => (
+            <div
+              className="list-item"
+              key={run.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                paddingTop: 4,
+                paddingBottom: 4,
+              }}
+            >
+              <span className={ciPillClass(run.status)}>{run.status}</span>
+              <span style={{ fontSize: 11, color: 'var(--text)', flex: 1 }}>{run.repo}</span>
+              <span className="mono-small">{run.duration}</span>
+              <span className="mono-small">{relativeTime(run.ranAt)}</span>
+            </div>
+          ))}
+        </>
+      )}
     </>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Public export
+// ---------------------------------------------------------------------------
+
+/**
+ * DevPanel — developer toolkit panel for the JARVIS HUD.
+ *
+ * When the backend GitHub poller is running, live PR, issue, and CI data
+ * replaces the mock GitHub/CI sections.  The Local Repos and Docker sections
+ * always use mock data (separate feature).  Mock data is shown for the first
+ * ~2 s while waiting for the first WS frame.
+ */
 export function DevPanel({ data = devMock, mode = 'expanded' }: DevPanelProps): ReactElement {
-  return mode === 'compact' ? <DevCompact data={data} /> : <DevExpanded data={data} />;
+  const { data: liveData } = useGitHubState();
+
+  return mode === 'compact' ? (
+    <DevCompact data={data} liveData={liveData} />
+  ) : (
+    <DevExpanded data={data} liveData={liveData} />
+  );
 }
 
 export default DevPanel;

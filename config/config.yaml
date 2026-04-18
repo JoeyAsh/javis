@@ -110,6 +110,18 @@ spotify:
     - "user-modify-playback-state"
     - "user-read-currently-playing"
 
+github:
+  # Token-gated: requires GITHUB_TOKEN in .env (classic PAT, scopes
+  # repo read + read:org). If the token is missing the poller does NOT
+  # start regardless of this flag. Set repos to the list you want tracked.
+  enabled: true
+  poll_interval_seconds: 60
+  repos:
+    - "JoeyAsh/javis"
+  # Add more repos by extending this list:
+  #   - "owner/repo-a"
+  #   - "owner/repo-b"
+
 google:
   # Path where the OAuth token is cached after first-use browser consent.
   # Tilde is expanded at runtime. Override with GOOGLE_TOKEN_CACHE env var.
@@ -118,6 +130,21 @@ google:
   # before the flow times out. Applies to the interactive flow only;
   # silent refresh calls use the google-auth library's default socket timeout.
   timeout_seconds: 120
+
+calendar:
+  enabled: true
+  poll_interval_seconds: 60
+  lookahead_hours: 48
+  max_events_per_query: 20
+  default_event_duration_minutes: 60
+  op_confirm_timeout_seconds: 60
+  reminder_thresholds_minutes:
+    - 10
+    - 5
+    - 1
+  scopes:
+    - "https://www.googleapis.com/auth/calendar"
+    - "https://www.googleapis.com/auth/calendar.events"
 
 gmail:
   enabled: true

@@ -38,6 +38,16 @@ _EMAIL_INTENTS: frozenset[Intent] = frozenset(
     {Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE}
 )
 
+# Intents that need Calendar context injected before reaching OpenClaw.
+_CALENDAR_INTENTS: frozenset[Intent] = frozenset(
+    {
+        Intent.CALENDAR_LIST,
+        Intent.CALENDAR_CREATE,
+        Intent.CALENDAR_UPDATE,
+        Intent.CALENDAR_DELETE,
+    }
+)
+
 logger = get_logger("orchestrator")
 
 # Confidence threshold above which a local-intent classification is
@@ -228,6 +238,148 @@ class Orchestrator:
 
         return None
 
+    async def _build_calendar_context(
+        self,
+        intent_result: IntentResult,
+    ) -> str | None:
+        """Fetch Calendar context and format it for injection into the prompt.
+
+        Called for all four CALENDAR_* intents. Returns ``None`` when the
+        calendar integration is disabled or the client call fails — the turn
+        is still forwarded to OpenClaw without context.
+
+        Args:
+            intent_result: Classified intent with extracted params.
+
+        Returns:
+            A short multi-line context string, or ``None`` on failure.
+        """
+        try:
+            cfg = get_config()
+            cal_cfg = cfg.get_section("calendar") or {}
+            if not cal_cfg.get("enabled", False):
+                return None
+
+            from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+            from integrations.google.calendar_client import (  # noqa: PLC0415
+                CalendarClientError,
+                get_calendar_client,
+            )
+            from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
+
+            lookahead_hours: int = int(cal_cfg.get("lookahead_hours", 48))
+            max_results: int = int(cal_cfg.get("max_events_per_query", 20))
+            default_duration: int = int(cal_cfg.get("default_event_duration_minutes", 60))
+
+            now = datetime.now(timezone.utc)
+            window_end = now + timedelta(hours=lookahead_hours)
+
+            client = get_calendar_client()
+            events = await client.list_events(
+                calendar_id="primary",
+                start=now,
+                end=window_end,
+                max_results=max_results,
+            )
+
+            intent = intent_result.intent
+            params = intent_result.params
+
+            if intent == Intent.CALENDAR_LIST:
+                if not events:
+                    return "Context — calendar: Keine Termine in den nächsten 48 Stunden."
+                lines = [f"Context — calendar ({len(events)} upcoming events in next 48h):"]
+                for evt in events:
+                    if evt.all_day:
+                        time_label = "(all day)"
+                    else:
+                        time_label = evt.start.strftime("%Y-%m-%d %H:%M UTC")
+                    loc_str = f" @ {evt.location}" if evt.location else ""
+                    lines.append(f"  • [{time_label}] {evt.title}{loc_str} [id={evt.id}]")
+                return "\n".join(lines)
+
+            elif intent == Intent.CALENDAR_CREATE:
+                # Inject context with current events + hint for date parsing.
+                raw_text = params.get("raw_text", intent_result.original_text)
+                title_hint = params.get("title", "")
+                time_expr = params.get("time_expr", "")
+
+                # Attempt to parse date/time from the original utterance.
+                parsed_dt: datetime | None = None
+                try:
+                    import dateparser  # noqa: PLC0415
+
+                    parsed_dt = dateparser.parse(
+                        raw_text,
+                        languages=["de", "en"],
+                        settings={
+                            "PREFER_DATES_FROM": "future",
+                            "RETURN_AS_TIMEZONE_AWARE": True,
+                        },
+                    )
+                except Exception as _dp_exc:
+                    logger.debug(f"dateparser failed: {_dp_exc}")
+
+                parts = [
+                    "Context — calendar create request:",
+                    f"  User said: {raw_text}",
+                ]
+                if title_hint:
+                    parts.append(f"  Detected title: {title_hint}")
+                if parsed_dt:
+                    start_iso = parsed_dt.isoformat()
+                    end_iso = (parsed_dt + timedelta(minutes=default_duration)).isoformat()
+                    parts.append(f"  Parsed start: {start_iso}")
+                    parts.append(f"  Suggested end: {end_iso} (default {default_duration}min)")
+                elif time_expr:
+                    parts.append(f"  Time expression: {time_expr} (could not parse fully)")
+                else:
+                    parts.append(
+                        "  NOTE: Could not parse a specific date/time. "
+                        "Ask the user to clarify, e.g. 'tomorrow at 2pm'."
+                    )
+                parts.append(
+                    "  IMPORTANT: Extract the event title and start/end times "
+                    "from the user's request, then confirm before creating."
+                )
+                return "\n".join(parts)
+
+            elif intent in (Intent.CALENDAR_UPDATE, Intent.CALENDAR_DELETE):
+                action = "update" if intent == Intent.CALENDAR_UPDATE else "delete"
+                if not events:
+                    return (
+                        f"Context — calendar {action}: "
+                        "No upcoming events found to modify."
+                    )
+                lines = [
+                    f"Context — calendar {action} (upcoming events available to target):"
+                ]
+                for evt in events:
+                    if evt.all_day:
+                        time_label = "(all day)"
+                    else:
+                        time_label = evt.start.strftime("%Y-%m-%d %H:%M UTC")
+                    lines.append(
+                        f"  • [{time_label}] {evt.title} [id={evt.id}]"
+                        + (f" (recurring)" if evt.is_recurring else "")
+                    )
+                lines.append(
+                    f"  NOTE: Identify the target event, confirm the {action} "
+                    "action with the user before executing."
+                )
+                if any(e.is_recurring for e in events):
+                    lines.append(
+                        "  NOTE: This only affects this occurrence, "
+                        "not the full recurring series."
+                    )
+                return "\n".join(lines)
+
+        except Exception as exc:
+            logger.warning(f"Calendar context build failed: {exc}")
+
+        return None
+
     async def process(
         self,
         text: str,
@@ -285,6 +437,10 @@ class Orchestrator:
             email_ctx = await self._build_email_context(intent_result)
             if email_ctx:
                 prompt_text = f"{email_ctx}\n\nUser: {text}"
+        elif intent_result is not None and intent_result.intent in _CALENDAR_INTENTS:
+            cal_ctx = await self._build_calendar_context(intent_result)
+            if cal_ctx:
+                prompt_text = f"{cal_ctx}\n\nUser: {text}"
 
         return await self._agents["chat"].run(prompt_text, {}, language)
 
@@ -357,6 +513,10 @@ class Orchestrator:
             email_ctx = await self._build_email_context(intent_result)
             if email_ctx:
                 prompt_text = f"{email_ctx}\n\nUser: {text}"
+        elif intent_result is not None and intent_result.intent in _CALENDAR_INTENTS:
+            cal_ctx = await self._build_calendar_context(intent_result)
+            if cal_ctx:
+                prompt_text = f"{cal_ctx}\n\nUser: {text}"
 
         openclaw = self.claude_client.openclaw
         if openclaw is None:

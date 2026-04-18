@@ -1,884 +1,591 @@
-# Feature Spec: Google Calendar Integration
+# Feature: Google Calendar Integration
 
-## Summary
-Enable JARVIS to manage Google Calendar events via voice: list upcoming events, create new events from natural language, update event times, and delete/cancel events.
+## Status
+Planned — awaiting implementation authorization
 
-## Goals
-- List events for today/tomorrow/this week via voice
-- Create events from natural language ("meeting with Bob tomorrow at 2pm")
-- Update event times/details
-- Delete/cancel events
-- Establish CalendarProvider protocol for multi-provider support
+## Goal
+Give JARVIS live read and write access to the user's Google Calendar: list upcoming events
+(today / this week), create events from natural-language voice commands, update and delete
+existing events with verbal confirmation, and surface the next event proactively 10, 5, and
+1 minute before it begins. The AgendaPanel currently renders mock data; this feature wires it
+to real events pushed by a backend poller.
 
-## Non-Goals
+## Scope
+### In scope
+- `src/integrations/google/calendar_client.py` — `GoogleCalendarClient` lazy singleton
+  (mirrors `GmailClient` / `get_gmail_client` factory pattern; uses
+  `get_google_oauth_service().build_service("calendar", "v3", scopes=...)`)
+- `CalendarEvent` dataclass in `src/integrations/google/calendar_client.py` (no
+  `CalendarProvider` protocol — Google-only, no abstraction needed)
+- Intent parser additions: `CALENDAR_LIST`, `CALENDAR_CREATE`, `CALENDAR_UPDATE`,
+  `CALENDAR_DELETE` (en + de keywords)
+- Orchestrator calendar context injection (`_build_calendar_context`) for the four
+  calendar intents, mirroring `_build_email_context`
+- `src/api/ws_server.py` additions:
+  - `broadcast_calendar_state(events, date_label)` broadcaster
+  - `_start_calendar_poller(poll_interval)` background coroutine (60 s default)
+  - `_handle_calendar_confirm(ws, text)` — confirmation gate for create/update/delete
+  - `get_calendar_client()` lazy proxy (mirrors `get_gmail_client()`)
+  - Per-connection `pending_calendar_op` state (mirrors `pending_email_send`)
+- `CalendarEventConfirmPreviewPayload` and `CalendarOpDonePayload` WS message types
+  added to `frontend/src/types.ts`; `WsIncoming` union extended with
+  `calendar_state`, `calendar_op_preview`, `calendar_op_done`
+- `subscribeCalendarState`, `subscribeCalendarOpPreview`, `subscribeCalendarOpDone`
+  added to `useWebSocket`
+- `AgendaPanel.tsx` wired to live `calendar_state` events (drop `agendaMock` default)
+- ProactiveScheduler integration: calendar poller publishes
+  `calendar_event_approaching` events (at 10, 5, 1 minutes before start) to
+  `EventBus`; existing `_handle_calendar_event` in `ProactiveScheduler` handles them
+  (no changes to `proactive.py`)
+- Natural-language date parsing via `dateparser` library for create/update intents
+  (delta expressions: "tomorrow 2pm", "in 3 hours", "Friday 10am")
+- All-day event support (API `date` vs `dateTime` field handling)
+- `config/config.yaml` — new `calendar:` section
+- `requirements.txt` — add `dateparser` if not already present
+- Tests: `tests/integrations/google/test_calendar_client.py`,
+  `tests/api/test_calendar_poller.py`, `tests/brain/test_calendar_intent.py`,
+  `frontend/src/hooks/__tests__/useWebSocket.calendar.test.ts`
+
+### Out of scope
+- iCloud / CalDAV integration (explicitly dropped; no `CalendarProvider` protocol)
 - Recurring event creation (MVP: single events only)
-- Invitation management (accept/decline)
+- Invitation accept / decline
 - Multiple Google accounts
-- Calendar sharing/permissions
-- Video conferencing link generation
+- Video conferencing link insertion
+- CalDAV self-hosted calendars
+- Natural-language duration parsing beyond "for N hours / N minutes" at MVP
+- Free-busy conflict detection
 
----
+## User Flow
 
-## Technical Design
+**List events**
+1. User says "What's on my calendar today?" or "Was steht morgen an?"
+2. Orchestrator detects `CALENDAR_LIST`, calls `_build_calendar_context`, fetches
+   next 24–48 h of events from `GoogleCalendarClient.list_events`.
+3. OpenClaw turns the structured context into a natural spoken summary.
+4. Simultaneously the frontend's AgendaPanel already shows live events from the
+   last poller push.
 
-### Dependencies
-Requires `google-oauth-shared.md` to be implemented first.
+**Create event (with confirmation)**
+1. User says "Schedule a meeting with Bob tomorrow at 2pm."
+2. Orchestrator detects `CALENDAR_CREATE`. `dateparser` parses "tomorrow at 2pm" →
+   `datetime`. End time defaults to start + 1 h.
+3. Backend broadcasts `calendar_op_preview` (type, title, start, end) to frontend
+   HUD and speaks: "Create 'Meeting with Bob' tomorrow at 14:00 for one hour. Confirm?"
+4. `pending_calendar_op` is set on the connection with a 60 s TTL.
+5. Next utterance passes through `_handle_calendar_confirm`:
+   - Confirm word → `GoogleCalendarClient.create_event()` fires, `calendar_op_done`
+     broadcast, `calendar_state` refresh broadcast, JARVIS speaks confirmation.
+   - Cancel word → op discarded, `calendar_op_done{success:false}` broadcast.
+   - Timeout → state cleared, notification broadcast, turn processed normally.
+6. AgendaPanel refreshes from next poll (or immediately from the forced re-broadcast
+   after the confirmed write).
 
-### File Structure
+**Update event**
+Same flow as create: JARVIS reads back the target event (resolved from
+`_build_calendar_context` using the connection's last-known event list), proposes
+the change, waits for confirmation, then calls `update_event`.
+
+**Delete event**
+Same flow: resolves event, speaks "Delete 'X' at 14:00 tomorrow. Confirm?", waits,
+calls `delete_event` on confirm.
+
+**Proactive reminder**
+1. Calendar poller runs every 60 s. After each successful fetch it computes
+   `minutes_until_start` for all events in the next 12 h.
+2. At exactly 10, 5, and 1 minutes before any event, it publishes
+   `Event(type="calendar_event_approaching", payload={"title": ..., "starts_in_minutes": N})`
+   to the `EventBus`.
+3. `ProactiveScheduler._handle_calendar_event` (already wired) fires TTS and the
+   HUD notification. No changes to `proactive.py`.
+
+## Architecture
+
+### Modules touched
+- Backend:
+  - `src/integrations/google/calendar_client.py` (new)
+  - `src/integrations/google/__init__.py` (export `GoogleCalendarClient`,
+    `CalendarEvent`, `CalendarClientError`, `get_calendar_client`)
+  - `src/brain/intent_parser.py` (add four `CALENDAR_*` intents + keywords)
+  - `src/brain/orchestrator.py` (add `_build_calendar_context`,
+    extend `_EMAIL_INTENTS`-pattern to `_CALENDAR_INTENTS`)
+  - `src/api/ws_server.py` (add broadcaster, poller, confirm handler, lazy proxy,
+    per-connection state)
+- Frontend:
+  - `frontend/src/types.ts` (new payload types + union variants)
+  - `frontend/src/hooks/useWebSocket.ts` (three new subscribers)
+  - `frontend/src/components/panels/AgendaPanel.tsx` (drop `agendaMock`, accept live
+    data via prop; caller in `App.tsx` provides data from `subscribeCalendarState`)
+- Config:
+  - `config/config.yaml` — `calendar:` section (see Interfaces)
+- Env:
+  - No new env vars; OAuth reuses `GOOGLE_OAUTH_CLIENT_ID`,
+    `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_TOKEN_CACHE`
+
+### Data flow
+
 ```
-src/integrations/calendar/
-  __init__.py
-  base.py               # CalendarProvider protocol + CalendarEvent (this spec)
+[Google Calendar API]
+       ↑ (every 60 s via asyncio.to_thread)
+[GoogleCalendarClient.list_events]
+       |
+       ├─→ broadcast_calendar_state(events) ──→ [WS: calendar_state] ──→ AgendaPanel
+       |
+       └─→ EventBus.publish(calendar_event_approaching) at 10/5/1 min
+                   ↓
+           [ProactiveScheduler._handle_calendar_event]
+                   ↓
+           TTS + broadcast_notification
 
-src/integrations/google/
-  calendar_client.py    # Google Calendar API wrapper (this spec)
-
-src/brain/agents/
-  calendar_agent.py     # Calendar agent (this spec)
+Voice turn (CALENDAR_CREATE / _UPDATE / _DELETE):
+[STT transcript]
+       ↓
+[_handle_calendar_confirm] ← checks pending_calendar_op on connection
+       ↓ (not pending — fresh command)
+[IntentParser] → CALENDAR_LIST / _CREATE / _UPDATE / _DELETE
+       ↓
+[Orchestrator._build_calendar_context] → GoogleCalendarClient.list_events
+       ↓
+[OpenClaw chat (context-injected)] → generates spoken summary OR extract op params
+       ↓
+   if mutating op:
+       ↓
+[ws_server] sets pending_calendar_op, broadcasts calendar_op_preview, speaks confirm prompt
+       ↓
+[next STT turn → _handle_calendar_confirm]
+       ↓ confirm
+[GoogleCalendarClient.create/update/delete_event]
+       ↓
+broadcast_calendar_state (refresh) + broadcast_calendar_op_done + TTS
 ```
 
-### CalendarProvider Protocol
+### Interfaces
+
+**Python — `src/integrations/google/calendar_client.py`**
 
 ```python
-# src/integrations/calendar/base.py
-
-from typing import Protocol, runtime_checkable
-from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum
-
-class CalendarProviderType(Enum):
-    GOOGLE = "google"
-    # ICLOUD = "icloud"  # REMOVED (iCloud dropped in Revision 3)
-
-@dataclass
-class CalendarInfo:
-    """Represents a calendar."""
-    id: str
-    name: str
-    provider: CalendarProviderType
-    is_primary: bool = False
-    color: str | None = None
-    writable: bool = True
+CALENDAR_SCOPES: list[str]  # ["https://www.googleapis.com/auth/calendar",
+                             #  "https://www.googleapis.com/auth/calendar.events"]
 
 @dataclass
 class CalendarEvent:
-    """Represents a calendar event."""
     id: str
     calendar_id: str
     title: str
     start: datetime
     end: datetime
-    provider: CalendarProviderType
-    all_day: bool = False
-    location: str | None = None
-    description: str | None = None
-    attendees: list[str] = field(default_factory=list)
-    is_recurring: bool = False
-    recurrence_rule: str | None = None
+    all_day: bool
+    location: str | None
+    description: str | None
+    attendees: list[str]
+    is_recurring: bool
 
-    @property
-    def duration_minutes(self) -> int:
-        """Calculate event duration in minutes."""
-        return int((self.end - self.start).total_seconds() / 60)
+class CalendarClientError(Exception):
+    spoken_message: str
 
-    def to_voice_string(self, language: str = "en") -> str:
-        """Format event for voice output."""
-        time_str = self.start.strftime("%I:%M %p").lstrip("0")
-        if language == "de":
-            time_str = self.start.strftime("%H:%M")
-            return f"{time_str} Uhr, {self.title}"
-        return f"At {time_str}, {self.title}"
-
-@runtime_checkable
-class CalendarProvider(Protocol):
-    """Protocol for calendar providers (Google only in MVP; iCloud dropped)."""
-
-    @property
-    def provider_type(self) -> CalendarProviderType:
-        """Return the provider type."""
-        ...
-
-    async def list_calendars(self) -> list[CalendarInfo]:
-        """List available calendars.
-
-        Returns:
-            List of CalendarInfo objects
-        """
-        ...
-
+class GoogleCalendarClient:
+    def __init__(self, oauth_service: GoogleOAuthService) -> None: ...
+    async def _get_service(self) -> Any: ...  # lazy, asyncio.Lock guarded
     async def list_events(
         self,
-        calendar_id: str | None = None,
+        calendar_id: str = "primary",
         start: datetime | None = None,
         end: datetime | None = None,
         max_results: int = 20,
-    ) -> list[CalendarEvent]:
-        """List events in time range.
-
-        Args:
-            calendar_id: Specific calendar (None = primary)
-            start: Start of time range (default: now)
-            end: End of time range (default: 7 days from now)
-            max_results: Maximum events to return
-
-        Returns:
-            List of CalendarEvent objects sorted by start time
-        """
-        ...
-
-    async def get_event(
-        self,
-        calendar_id: str,
-        event_id: str,
-    ) -> CalendarEvent:
-        """Get a single event by ID.
-
-        Args:
-            calendar_id: Calendar containing the event
-            event_id: Event ID
-
-        Returns:
-            CalendarEvent object
-
-        Raises:
-            EventNotFoundError: If event doesn't exist
-        """
-        ...
-
+    ) -> list[CalendarEvent]: ...
     async def create_event(
         self,
-        calendar_id: str,
         title: str,
         start: datetime,
         end: datetime,
+        calendar_id: str = "primary",
         location: str | None = None,
         description: str | None = None,
-        attendees: list[str] | None = None,
-    ) -> CalendarEvent:
-        """Create a new event.
-
-        Args:
-            calendar_id: Target calendar
-            title: Event title
-            start: Start datetime
-            end: End datetime
-            location: Optional location
-            description: Optional description
-            attendees: Optional list of attendee emails
-
-        Returns:
-            Created CalendarEvent object
-        """
-        ...
-
+    ) -> CalendarEvent: ...
     async def update_event(
         self,
-        calendar_id: str,
         event_id: str,
+        calendar_id: str = "primary",
         title: str | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
         location: str | None = None,
-        description: str | None = None,
-    ) -> CalendarEvent:
-        """Update an existing event.
-
-        Args:
-            calendar_id: Calendar containing the event
-            event_id: Event to update
-            **kwargs: Fields to update (None = keep existing)
-
-        Returns:
-            Updated CalendarEvent object
-        """
-        ...
-
+    ) -> CalendarEvent: ...
     async def delete_event(
         self,
-        calendar_id: str,
         event_id: str,
-    ) -> bool:
-        """Delete an event.
+        calendar_id: str = "primary",
+    ) -> None: ...
 
-        Args:
-            calendar_id: Calendar containing the event
-            event_id: Event to delete
+_calendar_client: GoogleCalendarClient | None  # module-level singleton
 
-        Returns:
-            True if deleted successfully
-        """
-        ...
+def get_calendar_client() -> GoogleCalendarClient: ...
 ```
 
-### GoogleCalendarClient
+**Python — `src/api/ws_server.py` additions**
 
 ```python
-# src/integrations/google/calendar_client.py
+def get_calendar_client() -> Any: ...  # proxy to integrations.google.calendar_client.get_calendar_client
 
-from integrations.calendar.base import (
-    CalendarProvider,
-    CalendarProviderType,
-    CalendarInfo,
-    CalendarEvent,
-)
-from integrations.google.oauth import GoogleOAuthService
+async def broadcast_calendar_state(
+    events: list[dict[str, Any]],
+    date_label: str,
+) -> None: ...
 
-class GoogleCalendarClient(CalendarProvider):
-    """Google Calendar API client implementing CalendarProvider."""
+async def broadcast_calendar_op_preview(payload: dict[str, Any]) -> None: ...
+async def broadcast_calendar_op_done(payload: dict[str, Any]) -> None: ...
 
-    def __init__(self, oauth_service: GoogleOAuthService) -> None:
-        """Initialize Google Calendar client.
-
-        Args:
-            oauth_service: Shared Google OAuth service
-        """
-        self.oauth = oauth_service
-        self._service = None
-
-    @property
-    def provider_type(self) -> CalendarProviderType:
-        return CalendarProviderType.GOOGLE
-
-    async def _get_service(self):
-        """Get or create Google Calendar API service."""
-        if self._service is None:
-            creds = await self.oauth.get_credentials()
-            self._service = build("calendar", "v3", credentials=creds)
-        return self._service
-
-    async def list_calendars(self) -> list[CalendarInfo]:
-        """List user's calendars."""
-        service = await self._get_service()
-        result = service.calendarList().list().execute()
-
-        calendars = []
-        for item in result.get("items", []):
-            calendars.append(CalendarInfo(
-                id=item["id"],
-                name=item.get("summary", "Untitled"),
-                provider=CalendarProviderType.GOOGLE,
-                is_primary=item.get("primary", False),
-                color=item.get("backgroundColor"),
-                writable=item.get("accessRole") in ("owner", "writer"),
-            ))
-        return calendars
-
-    async def list_events(
-        self,
-        calendar_id: str | None = None,
-        start: datetime | None = None,
-        end: datetime | None = None,
-        max_results: int = 20,
-    ) -> list[CalendarEvent]:
-        """List events in time range."""
-        service = await self._get_service()
-
-        calendar_id = calendar_id or "primary"
-        start = start or datetime.now()
-        end = end or start + timedelta(days=7)
-
-        result = service.events().list(
-            calendarId=calendar_id,
-            timeMin=start.isoformat() + "Z",
-            timeMax=end.isoformat() + "Z",
-            maxResults=max_results,
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute()
-
-        events = []
-        for item in result.get("items", []):
-            events.append(self._parse_event(item, calendar_id))
-        return events
-
-    def _parse_event(self, item: dict, calendar_id: str) -> CalendarEvent:
-        """Parse Google Calendar API event to CalendarEvent."""
-        # Handle all-day vs timed events
-        start_data = item.get("start", {})
-        end_data = item.get("end", {})
-
-        if "date" in start_data:
-            # All-day event
-            start = datetime.fromisoformat(start_data["date"])
-            end = datetime.fromisoformat(end_data["date"])
-            all_day = True
-        else:
-            start = datetime.fromisoformat(
-                start_data["dateTime"].replace("Z", "+00:00")
-            )
-            end = datetime.fromisoformat(
-                end_data["dateTime"].replace("Z", "+00:00")
-            )
-            all_day = False
-
-        return CalendarEvent(
-            id=item["id"],
-            calendar_id=calendar_id,
-            title=item.get("summary", "Untitled"),
-            start=start,
-            end=end,
-            provider=CalendarProviderType.GOOGLE,
-            all_day=all_day,
-            location=item.get("location"),
-            description=item.get("description"),
-            attendees=[a.get("email") for a in item.get("attendees", [])],
-            is_recurring="recurrence" in item,
-            recurrence_rule=item.get("recurrence", [None])[0],
-        )
-
-    async def create_event(
-        self,
-        calendar_id: str,
-        title: str,
-        start: datetime,
-        end: datetime,
-        location: str | None = None,
-        description: str | None = None,
-        attendees: list[str] | None = None,
-    ) -> CalendarEvent:
-        """Create a new event."""
-        service = await self._get_service()
-
-        event_body = {
-            "summary": title,
-            "start": {"dateTime": start.isoformat(), "timeZone": "UTC"},
-            "end": {"dateTime": end.isoformat(), "timeZone": "UTC"},
-        }
-
-        if location:
-            event_body["location"] = location
-        if description:
-            event_body["description"] = description
-        if attendees:
-            event_body["attendees"] = [{"email": e} for e in attendees]
-
-        result = service.events().insert(
-            calendarId=calendar_id,
-            body=event_body,
-        ).execute()
-
-        return self._parse_event(result, calendar_id)
-
-    async def update_event(
-        self,
-        calendar_id: str,
-        event_id: str,
-        title: str | None = None,
-        start: datetime | None = None,
-        end: datetime | None = None,
-        location: str | None = None,
-        description: str | None = None,
-    ) -> CalendarEvent:
-        """Update an existing event."""
-        service = await self._get_service()
-
-        # Get existing event
-        existing = service.events().get(
-            calendarId=calendar_id,
-            eventId=event_id,
-        ).execute()
-
-        # Update fields
-        if title is not None:
-            existing["summary"] = title
-        if start is not None:
-            existing["start"] = {"dateTime": start.isoformat(), "timeZone": "UTC"}
-        if end is not None:
-            existing["end"] = {"dateTime": end.isoformat(), "timeZone": "UTC"}
-        if location is not None:
-            existing["location"] = location
-        if description is not None:
-            existing["description"] = description
-
-        result = service.events().update(
-            calendarId=calendar_id,
-            eventId=event_id,
-            body=existing,
-        ).execute()
-
-        return self._parse_event(result, calendar_id)
-
-    async def delete_event(
-        self,
-        calendar_id: str,
-        event_id: str,
-    ) -> bool:
-        """Delete an event."""
-        service = await self._get_service()
-        service.events().delete(
-            calendarId=calendar_id,
-            eventId=event_id,
-        ).execute()
-        return True
+async def _handle_calendar_confirm(ws: web.WebSocketResponse, text: str) -> bool: ...
+async def _start_calendar_poller(poll_interval: int) -> None: ...
 ```
 
-### CalendarAgent
+**Python — `src/brain/intent_parser.py` additions**
 
-```python
-# src/brain/agents/calendar_agent.py
-
-from datetime import datetime, timedelta
-from brain.agents.base import AgentResult, BaseAgent
-from brain.claude_client import ClaudeClient
-from integrations.calendar.base import CalendarProvider, CalendarEvent
-
-class CalendarAgent(BaseAgent):
-    """Agent for calendar operations."""
-
-    def __init__(
-        self,
-        claude_client: ClaudeClient,
-        providers: list[CalendarProvider],
-    ) -> None:
-        """Initialize calendar agent.
-
-        Args:
-            claude_client: Claude client for NL parsing
-            providers: List of calendar providers (Google only; via OpenClaw)
-        """
-        super().__init__()
-        self.claude_client = claude_client
-        self.providers = providers
-        self._recent_events: list[CalendarEvent] = []  # For "delete the 2pm meeting"
-
-    async def run(
-        self,
-        task: str,
-        params: dict[str, Any],
-        language: str,
-    ) -> AgentResult:
-        """Execute calendar action."""
-        action = params.get("action", "list")
-
-        if action == "list":
-            return await self._handle_list(task, params, language)
-        elif action == "create":
-            return await self._handle_create(task, params, language)
-        elif action == "update":
-            return await self._handle_update(task, params, language)
-        elif action == "delete":
-            return await self._handle_delete(task, params, language)
-        else:
-            return await self._handle_list(task, params, language)
-
-    async def _handle_list(
-        self,
-        task: str,
-        params: dict[str, Any],
-        language: str,
-    ) -> AgentResult:
-        """Handle listing events."""
-        # Determine time range
-        start, end = self._parse_time_range(params)
-
-        # Gather events from all providers
-        all_events: list[CalendarEvent] = []
-        for provider in self.providers:
-            events = await provider.list_events(start=start, end=end)
-            all_events.extend(events)
-
-        # Sort by start time
-        all_events.sort(key=lambda e: e.start)
-        self._recent_events = all_events  # Cache for reference
-
-        if not all_events:
-            return AgentResult(
-                spoken_response=self._no_events_response(start, end, language),
-                success=True,
-                data={"count": 0},
-            )
-
-        # Generate voice response
-        response = self._generate_list_response(all_events, language)
-
-        return AgentResult(
-            spoken_response=response,
-            success=True,
-            data={"count": len(all_events)},
-        )
-
-    async def _handle_create(
-        self,
-        task: str,
-        params: dict[str, Any],
-        language: str,
-    ) -> AgentResult:
-        """Handle creating an event from natural language."""
-        # Use Claude to parse natural language into event details
-        parsed = await self._parse_event_from_nl(task, language)
-
-        if not parsed.get("title") or not parsed.get("start"):
-            return AgentResult(
-                spoken_response=self._clarify_response(parsed, language),
-                success=False,
-                data={"needs_clarification": True, "parsed": parsed},
-            )
-
-        # Use first writable provider (Google by default)
-        provider = self._get_default_provider()
-        calendar_id = params.get("calendar_id", "primary")
-
-        event = await provider.create_event(
-            calendar_id=calendar_id,
-            title=parsed["title"],
-            start=parsed["start"],
-            end=parsed.get("end", parsed["start"] + timedelta(hours=1)),
-            location=parsed.get("location"),
-        )
-
-        return AgentResult(
-            spoken_response=self._create_confirmation(event, language),
-            success=True,
-            data={"event_id": event.id},
-        )
-
-    async def _parse_event_from_nl(
-        self,
-        text: str,
-        language: str,
-    ) -> dict[str, Any]:
-        """Use Claude to parse natural language into event details."""
-        now = datetime.now()
-
-        prompt = f"""Parse this calendar request into structured data.
-Current datetime: {now.isoformat()}
-
-User request: "{text}"
-
-Return JSON with:
-- title: event title (required)
-- start: ISO datetime string (required)
-- end: ISO datetime string (optional, default 1 hour after start)
-- location: string (optional)
-- attendees: list of names/emails (optional)
-
-Examples:
-- "meeting with Bob tomorrow at 2pm" -> {{"title": "Meeting with Bob", "start": "2024-01-16T14:00:00"}}
-- "dentist appointment Friday 10am for 2 hours" -> {{"title": "Dentist appointment", "start": "2024-01-19T10:00:00", "end": "2024-01-19T12:00:00"}}
-
-Return only valid JSON, no explanation."""
-
-        response = await self.claude_client.complete(
-            prompt=prompt,
-            max_tokens=150,
-            temperature=0.3,
-        )
-
-        try:
-            # Parse JSON from response
-            response = response.strip()
-            if response.startswith("```"):
-                response = response.split("```")[1].lstrip("json\n")
-            return json.loads(response)
-        except json.JSONDecodeError:
-            return {"raw": text}
-
-    def _generate_list_response(
-        self,
-        events: list[CalendarEvent],
-        language: str,
-    ) -> str:
-        """Generate spoken response for event list."""
-        # Group by day
-        by_day: dict[str, list[CalendarEvent]] = {}
-        for event in events:
-            day_key = event.start.strftime("%A")  # "Monday", "Tuesday", etc.
-            by_day.setdefault(day_key, []).append(event)
-
-        parts = []
-        for day, day_events in by_day.items():
-            if language == "de":
-                day_intro = f"Am {day} haben Sie {len(day_events)} Termine."
-            else:
-                day_intro = f"On {day} you have {len(day_events)} event{'s' if len(day_events) > 1 else ''}."
-
-            event_strs = [e.to_voice_string(language) for e in day_events[:3]]
-            parts.append(f"{day_intro} {', '.join(event_strs)}")
-
-        return " ".join(parts)
-```
-
-### Intent Parser Updates
-
-Add to `Intent` enum:
 ```python
 class Intent(Enum):
     # ... existing ...
-    CALENDAR_LIST = "calendar_list"
+    CALENDAR_LIST   = "calendar_list"
     CALENDAR_CREATE = "calendar_create"
     CALENDAR_UPDATE = "calendar_update"
     CALENDAR_DELETE = "calendar_delete"
 ```
 
-Add to `INTENT_KEYWORDS`:
-```python
-Intent.CALENDAR_LIST: {
-    "en": [
-        r"\b(what('s| is)|show|check|list)\s+(on\s+)?(my\s+)?(calendar|schedule)\b",
-        r"\b(my\s+)?(appointments?|events?|meetings?)\s+(today|tomorrow|this week)\b",
-        r"\bwhat\s+(do\s+)?i\s+have\s+(today|tomorrow|this week|scheduled)\b",
-        r"\b(any|next)\s+(appointments?|meetings?|events?)\b",
+**WebSocket messages (new)**
+
+`calendar_state` — pushed by poller every 60 s and after any successful write:
+```json
+{
+  "type": "calendar_state",
+  "payload": {
+    "events": [
+      {
+        "id": "abc123",
+        "title": "Standup",
+        "start": "2026-04-18T09:00:00+02:00",
+        "end":   "2026-04-18T09:30:00+02:00",
+        "allDay": false,
+        "location": null,
+        "calendar": "primary"
+      }
     ],
-    "de": [
-        r"\b(was\s+)?(steht|ist)\s+(auf|in)\s+(meinem\s+)?kalender\b",
-        r"\b(meine?\s+)?(termine?|meetings?)\s+(heute|morgen|diese woche)\b",
-        r"\bwas\s+habe?\s+ich\s+(heute|morgen|geplant)\b",
-        r"\b(welche|nächste[rn]?)\s+termine?\b",
-    ],
-},
-Intent.CALENDAR_CREATE: {
-    "en": [
-        r"\b(schedule|create|add|book|set\s+up)\s+(a\s+)?(meeting|appointment|event)\b",
-        r"\bput\s+(something\s+)?on\s+(my\s+)?calendar\b",
-        r"\bblock\s+(off\s+)?time\b",
-        r"\bremind\s+me\s+(to|about)\b",
-    ],
-    "de": [
-        r"\b(erstelle?|trag\s+ein|plane?|buche?)\s+(einen?\s+)?(termin|meeting|event)\b",
-        r"\b(trag|schreib)\s+(etwas\s+)?in\s+(meinen?\s+)?kalender\b",
-        r"\bzeit\s+blockieren\b",
-        r"\berinner(e|n)\s+mich\s+(an|dass)\b",
-    ],
-},
-Intent.CALENDAR_UPDATE: {
-    "en": [
-        r"\b(move|reschedule|change|update)\s+(my\s+)?(meeting|appointment|event)\b",
-        r"\bpush\s+(back|forward)\s+(my\s+)?\b",
-        r"\bchange\s+the\s+time\b",
-    ],
-    "de": [
-        r"\b(verschieb|verleg|änder)\s+(meinen?\s+)?(termin|meeting)\b",
-        r"\b(zeit|uhrzeit)\s+(ändern|verschieben)\b",
-    ],
-},
-Intent.CALENDAR_DELETE: {
-    "en": [
-        r"\b(cancel|delete|remove)\s+(my\s+)?(meeting|appointment|event)\b",
-        r"\btake\s+off\s+(my\s+)?calendar\b",
-        r"\bclear\s+(my\s+)?(schedule|calendar)\b",
-    ],
-    "de": [
-        r"\b(lösch|absagen?|streich|entfern)\s+(meinen?\s+)?(termin|meeting)\b",
-        r"\btermin\s+(absagen|löschen|streichen)\b",
-        r"\bkalender\s+leeren\b",
-    ],
-},
+    "dateLabel": "Today"
+  }
+}
 ```
 
----
+`calendar_op_preview` — broadcast before waiting for voice confirmation:
+```json
+{
+  "type": "calendar_op_preview",
+  "payload": {
+    "op": "create",
+    "title": "Meeting with Bob",
+    "start": "2026-04-19T14:00:00+02:00",
+    "end":   "2026-04-19T15:00:00+02:00",
+    "confirm_prompt": "Create 'Meeting with Bob' tomorrow at 14:00 for one hour. Confirm?"
+  }
+}
+```
 
-## Voice UX Design
+`calendar_op_done` — broadcast after the confirmation resolves:
+```json
+{
+  "type": "calendar_op_done",
+  "payload": {
+    "op": "create",
+    "success": true,
+    "event_id": "abc123",
+    "error": null
+  }
+}
+```
 
-### Listing Events
-**User:** "What's on my calendar tomorrow?"
-**JARVIS:** "Tomorrow you have 3 events. At 9 AM, weekly standup. At 2 PM, design review with the frontend team. At 4 PM, one-on-one with Sarah."
+**TypeScript — `frontend/src/types.ts` additions**
 
-### Creating Events
-**User:** "Schedule a meeting with Bob tomorrow at 2pm"
-**JARVIS:** "I'll create a meeting with Bob tomorrow at 2 PM for one hour. Should I proceed, sir?"
-**User:** "Yes"
-**JARVIS:** "Done. Meeting with Bob scheduled for tomorrow at 2 PM."
+```typescript
+export interface CalendarStatePayload {
+  events: AgendaEvent[];   // reuses existing AgendaEvent shape
+  dateLabel: string;
+}
 
-### Updating Events
-**User:** "Move my 2pm meeting to 3pm"
-**JARVIS:** "I've moved your meeting with Bob from 2 PM to 3 PM, sir."
+export interface CalendarOpPreviewPayload {
+  op: 'create' | 'update' | 'delete';
+  title: string;
+  start: string;   // ISO
+  end: string;     // ISO
+  confirm_prompt: string;
+}
 
-### Deleting Events
-**User:** "Cancel my 4pm meeting"
-**JARVIS:** "I've cancelled your 4 PM one-on-one with Sarah, sir."
+export interface CalendarOpDonePayload {
+  op: 'create' | 'update' | 'delete';
+  success: boolean;
+  event_id?: string;
+  error?: string;
+}
+```
 
-### Ambiguous Cases
-**User:** "Cancel my meeting"
-**JARVIS:** "You have 2 meetings today. Which one should I cancel: the 2 PM design review or the 4 PM one-on-one?"
+`WsIncoming` union extensions:
+```typescript
+| { type: 'calendar_state'; payload: CalendarStatePayload }
+| { type: 'calendar_op_preview'; payload: CalendarOpPreviewPayload }
+| { type: 'calendar_op_done'; payload: CalendarOpDonePayload }
+```
 
----
+**`useWebSocket` additions**
 
-## Configuration
+```typescript
+export type CalendarStateListener = (payload: CalendarStatePayload) => void;
+export type CalendarOpPreviewListener = (payload: CalendarOpPreviewPayload) => void;
+export type CalendarOpDoneListener = (payload: CalendarOpDonePayload) => void;
 
-### config.yaml additions
+// Added to UseWebSocketReturn:
+subscribeCalendarState: (listener: CalendarStateListener) => () => void;
+subscribeCalendarOpPreview: (listener: CalendarOpPreviewListener) => () => void;
+subscribeCalendarOpDone: (listener: CalendarOpDoneListener) => () => void;
+```
+
+**`config/config.yaml` additions**
+
 ```yaml
 calendar:
   enabled: true
-  providers:
-    google:
-      enabled: true
-      default_calendar_id: "primary"
-  default_lookahead_days: 7
+  poll_interval_seconds: 60
+  lookahead_hours: 12          # window for proactive reminder checks
   max_events_per_query: 20
   default_event_duration_minutes: 60
+  op_confirm_timeout_seconds: 60
+  scopes:
+    - "https://www.googleapis.com/auth/calendar"
+    - "https://www.googleapis.com/auth/calendar.events"
 ```
 
----
+### External dependencies
+- `dateparser>=1.2.0` — natural-language date parsing; add to `requirements.txt`
+- `google-api-python-client>=2.127.0` — already in `requirements.txt`
+- No new npm packages
 
-## Error Handling
+## Edge Cases & Failure Modes
 
-| Error | User-Facing Response |
-|-------|---------------------|
-| OAuth not configured | "Calendar access is not configured. Please set up Google authentication." |
-| No calendars found | "I couldn't find any calendars in your account." |
-| Event not found | "I couldn't find that event on your calendar." |
-| Conflict detected | "That time conflicts with an existing event. Should I schedule anyway?" |
-| Past date | "That date has already passed. Did you mean next week?" |
-
----
-
-## Testing Strategy
-
-### Unit Tests
-| Test Case | Description |
-|-----------|-------------|
-| `test_list_events_single_day` | Returns events for today |
-| ~~`test_list_events_multi_provider`~~ | ~~Merges Google + iCloud events~~ — REMOVED (single provider) |
-| `test_create_event_basic` | Creates event with title + time |
-| `test_update_event_time` | Updates event start/end |
-| `test_delete_event` | Deletes event |
-| `test_nl_parse_meeting_tomorrow` | "meeting tomorrow 2pm" -> correct datetime |
-| `test_nl_parse_duration` | "2 hour meeting" -> correct end time |
-| `test_intent_parser_list` | "what's on my calendar" -> CALENDAR_LIST |
-| `test_intent_parser_create` | "schedule a meeting" -> CALENDAR_CREATE |
-
-### Integration Tests
-| Test Case | Description |
-|-----------|-------------|
-| `test_full_flow_list_today` | Intent -> agent -> spoken response |
-| `test_full_flow_create` | Natural language -> create event -> confirmation |
-| `test_oauth_refresh` | 401 triggers token refresh |
-
----
-
-## Files Created
-
-| File | Purpose |
-|------|---------|
-| `src/integrations/calendar/__init__.py` | Package init |
-| `src/integrations/calendar/base.py` | CalendarProvider protocol + CalendarEvent |
-| `src/integrations/google/calendar_client.py` | Google Calendar client |
-| `src/brain/agents/calendar_agent.py` | Calendar agent |
-| `tests/integrations/calendar/test_base.py` | Protocol tests |
-| `tests/integrations/google/test_calendar_client.py` | Client tests |
-| `tests/brain/agents/test_calendar_agent.py` | Agent tests |
-
-## Files Modified
-
-| File | Change |
-|------|--------|
-| `src/brain/intent_parser.py` | Add CALENDAR_* intents + keywords |
-| `src/brain/orchestrator.py` | Register CalendarAgent |
-| `config/config.yaml` | Add calendar section |
-
----
+- **OAuth not configured / no token** → `GoogleOAuthError` caught in poller and
+  `_build_calendar_context`; poller backs off (same 3-failure backoff as mail poller);
+  context returns `None`, OpenClaw responds without calendar data; no crash.
+- **Calendar API 403 (insufficient scope)** → `CalendarClientError` with
+  `spoken_message="Calendar access is not authorized. Please re-authenticate."`;
+  poller backs off; orchestrator context returns `None`.
+- **Calendar API 404 (event not found during update/delete)** → spoken: "I couldn't
+  find that event. It may have already been removed."
+- **`dateparser` fails to parse date expression** → spoken: "I couldn't understand
+  that date. Could you say it differently, for example 'tomorrow at 2pm'?"; no write
+  attempted.
+- **`dateparser` resolves date in the past** → spoken: "That time has already passed.
+  Did you mean next week?" Confirmation gate not opened.
+- **All-day event** → `start.date` / `end.date` fields in API response (no `dateTime`);
+  `all_day=True` on `CalendarEvent`; frontend renders without time, only date.
+- **`pending_calendar_op` TTL expires** → same pattern as `pending_email_send`: state
+  cleared, `calendar_op_done{success:false}` broadcast, notification emitted, next
+  utterance processed as fresh turn.
+- **Ambiguous delete** ("cancel my meeting" with 2+ meetings today) → orchestrator
+  context lists all events; OpenClaw asks for disambiguation ("Which one — the 2pm or
+  the 4pm?"); `pending_calendar_op` not yet set until user specifies.
+- **Poller network timeout** → wrapped in `try/except` with backoff; consecutive
+  failure counter; after 3 failures interval triples; resets on next success.
+- **Concurrent create + immediate list** → poller runs again after confirmed write
+  to force a fresh `calendar_state` broadcast before the user can see stale data.
+- **Recurring event** → `is_recurring=True` on `CalendarEvent`; update/delete are
+  applied only to the single instance (`instances()` API endpoint not used; spec notes
+  this is instance-only and cannot modify the series — spoken: "Note: this only affects
+  this occurrence, not the full series.").
+- **No events returned** → `calendar_state` broadcast with `events: []`; AgendaPanel
+  shows "Keine Termine heute" (existing compact fallback).
+- **Raspberry Pi / low memory** → `dateparser` is a moderate dependency; verify import
+  time is acceptable in smoke test; `asyncio.to_thread` keeps event loop unblocked.
+- **User speaks "yes" for something else while `pending_calendar_op` is set** →
+  `_handle_calendar_confirm` is invoked first; only CONFIRM or CANCEL words consume
+  the turn; other words leave `pending` intact and return `False` — pipeline falls
+  through to normal processing (turn is interpreted as regular speech, not consumed).
+- **Multiple connected clients** → `broadcast_*` sends to all; `pending_calendar_op`
+  is per-connection `id(ws)` keyed state so each connection has its own confirmation
+  window independently.
 
 ## Acceptance Criteria
 
-| # | Criterion | Verification |
-|---|-----------|--------------|
-| 1 | "what's on my calendar tomorrow" returns events for tomorrow | Integration test |
-| 2 | "schedule a meeting with X tomorrow at Y" creates event | Integration test verifying API payload |
-| 3 | Events sorted by start time in voice output | Unit test |
-| 4 | German phrases work: "was steht morgen an" | Intent parser test |
-| 5 | Natural language parsing handles "2pm", "14:00", "this afternoon" | Claude parsing tests |
-| 6 | Update modifies correct event | Integration test |
-| 7 | Delete removes event | Integration test verifying API call |
-| 8 | CalendarProvider protocol satisfied by GoogleCalendarClient | mypy type check |
+1. `GoogleCalendarClient.list_events("primary")` returns correctly typed `CalendarEvent`
+   objects for an account with known events; mock test asserts field mapping for both
+   timed (`dateTime`) and all-day (`date`) API responses.
+2. `GoogleCalendarClient.create_event(title, start, end)` calls
+   `service.events().insert()` with correct JSON body; returned object's `id` matches
+   the mock API response.
+3. `GoogleCalendarClient.update_event(event_id, start=...)` performs a patch-style
+   update via `events().update()` and returns the updated `CalendarEvent`.
+4. `GoogleCalendarClient.delete_event(event_id)` calls `events().delete()` exactly
+   once; raises `CalendarClientError` (not an unhandled exception) when the API
+   returns 404.
+5. `_start_calendar_poller` broadcasts `calendar_state` within 60 s of startup;
+   backs off to 180 s after 3 consecutive API failures without crashing.
+6. Calendar poller publishes `calendar_event_approaching` to `EventBus` with correct
+   `starts_in_minutes` values (10, 5, 1) for an event exactly 10 minutes away in a
+   unit test with a mocked clock.
+7. `_handle_calendar_confirm` with `pending_calendar_op` set: confirm word consumes
+   the turn (returns `True`), triggers `create_event`, broadcasts `calendar_op_done
+   {success:true}`, and clears `pending_calendar_op`.
+8. `_handle_calendar_confirm` with `pending_calendar_op` set: cancel word discards
+   the op, broadcasts `calendar_op_done{success:false}`, clears state, returns `True`.
+9. `_handle_calendar_confirm` with `pending_calendar_op` set past 60 s TTL: clears
+   state, broadcasts `calendar_op_done{success:false}`, returns `False` so the
+   utterance proceeds as a normal turn.
+10. Intent parser classifies "What's on my calendar tomorrow?" → `CALENDAR_LIST`
+    and "schedule a team standup Friday at 10am" → `CALENDAR_CREATE` with
+    confidence ≥ 0.7 in both en and de variants.
+11. `dateparser.parse("tomorrow 2pm")` in orchestrator context produces a `datetime`
+    within 1 s of the expected value; "in 3 hours" and "Friday 10am" likewise resolve
+    correctly (mock `datetime.now`).
+12. `AgendaPanel` renders an injected `CalendarEvent` list (no mock import); compact
+    mode shows next event title and "in N min"; expanded mode shows up to 4 events
+    with formatted time ranges. Vitest snapshot test passes.
+13. `subscribeCalendarState` in `useWebSocket` fires its listener when a
+    `calendar_state` WS message is received; `subscribeCalendarOpDone` fires on
+    `calendar_op_done`. Verified in Vitest hook test.
+14. `get_calendar_client()` returns the same singleton on repeated calls; a fresh
+    import after module reset constructs a new instance (mirrors `get_gmail_client`
+    test).
+
+## Implementation Plan
+
+1. `backend-dev` → create `src/integrations/google/calendar_client.py` with
+   `CalendarEvent` dataclass, `CalendarClientError`, `GoogleCalendarClient` (lazy
+   `_get_service` with `asyncio.Lock`, `list_events`, `create_event`, `update_event`,
+   `delete_event`, `_parse_event` helper), and `get_calendar_client()` factory.
+2. `backend-dev` → update `src/integrations/google/__init__.py` to export
+   `GoogleCalendarClient`, `CalendarEvent`, `CalendarClientError`,
+   `get_calendar_client`.
+3. `backend-dev` → add `dateparser>=1.2.0` to `requirements.txt`; add `calendar:`
+   section to `config/config.yaml` per the schema above.
+4. `backend-dev` → add `CALENDAR_LIST`, `CALENDAR_CREATE`, `CALENDAR_UPDATE`,
+   `CALENDAR_DELETE` to `Intent` enum and `INTENT_KEYWORDS` dict (en + de patterns)
+   in `src/brain/intent_parser.py`.
+5. `backend-dev` → add `_CALENDAR_INTENTS` frozenset and `_build_calendar_context`
+   method to `src/brain/orchestrator.py`; wire it into the main dispatch path
+   alongside the existing `_EMAIL_INTENTS` pattern.
+6. `backend-dev` → add to `src/api/ws_server.py`:
+   - `get_calendar_client()` lazy proxy
+   - `broadcast_calendar_state`, `broadcast_calendar_op_preview`,
+     `broadcast_calendar_op_done` broadcaster functions
+   - `_CALENDAR_CONFIRM_RE` / `_CALENDAR_CANCEL_RE` compiled patterns
+   - `_handle_calendar_confirm(ws, text)` confirmation gate (mirrors
+     `_handle_email_confirm` structure exactly; uses `pending_calendar_op` in
+     `_connection_state`)
+   - `_start_calendar_poller(poll_interval)` coroutine (60 s normal, 3× backoff,
+     `_first_client_event` wait, EventBus publish for approaching events)
+   - Hook poller startup into `start_ws_server` (mirrors `_start_mail_poller` call)
+   - Call `_handle_calendar_confirm` from `_run_voice_pipeline_body` before intent
+     parsing (after existing `_handle_email_confirm` call)
+7. `frontend-dev` → add `CalendarStatePayload`, `CalendarOpPreviewPayload`,
+   `CalendarOpDonePayload` types and extend `WsIncoming` union in
+   `frontend/src/types.ts`.
+8. `frontend-dev` → add `CalendarStateListener`, `CalendarOpPreviewListener`,
+   `CalendarOpDoneListener` types; implement `subscribeCalendarState`,
+   `subscribeCalendarOpPreview`, `subscribeCalendarOpDone` in
+   `frontend/src/hooks/useWebSocket.ts` (mirror existing `subscribeMailState` pattern).
+9. `frontend-dev` → update `frontend/src/components/panels/AgendaPanel.tsx` to
+   remove the `agendaMock` default and accept live data exclusively; update the
+   caller in `frontend/src/App.tsx` to pass `calendarEvents` state fed by
+   `subscribeCalendarState`.
+10. `tester` → write `tests/integrations/google/test_calendar_client.py`: mock
+    `googleapiclient.discovery.build`; cover `list_events` (timed + all-day),
+    `create_event` body, `update_event` patch, `delete_event` 204 + 404 error,
+    `get_calendar_client` singleton behaviour.
+11. `tester` → write `tests/api/test_calendar_poller.py`: mock `get_calendar_client`,
+    `asyncio.sleep`, `EventBus`; assert `broadcast_calendar_state` called on success;
+    assert backoff after 3 failures; assert `calendar_event_approaching` published at
+    correct thresholds with mocked clock.
+12. `tester` → write `tests/brain/test_calendar_intent.py`: assert each of the four
+    new intents classifies correctly in en + de; assert confidence ≥ 0.7; assert
+    negative examples do not match.
+13. `tester` → write `tests/api/test_calendar_confirm.py`: assert confirm-word path,
+    cancel-word path, TTL-expiry path, ambiguous-word pass-through path.
+14. `tester` → write `frontend/src/hooks/__tests__/useWebSocket.calendar.test.ts`
+    (Vitest + RTL): inject `calendar_state` and `calendar_op_done` WS messages via
+    mock WebSocket; assert subscriber callbacks fire with correct payloads.
+15. `tester` → write `frontend/src/components/panels/__tests__/AgendaPanel.test.tsx`
+    (Vitest + RTL): render with empty, compact, and 4-event prop sets; assert no
+    `agendaMock` import present; snapshot the expanded view.
+16. `reviewer` → review entire batch (steps 1–15) against this spec; issue
+    `PASS` or `NEEDS_CHANGES`.
+
+## Manual Verification
+
+```bash
+# 1. Start backend
+PYTHONPATH=src .venv/bin/python -m main
+
+# 2. Confirm calendar poller appears in logs within 60 s
+#    Expected: "Calendar poller started (interval=60s)"
+
+# 3. Open frontend (http://localhost:5173) — AgendaPanel should show real events
+#    or "Keine Termine heute" if calendar is empty
+
+# 4. Speak: "What's on my calendar today?"
+#    Expected: spoken summary of today's events; calendar context visible in
+#    loguru DEBUG output under "orchestrator"
+
+# 5. Speak: "Schedule a standup call tomorrow at 9am"
+#    Expected: JARVIS reads back the proposed event, AgendaPanel flashes
+#    calendar_op_preview; after saying "yes" event appears in Google Calendar
+#    within 5 s and AgendaPanel refreshes
+
+# 6. Wait 10 min before a real calendar event (or fake one close to now)
+#    Expected: TTS interjection "Sir, your meeting '...' begins in 10 minutes."
+
+# 7. Speak: "Cancel my 9am standup"
+#    Expected: JARVIS asks for confirmation; after "yes", event deleted from
+#    Google Calendar and AgendaPanel updates on next poll
+
+# 8. Inspect WS frames in browser DevTools → Network → WS:
+#    Should see calendar_state frames arriving every ~60 s
+```
+
+## Open Questions
+
+1. **Proactive reminder dedup** — if the user barge-ins or the poller fires twice
+   within the 5-minute `interjection_cooldown_seconds` window, the 1-minute reminder
+   will be suppressed. Is that acceptable, or should meeting reminders bypass the
+   global cooldown (like `severity=urgent` already does)? Recommend: treat the 1-min
+   reminder as `severity="urgent"` to bypass cooldown. Needs user sign-off.
+2. **`dateparser` locale** — `dateparser.parse` defaults to English; for German
+   expressions ("morgen um 14 Uhr") it needs `PREFER_LOCALE_DATE_ORDER` or an explicit
+   `settings={"PREFER_DAY_OF_MONTH": "first", "DATE_ORDER": "DMY"}`. Confirm whether
+   auto-detection via `langdetect` (already available?) is sufficient or if language
+   must be pinned from `IntentResult.language`.
+3. **Calendar write scope for HUD-only read** — the poller only reads; the
+   `calendar.events` write scope is only needed for create/update/delete. Should the
+   client request both scopes upfront (simpler, single OAuth flow) or split into
+   read-only vs read-write based on whether mutating ops are enabled? Recommend:
+   always request both; note this in the consent screen.
+4. **`AgendaPanel` date window** — the poller fetches the next 12 h by default
+   (`lookahead_hours: 12`). Should the panel show only today's events, or also
+   tomorrow's when it's past 6pm? Recommend: always show the next 12 h regardless of
+   time of day, so the compact view always has a non-empty "next event." Needs user
+   decision.
 
 ---
 
-## Dependencies
-
-- ~~**Upstream:** google-oauth-shared.md~~ — REMOVED (OpenClaw handles OAuth)
-- ~~**Downstream:** icloud-calendar-integration.md~~ — DELETED (iCloud dropped)
-- **NEW Prerequisite:** `openclaw-integration.md`
-
----
-
-## Revision 2 — 2026-04-16
+## Revision 4 — 2026-04-18
 
 ### Summary of Changes
-~~This revision implements dual-write default for event creation across Google and iCloud calendars.~~
+Complete rewrite of the spec in the required structured format. All previous free-form
+sections (Revisions 1–3) are superseded. Key deltas vs Revision 3:
 
-**SUPERSEDED by Revision 3:** Dual-write logic removed. iCloud dropped. Google Calendar via OpenClaw only.
-
----
-
-**Status:** Planned — awaiting implementation authorization
-
----
-
-## Revision 3 — Full OpenClaw Adoption (2026-04-16)
-
-### Decisions Applied
-1. **iCloud CalDAV dropped entirely** — No dual-provider, no dual-write
-2. **OpenClaw as full backbone** — Google Calendar via OpenClaw only
-
-### Integration Assessment
-**OpenClaw FULLY replaces this spec's core functionality.**
-
-### OpenClaw Coverage
-| Feature | OpenClaw Capability | Coverage |
-|---------|---------------------|----------|
-| List events | Calendar integration | Full |
-| Create event | Calendar integration | Full |
-| Update event | Calendar integration | Full |
-| Delete event | Calendar integration | Full |
-| Natural language parsing | OpenClaw agent | Full |
-| OAuth handling | OpenClaw internal | Full |
-
-### What JARVIS-Native Retains
-1. **AgendaPanel** — HUD visualization of calendar events
-2. **Voice UX** — Confirmation dialogs, ambiguity resolution, spoken responses
-3. **CalendarEvent dataclass** — For HUD panel rendering (no protocol needed)
-
-### What Is REMOVED (This Spec)
-- ~~CalendarProvider protocol~~ — REMOVED (single provider via OpenClaw)
-- ~~GoogleCalendarClient~~ — REMOVED (OpenClaw handles)
-- ~~CalendarAgent~~ — REMOVED (queries go to OpenClaw)
-- ~~Dual-write logic~~ — REMOVED (iCloud dropped)
-- ~~UnifiedCalendarService~~ — REMOVED (single source)
-- ~~google-oauth-shared.md dependency~~ — REMOVED (OpenClaw handles OAuth)
-
-### Migration Path
-1. All calendar voice commands route to OpenClaw via `query_agent()`
-2. OpenClaw returns structured event data
-3. JARVIS maps response to `CalendarEvent` for AgendaPanel
-4. No JARVIS-side service client implementation
-
-### Simplified Architecture
-```
-Voice: "What's on my calendar tomorrow?"
-       ↓
-[Intent Parser] → CALENDAR_LIST intent
-       ↓
-[Orchestrator] → Forward to OpenClaw
-       ↓
-[OpenClaw Google Calendar skill]
-       ↓
-[Response] → Map to CalendarEvent for HUD + spoken output
-```
-
-### Files Created — REDUCED
-| File | Purpose | Status |
-|------|---------|--------|
-| `src/integrations/calendar/__init__.py` | Package init | SKIP (no client) |
-| `src/integrations/calendar/base.py` | CalendarEvent dataclass only | KEEP (HUD needs) |
-| `src/integrations/google/calendar_client.py` | Google Calendar client | SKIP (OpenClaw) |
-| `src/brain/agents/calendar_agent.py` | Calendar agent | SKIP (OpenClaw) |
-
-### Files Modified — REDUCED
-| File | Change | Status |
-|------|--------|--------|
-| `src/brain/intent_parser.py` | Add CALENDAR_* intents | KEEP |
-| `src/brain/orchestrator.py` | Route to OpenClaw | MODIFIED |
-| `config/config.yaml` | Calendar section (provider: openclaw) | SIMPLIFIED |
-
-### Implementation Reduction
-**Original estimate:** 6-8 hours
-**With OpenClaw:** 2-3 hours (HUD panel + intent routing only)
-**Reduction:** ~60%
-
-### Prerequisites
-- `openclaw-integration.md` — REQUIRED (handles all calendar operations)
-
-### Cross-References Updated
-- ~~`icloud-calendar-integration.md`~~ — DELETED (iCloud dropped)
-- ~~`google-oauth-shared.md`~~ — SKIP (OpenClaw handles OAuth)
+- **Dropped OpenClaw-as-backbone assumption** — Revision 3 concluded OpenClaw would
+  handle all calendar CRUD. The upstream constraint has changed: Google OAuth is now a
+  JARVIS-native shared foundation (`get_google_oauth_service().build_service(...)`) and
+  Gmail already sets the pattern. Calendar follows the same pattern directly.
+- **`CalendarProvider` protocol dropped** — Google-only; no abstraction needed.
+- **ProactiveScheduler integration concretized** — poller publishes `EventBus` events;
+  `proactive.py` itself requires zero changes.
+- **Confirmation flow added** — mirrors `_handle_email_confirm` exactly; per-connection
+  `pending_calendar_op` state.
+- **AgendaPanel wiring added** — `agendaMock` removed; `subscribeCalendarState` hook.
+- **dateparser added** — explicit dependency for NL date parsing.
+- **14 testable acceptance criteria** added (was 8 in Revision 3, unmeasurable).
+- **16-step implementation plan** with exactly one file per step.
+- **aiohttp confirmed** — all FastAPI references removed.

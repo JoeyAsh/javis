@@ -2,9 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import type {
   AppOrbState,
+  CalendarOpDonePayload,
+  CalendarOpPreviewPayload,
+  CalendarStatePayload,
   ConversationModePayload,
   EmailDraftPreviewPayload,
   EmailSendDonePayload,
+  GitHubStatePayload,
   MailStatePayload,
   NotificationPayload,
   OrbState,
@@ -24,6 +28,10 @@ export type MailStateListener = (payload: MailStatePayload) => void;
 export type EmailDraftPreviewListener = (payload: EmailDraftPreviewPayload) => void;
 export type EmailSendDoneListener = (payload: EmailSendDonePayload) => void;
 export type SpotifyStateListener = (payload: SpotifyStatePayload) => void;
+export type GitHubStateListener = (payload: GitHubStatePayload) => void;
+export type CalendarStateListener = (payload: CalendarStatePayload) => void;
+export type CalendarOpPreviewListener = (payload: CalendarOpPreviewPayload) => void;
+export type CalendarOpDoneListener = (payload: CalendarOpDonePayload) => void;
 
 export interface UseWebSocketReturn {
   orbState: AppOrbState;
@@ -60,6 +68,14 @@ export interface UseWebSocketReturn {
   subscribeEmailSendDone: (listener: EmailSendDoneListener) => () => void;
   /** Subscribe to `type: 'spotify_state'` payloads. */
   subscribeSpotifyState: (listener: SpotifyStateListener) => () => void;
+  /** Subscribe to `type: 'github_state'` payloads. */
+  subscribeGitHubState: (listener: GitHubStateListener) => () => void;
+  /** Subscribe to `type: 'calendar_state'` payloads. */
+  subscribeCalendarState: (listener: CalendarStateListener) => () => void;
+  /** Subscribe to `type: 'calendar_op_preview'` payloads. */
+  subscribeCalendarOpPreview: (listener: CalendarOpPreviewListener) => () => void;
+  /** Subscribe to `type: 'calendar_op_done'` payloads. */
+  subscribeCalendarOpDone: (listener: CalendarOpDoneListener) => () => void;
   /**
    * Send a Spotify command to the backend.
    * Phase 1: backend logs receipt; actual control is via voice → OpenClaw.
@@ -97,6 +113,10 @@ const mailStateListeners = new Set<MailStateListener>();
 const emailDraftPreviewListeners = new Set<EmailDraftPreviewListener>();
 const emailSendDoneListeners = new Set<EmailSendDoneListener>();
 const spotifyStateListeners = new Set<SpotifyStateListener>();
+const gitHubStateListeners = new Set<GitHubStateListener>();
+const calendarStateListeners = new Set<CalendarStateListener>();
+const calendarOpPreviewListeners = new Set<CalendarOpPreviewListener>();
+const calendarOpDoneListeners = new Set<CalendarOpDoneListener>();
 
 // Module-level WS send reference — set by the hook on each connection so
 // standalone send helpers (e.g. in panels that don't call useWebSocket()) can
@@ -179,6 +199,46 @@ function emitSpotifyState(payload: SpotifyStatePayload): void {
       listener(payload);
     } catch (err) {
       console.error('[ws] spotify_state listener threw', err);
+    }
+  });
+}
+
+function emitGitHubState(payload: GitHubStatePayload): void {
+  gitHubStateListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] github_state listener threw', err);
+    }
+  });
+}
+
+function emitCalendarState(payload: CalendarStatePayload): void {
+  calendarStateListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] calendar_state listener threw', err);
+    }
+  });
+}
+
+function emitCalendarOpPreview(payload: CalendarOpPreviewPayload): void {
+  calendarOpPreviewListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] calendar_op_preview listener threw', err);
+    }
+  });
+}
+
+function emitCalendarOpDone(payload: CalendarOpDonePayload): void {
+  calendarOpDoneListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] calendar_op_done listener threw', err);
     }
   });
 }
@@ -392,6 +452,18 @@ export function useWebSocket(): UseWebSocketReturn {
           case 'spotify_state':
             emitSpotifyState(msg.payload);
             break;
+          case 'github_state':
+            emitGitHubState(msg.payload);
+            break;
+          case 'calendar_state':
+            emitCalendarState(msg.payload);
+            break;
+          case 'calendar_op_preview':
+            emitCalendarOpPreview(msg.payload);
+            break;
+          case 'calendar_op_done':
+            emitCalendarOpDone(msg.payload);
+            break;
         }
       } catch (err) {
         console.error('[ws] parse error', err);
@@ -533,6 +605,46 @@ export function useWebSocket(): UseWebSocketReturn {
     [],
   );
 
+  const subscribeGitHubState = useCallback(
+    (listener: GitHubStateListener): (() => void) => {
+      gitHubStateListeners.add(listener);
+      return () => {
+        gitHubStateListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
+  const subscribeCalendarState = useCallback(
+    (listener: CalendarStateListener): (() => void) => {
+      calendarStateListeners.add(listener);
+      return () => {
+        calendarStateListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
+  const subscribeCalendarOpPreview = useCallback(
+    (listener: CalendarOpPreviewListener): (() => void) => {
+      calendarOpPreviewListeners.add(listener);
+      return () => {
+        calendarOpPreviewListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
+  const subscribeCalendarOpDone = useCallback(
+    (listener: CalendarOpDoneListener): (() => void) => {
+      calendarOpDoneListeners.add(listener);
+      return () => {
+        calendarOpDoneListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
   const sendSpotifyCmd = useCallback(
     (action: SpotifyCmdAction, value?: number) => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -563,6 +675,10 @@ export function useWebSocket(): UseWebSocketReturn {
     subscribeEmailDraftPreview,
     subscribeEmailSendDone,
     subscribeSpotifyState,
+    subscribeGitHubState,
+    subscribeCalendarState,
+    subscribeCalendarOpPreview,
+    subscribeCalendarOpDone,
     sendSpotifyCmd,
     registerStopAudio,
     notifyAudioPlaying,
@@ -635,6 +751,38 @@ export function subscribeSpotifyStateStream(listener: SpotifyStateListener): () 
   spotifyStateListeners.add(listener);
   return () => {
     spotifyStateListeners.delete(listener);
+  };
+}
+
+export function subscribeGitHubStateStream(listener: GitHubStateListener): () => void {
+  /** Subscribe to `github_state` messages from the module-level registry. */
+  gitHubStateListeners.add(listener);
+  return () => {
+    gitHubStateListeners.delete(listener);
+  };
+}
+
+/** Subscribe to `calendar_state` messages from the module-level registry. */
+export function subscribeCalendarStateStream(listener: CalendarStateListener): () => void {
+  calendarStateListeners.add(listener);
+  return () => {
+    calendarStateListeners.delete(listener);
+  };
+}
+
+/** Subscribe to `calendar_op_preview` messages from the module-level registry. */
+export function subscribeCalendarOpPreviewStream(listener: CalendarOpPreviewListener): () => void {
+  calendarOpPreviewListeners.add(listener);
+  return () => {
+    calendarOpPreviewListeners.delete(listener);
+  };
+}
+
+/** Subscribe to `calendar_op_done` messages from the module-level registry. */
+export function subscribeCalendarOpDoneStream(listener: CalendarOpDoneListener): () => void {
+  calendarOpDoneListeners.add(listener);
+  return () => {
+    calendarOpDoneListeners.delete(listener);
   };
 }
 

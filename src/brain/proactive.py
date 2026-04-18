@@ -134,6 +134,12 @@ class ProactiveScheduler:
         self._is_running = False
         self._last_interjection_time: float = 0.0
         self._cooldown_seconds = config.get("interjection_cooldown_seconds", 300)
+        # Separate cooldown for calendar reminders — shorter than the global gate
+        # so that 10/5/1-minute threshold reminders are not blocked by a VIP mail
+        # interjection, while still preventing two calendar events from firing in
+        # the same second.
+        self._last_calendar_interjection_time: float = 0.0
+        self._calendar_reminder_cooldown_seconds: float = 30.0
 
     @property
     def event_bus(self) -> EventBus:
@@ -228,11 +234,14 @@ class ProactiveScheduler:
         self._is_running = False
         logger.info("ProactiveScheduler stopped")
 
-    def _can_interject(self, severity: str = "info") -> bool:
+    def _can_interject(self, severity: str = "info", event_type: str = "") -> bool:
         """Check if an interjection is allowed based on cooldown.
 
         Args:
             severity: Interjection severity. "urgent" bypasses cooldown.
+            event_type: Optional EventBus event type name. Calendar reminder
+                events (starting with "calendar_") bypass the global cooldown
+                so that 10/5/1-minute reminders always fire.
 
         Returns:
             True if interjection is allowed.
@@ -240,6 +249,15 @@ class ProactiveScheduler:
         # Urgent interjections bypass cooldown
         if severity == "urgent":
             return True
+
+        # Calendar reminder triggers use their own short cooldown (30 s) so that
+        # they are not blocked by a prior VIP-mail or system-alert interjection
+        # (the global 5-minute gate), while still preventing two calendar events
+        # from firing within the same polling cycle.
+        if event_type.startswith("calendar_"):
+            now = time.time()
+            elapsed = now - self._last_calendar_interjection_time
+            return elapsed >= self._calendar_reminder_cooldown_seconds
 
         now = time.time()
         elapsed = now - self._last_interjection_time
@@ -329,9 +347,12 @@ class ProactiveScheduler:
         else:
             template_key = "meeting_reminder_10"
 
-        if not self._can_interject():
+        if not self._can_interject(event_type="calendar_event_approaching"):
             logger.debug("Calendar interjection skipped (cooldown)")
             return
+
+        # Update calendar-specific cooldown timestamp before delivering.
+        self._last_calendar_interjection_time = time.time()
 
         triggers = self._config.get("triggers", {})
         voice_enabled = triggers.get("meeting_reminder", {}).get("voice", True)

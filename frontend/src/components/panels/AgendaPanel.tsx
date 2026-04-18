@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
-import { agendaMock } from '../../mock/agendaMock';
-import type { AgendaEvent, PanelMode } from '../../types';
+import type { AgendaEvent, CalendarStatePayload, PanelMode } from '../../types';
+import { subscribeCalendarStateStream } from '../../hooks/useWebSocket';
 
 export interface AgendaPanelProps {
   events?: AgendaEvent[];
@@ -70,6 +70,13 @@ function AgendaCompact({ events }: { events: AgendaEvent[] }): ReactElement {
 
 function AgendaExpanded({ events }: { events: AgendaEvent[] }): ReactElement {
   const upcoming = events.slice(0, 4);
+  if (upcoming.length === 0) {
+    return (
+      <div className="list-item" style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+        Keine Termine in den nächsten 48 Stunden
+      </div>
+    );
+  }
   return (
     <>
       {upcoming.map((evt, idx) => (
@@ -113,11 +120,45 @@ function AgendaExpanded({ events }: { events: AgendaEvent[] }): ReactElement {
   );
 }
 
+/**
+ * AgendaPanel — renders upcoming calendar events from live WebSocket state.
+ *
+ * Accepts an optional `events` prop for testing / initial render. If no prop
+ * is supplied, subscribes to `calendar_state` WebSocket messages and updates
+ * in real time. Uses live data only — no static mock imports.
+ */
 export function AgendaPanel({
-  events = agendaMock,
+  events: eventsProp,
   mode = 'expanded',
 }: AgendaPanelProps): ReactElement {
-  const list = useMemo<AgendaEvent[]>(() => events, [events]);
+  const [liveEvents, setLiveEvents] = useState<AgendaEvent[]>([]);
+  const [hasLiveData, setHasLiveData] = useState(false);
+
+  useEffect(() => {
+    // If events are provided as a prop (e.g. tests), skip subscription.
+    if (eventsProp !== undefined) return;
+
+    const unsub = subscribeCalendarStateStream((payload: CalendarStatePayload) => {
+      setLiveEvents(payload.events);
+      setHasLiveData(true);
+    });
+    return unsub;
+  }, [eventsProp]);
+
+  const list = useMemo<AgendaEvent[]>(() => {
+    if (eventsProp !== undefined) return eventsProp;
+    return liveEvents;
+  }, [eventsProp, liveEvents]);
+
+  // While waiting for first live push (< 2s typically), show compact loading state
+  if (eventsProp === undefined && !hasLiveData) {
+    return (
+      <div className="window-compact-row" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+        Kalender wird geladen…
+      </div>
+    );
+  }
+
   return mode === 'compact' ? <AgendaCompact events={list} /> : <AgendaExpanded events={list} />;
 }
 

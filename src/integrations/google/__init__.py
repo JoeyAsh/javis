@@ -7,6 +7,12 @@ from the implementation module directly.
 
 from __future__ import annotations
 
+from integrations.google.calendar_client import (
+    CalendarClientError,
+    CalendarEvent,
+    GoogleCalendarClient,
+    get_calendar_client,
+)
 from integrations.google.gmail_client import (
     EmailDraft,
     EmailMessage,
@@ -36,4 +42,9 @@ __all__ = [
     "EmailMessage",
     "EmailDraft",
     "get_gmail_client",
+    # Calendar
+    "GoogleCalendarClient",
+    "CalendarClientError",
+    "CalendarEvent",
+    "get_calendar_client",
 ]

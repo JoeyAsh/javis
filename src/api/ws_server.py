@@ -96,13 +96,37 @@ _start_time: float = time.time()
 _spotify_client: SpotifyClient | None = None
 _spotify_poller_task: asyncio.Task[None] | None = None
 
+# GitHub integration — poller singleton and aiohttp session handle.
+_github_poller: Any = None  # GitHubPoller | None
+_github_session: Any = None  # aiohttp.ClientSession | None
+
 # System metrics collector + last snapshot (used for initial per-connection push)
 _metrics_collector: SystemMetricsCollector | None = None
 _metrics_task: asyncio.Task[None] | None = None
 _last_metrics: SystemMetrics | None = None
 
+# Calendar integration — poller task handle.
+_calendar_poller_task: asyncio.Task[None] | None = None
+
 # Per-connection state key — stored on the ws object via a dict keyed by ws id
 _connection_state: dict[int, dict[str, Any]] = {}
+
+
+def get_calendar_client() -> Any:
+    """Lazy proxy for the GoogleCalendarClient singleton — importable and patchable.
+
+    Wraps ``integrations.google.calendar_client.get_calendar_client`` so that
+    tests can patch ``api.ws_server.get_calendar_client`` without reaching into
+    the integration module.
+
+    Returns:
+        Shared ``GoogleCalendarClient`` instance.
+    """
+    from integrations.google.calendar_client import (  # noqa: PLC0415
+        get_calendar_client as _get_cc,
+    )
+
+    return _get_cc()
 
 
 def get_gmail_client(vip_senders: list[str] | None = None) -> Any:
@@ -350,6 +374,52 @@ async def broadcast_mail_state(
     await _broadcast(message)
 
 
+async def broadcast_calendar_state(
+    events: list[dict[str, Any]],
+    date_label: str,
+) -> None:
+    """Broadcast current calendar events to all connected clients.
+
+    Args:
+        events: List of serialised ``CalendarEvent`` dicts (camelCase keys).
+        date_label: Human-readable date context label (e.g. ``"Today"``).
+    """
+    message = json.dumps(
+        {
+            "type": "calendar_state",
+            "payload": {
+                "events": events,
+                "dateLabel": date_label,
+            },
+        }
+    )
+    await _broadcast(message)
+
+
+async def broadcast_calendar_op_preview(payload: dict[str, Any]) -> None:
+    """Broadcast a calendar operation preview to all connected clients.
+
+    Called before waiting for voice confirmation on create/update/delete.
+
+    Args:
+        payload: Dict with keys ``op``, ``title``, ``start``, ``end``,
+            ``confirm_prompt``.
+    """
+    message = json.dumps({"type": "calendar_op_preview", "payload": payload})
+    await _broadcast(message)
+
+
+async def broadcast_calendar_op_done(payload: dict[str, Any]) -> None:
+    """Broadcast the result of a calendar operation to all connected clients.
+
+    Args:
+        payload: Dict with keys ``op``, ``success`` (bool), optionally
+            ``event_id`` and ``error``.
+    """
+    message = json.dumps({"type": "calendar_op_done", "payload": payload})
+    await _broadcast(message)
+
+
 async def broadcast_email_draft_preview(payload: dict[str, Any]) -> None:
     """Broadcast an email draft preview to all connected clients.
 
@@ -415,6 +485,88 @@ async def broadcast_spotify_state(
 
     message = json.dumps({"type": "spotify_state", "payload": payload})
     await _broadcast(message)
+
+
+async def broadcast_github_state(payload: Any) -> None:
+    """Broadcast GitHub state payload to all connected WebSocket clients.
+
+    The payload is an instance of :class:`integrations.github.client.GitHubStatePayload`.
+    Serialises the dataclass fields manually to avoid a dependency on ``dataclasses.asdict``
+    for nested lists.
+
+    Args:
+        payload: A ``GitHubStatePayload`` instance from the GitHub poller.
+    """
+    body = {
+        "prs": [
+            {
+                "id": pr.id,
+                "repo": pr.repo,
+                "title": pr.title,
+                "author": pr.author,
+                "html_url": pr.html_url,
+                "updated_at": pr.updated_at,
+            }
+            for pr in payload.prs
+        ],
+        "issues": [
+            {
+                "id": issue.id,
+                "repo": issue.repo,
+                "title": issue.title,
+                "html_url": issue.html_url,
+                "updated_at": issue.updated_at,
+            }
+            for issue in payload.issues
+        ],
+        "ci": [
+            {
+                "repo": run.repo,
+                "status": run.status,
+                "ran_at": run.ran_at,
+                "html_url": run.html_url,
+            }
+            for run in payload.ci
+        ],
+        "fetched_at": payload.fetched_at,
+        "stale": payload.stale,
+    }
+    message = json.dumps({"type": "github_state", "payload": body})
+    await _broadcast(message)
+
+
+async def _start_github_poller(
+    token: str,
+    repos: list[str],
+    poll_interval: int,
+) -> None:
+    """Initialise the GitHub client and start the background poller.
+
+    Creates a dedicated ``aiohttp.ClientSession``, builds a :class:`GitHubClient`,
+    wraps it in a :class:`GitHubPoller`, and calls ``poller.start()``.  Stores
+    both the session and the poller in module-level globals for teardown.
+
+    Args:
+        token: Classic PAT for GitHub REST v3 (read scope).
+        repos: Explicit repo whitelist for CI fetches and search scoping.
+        poll_interval: Seconds between polling ticks.
+    """
+    global _github_poller, _github_session
+
+    import aiohttp as _aiohttp  # noqa: PLC0415
+    from integrations.github.client import GitHubClient  # noqa: PLC0415
+    from integrations.github.poller import GitHubPoller  # noqa: PLC0415
+
+    _github_session = _aiohttp.ClientSession()
+    client = GitHubClient(token=token, session=_github_session)
+    _github_poller = GitHubPoller(
+        client=client,
+        repos=repos,
+        poll_interval=poll_interval,
+        broadcast_fn=broadcast_github_state,
+    )
+    await _github_poller.start()
+    logger.info(f"GitHub poller started (interval={poll_interval}s, repos={repos})")
 
 
 async def _spotify_state_loop(client: SpotifyClient, interval_seconds: int) -> None:
@@ -892,6 +1044,337 @@ async def _handle_email_confirm(
 
 
 # ---------------------------------------------------------------------------
+# Calendar confirmation state
+# ---------------------------------------------------------------------------
+
+# Per-connection calendar op state key.
+# Stored under ``_connection_state[conn_id]["pending_calendar_op"]`` as a dict:
+# {"op": "create"|"update"|"delete", "title": str, "start": str, "end": str,
+#  "event_id": str | None, "created_at": float}
+# or None when no confirmation is pending.
+
+_CALENDAR_CONFIRM_RE = __import__("re").compile(
+    r"\b(ja|ja bitte|bestätige|confirm|yes|go\s+ahead|do\s+it|ok)\b",
+    __import__("re").IGNORECASE,
+)
+_CALENDAR_CANCEL_RE = __import__("re").compile(
+    r"\b(nein|abbrechen|stopp?|cancel|nicht|abort|vergiss\s+es|nevermind)\b",
+    __import__("re").IGNORECASE,
+)
+
+
+async def _handle_calendar_confirm(
+    ws: web.WebSocketResponse,
+    text: str,
+) -> bool:
+    """Check whether ``text`` is a pending calendar operation confirmation.
+
+    Called from ``_run_voice_pipeline_body`` immediately after STT, after
+    the email confirmation gate. If ``pending_calendar_op`` is set on the
+    connection, the turn is inspected against confirm / cancel word lists:
+
+    - Confirm match → fires the actual calendar API call, clears pending state,
+      broadcasts ``calendar_op_done{success:true}``, returns ``True``.
+    - Cancel match → discards op, broadcasts ``calendar_op_done{success:false}``,
+      returns ``True``.
+    - Timeout (older than ``op_confirm_timeout_seconds``) → clears state,
+      broadcasts ``calendar_op_done{success:false}``, returns ``False`` so
+      the utterance is processed as a normal turn.
+    - Ambiguous → state kept, returns ``False``.
+
+    Args:
+        ws: The WebSocket connection.
+        text: STT transcript of the current turn.
+
+    Returns:
+        ``True`` when the turn was consumed by the calendar confirmation machine,
+        ``False`` otherwise.
+    """
+    conn_id = id(ws)
+    state = _connection_state.get(conn_id)
+    if state is None:
+        return False
+
+    pending: dict[str, Any] | None = state.get("pending_calendar_op")
+    if pending is None:
+        return False
+
+    # --- Timeout check -------------------------------------------------------
+    from utils.config_loader import get_config as _get_cfg  # noqa: PLC0415
+
+    _cal_cfg = _get_cfg().get_section("calendar") or {}
+    timeout_secs: float = float(_cal_cfg.get("op_confirm_timeout_seconds", 60))
+    created_at: float = pending.get("created_at", 0.0)
+    op: str = pending.get("op", "create")
+
+    if time.time() - created_at > timeout_secs:
+        logger.info(
+            f"Calendar confirm window expired for op={op!r} "
+            f"(>{timeout_secs:.0f}s) — clearing pending state"
+        )
+        state["pending_calendar_op"] = None
+        await broadcast_calendar_op_done({"op": op, "success": False, "error": "timeout"})
+        await broadcast_notification(
+            notification_id=f"calendar-timeout-{op}",
+            severity="info",
+            title="Kalender-Aktion abgelaufen",
+            detail="Das Bestätigungsfenster ist abgelaufen. Die Aktion wurde nicht ausgeführt.",
+        )
+        return False  # let the utterance be processed normally
+
+    text_lower = text.lower().strip()
+    event_id: str | None = pending.get("event_id")
+    title: str = pending.get("title", "")
+    start_iso: str = pending.get("start", "")
+    end_iso: str = pending.get("end", "")
+
+    if _CALENDAR_CONFIRM_RE.search(text_lower):
+        logger.info(f"Calendar {op} confirmation received: title={title!r}")
+        state["pending_calendar_op"] = None
+
+        from integrations.google.calendar_client import CalendarClientError  # noqa: PLC0415
+        from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
+
+        try:
+            client = get_calendar_client()
+
+            if op == "create":
+                from datetime import datetime  # noqa: PLC0415
+
+                start_dt = datetime.fromisoformat(start_iso)
+                end_dt = datetime.fromisoformat(end_iso)
+                created_evt = await client.create_event(
+                    title=title, start=start_dt, end=end_dt
+                )
+                await broadcast_calendar_op_done(
+                    {"op": "create", "success": True, "event_id": created_evt.id}
+                )
+                await _force_calendar_state_refresh()
+                logger.info(f"Calendar event created: id={created_evt.id!r}")
+
+            elif op == "update" and event_id:
+                from datetime import datetime  # noqa: PLC0415
+
+                start_dt = datetime.fromisoformat(start_iso) if start_iso else None
+                end_dt = datetime.fromisoformat(end_iso) if end_iso else None
+                updated_evt = await client.update_event(
+                    event_id=event_id,
+                    title=title if title else None,
+                    start=start_dt,
+                    end=end_dt,
+                )
+                await broadcast_calendar_op_done(
+                    {"op": "update", "success": True, "event_id": updated_evt.id}
+                )
+                await _force_calendar_state_refresh()
+
+            elif op == "delete" and event_id:
+                await client.delete_event(event_id=event_id)
+                await broadcast_calendar_op_done(
+                    {"op": "delete", "success": True, "event_id": event_id}
+                )
+                await _force_calendar_state_refresh()
+
+            else:
+                raise ValueError(f"Unsupported calendar op or missing event_id: {op}")
+
+        except (GoogleOAuthError, CalendarClientError) as exc:
+            err_msg = str(exc)
+            logger.error(f"Calendar {op} failed after confirmation: {err_msg}")
+            await broadcast_calendar_op_done({"op": op, "success": False, "error": err_msg})
+        except Exception as exc:
+            err_msg = str(exc)
+            logger.error(f"Calendar {op} unexpected error: {err_msg}")
+            await broadcast_calendar_op_done({"op": op, "success": False, "error": err_msg})
+
+        return True
+
+    if _CALENDAR_CANCEL_RE.search(text_lower):
+        logger.info(f"Calendar {op} cancelled for title={title!r}")
+        state["pending_calendar_op"] = None
+        await broadcast_calendar_op_done({"op": op, "success": False})
+        return True
+
+    # Ambiguous — leave pending state intact.
+    logger.debug(
+        f"Calendar confirm: ambiguous turn for op={op!r} — keeping window open"
+    )
+    return False
+
+
+async def _force_calendar_state_refresh() -> None:
+    """Fetch and broadcast a fresh calendar state immediately after a write.
+
+    Called after confirmed create/update/delete so the AgendaPanel reflects
+    the change before the next scheduled poll tick.
+    """
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from utils.config_loader import get_config as _get_cfg  # noqa: PLC0415
+
+    try:
+        _cal_cfg = _get_cfg().get_section("calendar") or {}
+        lookahead_hours = int(_cal_cfg.get("lookahead_hours", 48))
+        max_results = int(_cal_cfg.get("max_events_per_query", 20))
+        now = datetime.now(timezone.utc)
+        events = await get_calendar_client().list_events(
+            start=now,
+            end=now + timedelta(hours=lookahead_hours),
+            max_results=max_results,
+        )
+        serialised = [_calendar_event_to_dict(evt) for evt in events]
+        await broadcast_calendar_state(serialised, "Aktuell")
+    except Exception as exc:
+        logger.warning(f"Calendar state refresh after write failed: {exc}")
+
+
+def _calendar_event_to_dict(evt: Any) -> dict[str, Any]:
+    """Serialise a ``CalendarEvent`` to a camelCase frontend dict."""
+    return {
+        "id": evt.id,
+        "title": evt.title,
+        "start": evt.start.isoformat(),
+        "end": evt.end.isoformat(),
+        "allDay": evt.all_day,
+        "location": evt.location,
+        "calendar": evt.calendar_id,
+    }
+
+
+async def _start_calendar_poller(poll_interval: int) -> None:
+    """Background coroutine that polls Google Calendar and broadcasts ``calendar_state``.
+
+    Also publishes ``calendar_event_approaching`` events to the ``EventBus``
+    when an event is within the configured reminder thresholds (10, 5, 1 min).
+    Backs off to ``3 * poll_interval`` after three consecutive failures.
+
+    Args:
+        poll_interval: Normal interval between polls in seconds.
+    """
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+
+    from integrations.google.calendar_client import CalendarClientError  # noqa: PLC0415
+    from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
+    from utils.config_loader import get_config as _get_cfg  # noqa: PLC0415
+    from utils.events import Event, EventBus  # noqa: PLC0415  # type annotations
+
+    logger.info(f"Calendar poller started (interval={poll_interval}s)")
+    consecutive_failures = 0
+    backoff_interval = poll_interval * 3
+
+    # Track which (event_id, threshold_minutes) pairs we've already fired
+    # within this poller run so we don't spam reminders on every poll tick.
+    _fired_reminders: set[tuple[str, int]] = set()
+
+    event_bus: EventBus | None = None
+    try:
+        import main as _main_module  # noqa: PLC0415
+
+        event_bus = getattr(_main_module, "event_bus", None)
+    except Exception as _eb_exc:
+        logger.warning(f"EventBus unavailable for calendar poller: {_eb_exc}")
+
+    while True:
+        try:
+            # Wait for at least one client to be connected before polling.
+            await asyncio.wait_for(_first_client_event.wait(), timeout=300)
+        except asyncio.TimeoutError:
+            logger.debug("Calendar poller: no client connected yet, waiting...")
+            continue
+
+        sleep_secs = backoff_interval if consecutive_failures >= 3 else poll_interval
+        try:
+            await asyncio.sleep(sleep_secs)
+        except asyncio.CancelledError:
+            logger.info("Calendar poller cancelled during sleep")
+            return
+
+        _cal_cfg = _get_cfg().get_section("calendar") or {}
+        lookahead_hours = int(_cal_cfg.get("lookahead_hours", 48))
+        max_results = int(_cal_cfg.get("max_events_per_query", 20))
+        reminder_thresholds: list[int] = _cal_cfg.get("reminder_thresholds_minutes", [10, 5, 1])
+
+        try:
+            now = datetime.now(timezone.utc)
+            client = get_calendar_client()
+            events = await client.list_events(
+                start=now,
+                end=now + timedelta(hours=lookahead_hours),
+                max_results=max_results,
+            )
+
+            # Build date label based on current time.
+            hour = now.hour
+            if hour < 12:
+                date_label = "Heute Morgen"
+            elif hour < 17:
+                date_label = "Heute"
+            else:
+                date_label = "Heute Abend"
+
+            serialised = [_calendar_event_to_dict(evt) for evt in events]
+            await broadcast_calendar_state(serialised, date_label)
+            logger.debug(
+                f"Calendar state broadcast: {len(events)} events "
+                f"(label={date_label!r})"
+            )
+            consecutive_failures = 0
+
+            # Check approaching events and fire EventBus reminders.
+            if event_bus is not None:
+                for evt in events:
+                    if evt.all_day:
+                        continue
+                    minutes_until = (evt.start - now).total_seconds() / 60.0
+                    for threshold in reminder_thresholds:
+                        # Fire when within [threshold - poll_interval/60, threshold] minutes.
+                        tolerance = (poll_interval / 60.0) + 0.5
+                        if abs(minutes_until - threshold) <= tolerance:
+                            reminder_key = (evt.id, threshold)
+                            if reminder_key not in _fired_reminders:
+                                _fired_reminders.add(reminder_key)
+                                logger.info(
+                                    f"Calendar reminder: {evt.title!r} "
+                                    f"in ~{threshold}min (actual={minutes_until:.1f})"
+                                )
+                                await event_bus.publish(
+                                    Event(
+                                        type="calendar_event_approaching",
+                                        payload={
+                                            "title": evt.title,
+                                            "starts_in_minutes": threshold,
+                                            "event_id": evt.id,
+                                        },
+                                    )
+                                )
+
+            # Prune stale fired-reminder keys (events that have passed).
+            stale_ids = {eid for eid, _ in _fired_reminders} - {evt.id for evt in events}
+            _fired_reminders = {
+                key for key in _fired_reminders if key[0] not in stale_ids
+            }
+
+        except (GoogleOAuthError,) as exc:
+            consecutive_failures += 1
+            logger.warning(
+                f"Calendar poller: OAuth error (failure #{consecutive_failures}): {exc}"
+            )
+        except CalendarClientError as exc:
+            consecutive_failures += 1
+            logger.warning(
+                f"Calendar poller: API error (failure #{consecutive_failures}): {exc}"
+            )
+        except asyncio.CancelledError:
+            logger.info("Calendar poller cancelled")
+            return
+        except Exception as exc:
+            consecutive_failures += 1
+            logger.error(
+                f"Calendar poller: unexpected error (failure #{consecutive_failures}): {exc}"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Audio pipeline helpers
 # ---------------------------------------------------------------------------
 
@@ -1307,6 +1790,15 @@ async def _run_voice_pipeline_body(
     # Returns True when the turn was fully handled (sent or cancelled).
     if await _handle_email_confirm(ws, result.text):
         logger.info("Voice pipeline: turn consumed by email confirmation gate")
+        await broadcast_state("idle")
+        return
+
+    # --- Calendar confirmation gate ---------------------------------------
+    # If there is a pending calendar op (create/update/delete) waiting for
+    # explicit verbal confirmation, intercept this turn before the orchestrator.
+    # Returns True when the turn was fully handled (confirmed or cancelled).
+    if await _handle_calendar_confirm(ws, result.text):
+        logger.info("Voice pipeline: turn consumed by calendar confirmation gate")
         await broadcast_state("idle")
         return
 
@@ -2031,6 +2523,9 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         # Email confirmation pending state — set when JARVIS has read back a
         # draft and is waiting for an explicit confirm/cancel utterance.
         "pending_email_send": None,
+        # Calendar operation pending state — set when JARVIS proposes a
+        # create/update/delete and is waiting for verbal confirmation.
+        "pending_calendar_op": None,
     }
     if _wake_word_detector:
         _wake_word_detector.reset()
@@ -2079,6 +2574,13 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
             }
         )
     )
+
+    # Push cached GitHub state immediately if available.
+    if _github_poller is not None and _github_poller.last_state is not None:
+        try:
+            await broadcast_github_state(_github_poller.last_state)
+        except Exception as _gh_exc:  # noqa: BLE001
+            logger.debug(f"GitHub on-connect push failed: {_gh_exc}")
 
     # Mark the first-client event so other subsystems (scheduler, tests)
     # can still observe "at least one client has been here".
@@ -2181,6 +2683,8 @@ async def start_ws_server(
     global _backchannels_enabled, _backchannel_silence_threshold_ms, _backchannel_min_interval_seconds
     global _quick_ack_enabled, _mail_poller_task
     global _spotify_client, _spotify_poller_task
+    global _github_poller, _github_session
+    global _calendar_poller_task
 
     from dotenv import load_dotenv
 
@@ -2367,6 +2871,16 @@ async def start_ws_server(
         )
         logger.info(f"Gmail mail poller registered (interval={_gmail_poll_interval}s)")
 
+    # Calendar poller — start only when calendar.enabled is true.
+    global _calendar_poller_task
+    cal_cfg = cfg.get_section("calendar") or {}
+    if cal_cfg.get("enabled", False):
+        _cal_poll_interval = int(cal_cfg.get("poll_interval_seconds", 60))
+        _calendar_poller_task = asyncio.create_task(
+            _start_calendar_poller(_cal_poll_interval)
+        )
+        logger.info(f"Calendar poller registered (interval={_cal_poll_interval}s)")
+
     # Spotify integration — initialise client when enabled.
     from integrations.spotify.client import SpotifyAuthError  # noqa: PLC0415
 
@@ -2401,6 +2915,29 @@ async def start_ws_server(
     else:
         logger.info("Spotify integration disabled (spotify.enabled: false)")
 
+    # GitHub integration — token-gated; skipped silently when token absent.
+    import os as _os  # noqa: PLC0415
+
+    github_cfg = cfg.get_section("github") or {}
+    _github_token = _os.environ.get("GITHUB_TOKEN", "").strip()
+    if github_cfg.get("enabled", False) and _github_token:
+        _gh_repos: list[str] = github_cfg.get("repos", [])
+        _gh_interval = int(github_cfg.get("poll_interval_seconds", 60))
+        try:
+            await _start_github_poller(
+                token=_github_token,
+                repos=_gh_repos,
+                poll_interval=_gh_interval,
+            )
+        except Exception as _gh_exc:
+            logger.error(f"GitHub poller initialisation failed: {_gh_exc}")
+    elif github_cfg.get("enabled", False) and not _github_token:
+        logger.info(
+            "GitHub integration enabled but GITHUB_TOKEN is absent — poller skipped"
+        )
+    else:
+        logger.debug("GitHub integration disabled (github.enabled: false)")
+
     # Keep running until cancelled (e.g. SIGINT from main.py).
     try:
         while True:
@@ -2430,6 +2967,15 @@ async def start_ws_server(
                 pass
         _mail_poller_task = None
 
+        # Cancel the calendar poller task if running.
+        if _calendar_poller_task is not None and not _calendar_poller_task.done():
+            _calendar_poller_task.cancel()
+            try:
+                await _calendar_poller_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        _calendar_poller_task = None
+
         # Cancel the Spotify poller task if running.
         if _spotify_poller_task is not None and not _spotify_poller_task.done():
             _spotify_poller_task.cancel()
@@ -2438,6 +2984,20 @@ async def start_ws_server(
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
         _spotify_poller_task = None
+
+        # Stop the GitHub poller and close its aiohttp session.
+        if _github_poller is not None:
+            try:
+                await _github_poller.stop()
+            except Exception as _gh_exc:  # noqa: BLE001
+                logger.warning(f"GitHub poller stop failed: {_gh_exc}")
+        _github_poller = None
+        if _github_session is not None:
+            try:
+                await _github_session.close()
+            except Exception as _gh_exc:  # noqa: BLE001
+                logger.warning(f"GitHub session close failed: {_gh_exc}")
+        _github_session = None
 
         # Cancel any in-flight pipeline tasks before closing clients so
         # aiohttp handler coroutines aren't blocked waiting on them.

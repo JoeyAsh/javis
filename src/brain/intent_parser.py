@@ -29,6 +29,10 @@ class Intent(Enum):
     SPOTIFY_NEXT = "spotify_next"
     SPOTIFY_PREV = "spotify_prev"
     SPOTIFY_VOLUME = "spotify_volume"
+    CALENDAR_LIST = "calendar_list"
+    CALENDAR_CREATE = "calendar_create"
+    CALENDAR_UPDATE = "calendar_update"
+    CALENDAR_DELETE = "calendar_delete"
 
 
 @dataclass
@@ -250,9 +254,11 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
     },
     Intent.SPOTIFY_NEXT: {
         "en": [
-            r"\bnext\s+(song|track|title)?\b",
-            r"\bskip\s*(this)?\s*(song|track|title)?\b",
+            r"\bnext\s+(song|track|title)\b",
+            r"\bskip\s*(this)?\s*(song|track|title)\b",
+            r"\bskip\s+(this\s+)?one\b",
             r"\bforward\s+(song|track)\b",
+            r"\bplay\s+next\b",
         ],
         "de": [
             r"\bnächste(r|s|n)?\s*(song|titel|track|lied)?\b",
@@ -292,6 +298,85 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\blauter\s*(machen|stellen)?\b",
             r"\bleiser\s*(machen|stellen)?\b",
             r"\blautstärke\s+(hoch|runter|\d+)\b",
+        ],
+    },
+    # ------------------------------------------------------------------
+    # Calendar intents — list, create, update, delete.
+    # ------------------------------------------------------------------
+    Intent.CALENDAR_LIST: {
+        "en": [
+            r"\b(what'?s?|what\s+is)\s+(on|in)\s+(my\s+)?calendar\b",
+            r"\b(show|list|check)\s+(my\s+)?calendar\b",
+            r"\bwhat\s+do\s+i\s+have\s+(today|tomorrow|this\s+week)\b",
+            r"\bany\s+(events?|appointments?|meetings?)\s+(today|tomorrow)\b",
+            r"\bschedule\s+for\s+(today|tomorrow|this\s+week)\b",
+            r"\bdo\s+i\s+have\s+(anything|any\s+(meetings?|events?))\s+(today|tomorrow)?\b",
+            r"\bagenda\s+(for\s+)?(today|tomorrow|this\s+week)?\b",
+        ],
+        "de": [
+            r"\bwas\s+(steht|habe\s+ich)\s+(heute|morgen|diese\s+woche)\b",
+            r"\bwas\s+steht\s+(morgen|heute)\s+an\b",
+            r"\b(zeig|zeige)\s+(mir\s+)?(mein(en?)?\s+)?kalender\b",
+            r"\b(meine?\s+)(termine?|meetings?|verabredungen?)\s+(heute|morgen|anzeigen)\b",
+            r"\bkalender\s+(prüfen|anzeigen|lesen)\b",
+            r"\bhabe\s+ich\s+(heute|morgen)\s+(termine?|meetings?)?\b",
+            r"\bplan\s+(für\s+)?(heute|morgen|diese\s+woche)\b",
+        ],
+    },
+    Intent.CALENDAR_CREATE: {
+        "en": [
+            r"\b(schedule|create|add|set\s+up)\s+(a\s+)?(meeting|event|appointment|call|standup)\b",
+            r"\badd\s+(\w+\s+){1,3}(appointment|meeting|event)\b",
+            r"\badd\s+\w+\s+(appointment|meeting|event)\b",
+            r"\bblock\s+(off\s+)?time\b",
+            r"\bput\s+(a\s+)?(meeting|event|appointment)\s+(in|on)\s+(my\s+)?calendar\b",
+            r"\badd\s+(to|in)\s+(my\s+)?calendar\b",
+            r"\bschedule\s+.+\s+(at|on)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)\b",
+            r"\bschedule\s+.+\s+(at|for)\s+\d+\s*(am|pm)?\b",
+            r"\bremind\s+me\s+(to|about)\b",
+            r"\bcreate\s+(a\s+)?(meeting|event|appointment|call|standup)\b",
+        ],
+        "de": [
+            r"\b(termin|meeting|besprechung|anruf)\s+(erstellen|anlegen|hinzufügen|planen|eintragen)\b",
+            r"\b(erstelle?|trage?\s+ein|plane?)\s+(einen?\s+)?(termin|meeting|besprechung)\b",
+            r"\bfüge?\b.{0,30}\b(termin|meeting|besprechung)\b",
+            r"\b(termin|meeting|besprechung)\b.{0,20}\bhinzu\b",
+            r"\bplane?\s+(ein\s+)?(meeting|termin|besprechung|anruf)\b",
+            r"\bplane\s+ein\b",
+            r"\bim\s+kalender\s+(eintragen|speichern|anlegen)\b",
+            r"\btermin\s+(morgen|heute|am\s+\w+)\s+(um\s+\d+)\b",
+            r"\bverpasse?\s+nicht\b",
+            r"\berinnere?\s+(mich)\b",
+        ],
+    },
+    Intent.CALENDAR_UPDATE: {
+        "en": [
+            r"\b(move|reschedule|change|update)\s+(the\s+)?(meeting|event|appointment|call)\b",
+            r"\breschedule\s+the\b",
+            r"\breschedule\b.{0,40}\b(meeting|standup|appointment|call|event)\b",
+            r"\bchange\s+(my|the)\s+.+\s+(meeting|event|appointment)\b",
+            r"\bpush\s+(back|forward)\s+(the\s+)?(meeting|event|appointment)\b",
+            r"\bshift\s+(the\s+)?(meeting|event|appointment)\b",
+        ],
+        "de": [
+            r"\b(verschiebe?|verlege?|ändere?|aktualisiere?)\s+(den?\s+)?(termin|meeting|besprechung)\b",
+            r"\btermin\s+verschieben\b",
+            r"\bneue?\s+uhrzeit\s+für\b",
+        ],
+    },
+    Intent.CALENDAR_DELETE: {
+        "en": [
+            r"\b(cancel|delete|remove)\s+(the\s+)?(meeting|event|appointment|call|standup)\b",
+            r"\bcancel\s+(my\s+)?(\w+\s+)?(meeting|event|appointment|standup|call)\b",
+            r"\bcancel\s+(my\s+)?\d+(am|pm)?\s+(meeting|event|appointment|standup|call)\b",
+            r"\bdelete\s+(the\s+)?meeting\b",
+            r"\bdelete\s+(from\s+)?(my\s+)?calendar\b",
+            r"\bremove\s+(from\s+)?(my\s+)?calendar\b",
+        ],
+        "de": [
+            r"\b(absage?|lösche?|entferne?|streiche?)\s+(den?\s+)?(termin|meeting|besprechung)\b",
+            r"\btermin\s+(absagen|löschen|stornieren|entfernen)\b",
+            r"\baus\s+(dem\s+)?kalender\s+(löschen|entfernen)\b",
         ],
     },
 }
@@ -394,6 +479,10 @@ class IntentParser:
             Intent.SPOTIFY_NEXT,
             Intent.SPOTIFY_PREV,
             Intent.SPOTIFY_VOLUME,
+            Intent.CALENDAR_LIST,
+            Intent.CALENDAR_CREATE,
+            Intent.CALENDAR_UPDATE,
+            Intent.CALENDAR_DELETE,
         ]:
             confidence, extracted_params = self._match_intent(
                 text_lower, intent, language
@@ -454,6 +543,7 @@ class IntentParser:
         # patterns are highly specific (e.g. "check my email" is unambiguous).
         _EMAIL_INTENT_BASE = 0.75
         _SPOTIFY_INTENT_BASE = 0.75
+        _CALENDAR_INTENT_BASE = 0.75
         _SPOTIFY_INTENTS = (
             Intent.SPOTIFY_PLAY,
             Intent.SPOTIFY_PAUSE,
@@ -461,10 +551,18 @@ class IntentParser:
             Intent.SPOTIFY_PREV,
             Intent.SPOTIFY_VOLUME,
         )
+        _CALENDAR_INTENTS = (
+            Intent.CALENDAR_LIST,
+            Intent.CALENDAR_CREATE,
+            Intent.CALENDAR_UPDATE,
+            Intent.CALENDAR_DELETE,
+        )
         if intent in (Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE):
             confidence = min(1.0, _EMAIL_INTENT_BASE + (match_count * 0.1))
         elif intent in _SPOTIFY_INTENTS:
             confidence = min(1.0, _SPOTIFY_INTENT_BASE + (match_count * 0.1))
+        elif intent in _CALENDAR_INTENTS:
+            confidence = min(1.0, _CALENDAR_INTENT_BASE + (match_count * 0.1))
         else:
             confidence = min(1.0, 0.4 + (match_count * 0.2))
 
@@ -479,6 +577,13 @@ class IntentParser:
             params = self._extract_system_params(text)
         elif intent in (Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE):
             params = self._extract_email_params(text, intent)
+        elif intent in (
+            Intent.CALENDAR_LIST,
+            Intent.CALENDAR_CREATE,
+            Intent.CALENDAR_UPDATE,
+            Intent.CALENDAR_DELETE,
+        ):
+            params = self._extract_calendar_params(text, intent)
 
         return confidence, params
 
@@ -664,6 +769,49 @@ class IntentParser:
         )
         if subject_match:
             params["subject"] = subject_match.group(1).strip()
+
+        return params
+
+    def _extract_calendar_params(self, text: str, intent: Intent) -> dict[str, Any]:
+        """Extract parameters for calendar intents.
+
+        Args:
+            text: Lowercase user text.
+            intent: Specific calendar intent variant.
+
+        Returns:
+            Extracted parameters with keys ``title``, ``date_expr``,
+            ``time_expr`` (any may be absent when not found in text).
+        """
+        params: dict[str, Any] = {}
+
+        # Extract title / event name (everything between action verb and time/date)
+        title_match = re.search(
+            r"\b(?:schedule|create|add|cancel|delete|move|reschedule|"
+            r"erstelle?|plane?|füge?\s+hinzu|lösche?|absage?|verschiebe?)\s+"
+            r"(?:a\s+|an?\s+|einen?\s+|eine?\s+)?"
+            r"(?:meeting\s+with\s+|besprechung\s+mit\s+)?"
+            r"([A-Za-zÄäÖöÜüß][A-Za-zÄäÖöÜüß0-9\s,\-']{1,60}?)"
+            r"\s+(?:at|on|um|am|for|für|tomorrow|today|morgen|heute|"
+            r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+            r"montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|\d)",
+            text,
+            re.IGNORECASE,
+        )
+        if title_match:
+            params["title"] = title_match.group(1).strip()
+
+        # Extract raw date expression (the rest of the sentence after action)
+        params["raw_text"] = text
+
+        # Detect time expression (e.g. "at 2pm", "um 14 Uhr")
+        time_match = re.search(
+            r"\b(?:at|um)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|uhr)?)\b",
+            text,
+            re.IGNORECASE,
+        )
+        if time_match:
+            params["time_expr"] = time_match.group(1).strip()
 
         return params
 

@@ -138,6 +138,40 @@ export interface EmailSendDonePayload {
   error?: string;
 }
 
+// ============ Google Calendar WS payloads ============
+
+/**
+ * Pushed by the calendar poller every `poll_interval_seconds` (default 60 s).
+ * Contains the upcoming events for the next 48 hours.
+ */
+export interface CalendarStatePayload {
+  events: AgendaEvent[];
+  dateLabel: string;
+}
+
+/**
+ * Broadcast before the backend waits for voice confirmation on a
+ * calendar create/update/delete operation.
+ */
+export interface CalendarOpPreviewPayload {
+  op: 'create' | 'update' | 'delete';
+  title: string;
+  start: string; // ISO
+  end: string; // ISO
+  confirm_prompt: string;
+}
+
+/**
+ * Broadcast after the calendar operation confirmation resolves — either
+ * the event was modified (`success: true`) or the op was discarded.
+ */
+export interface CalendarOpDonePayload {
+  op: 'create' | 'update' | 'delete';
+  success: boolean;
+  event_id?: string;
+  error?: string;
+}
+
 export type WsIncoming =
   | {
       type: 'audio';
@@ -167,7 +201,15 @@ export type WsIncoming =
   /** The send-confirmation flow completed (either sent or aborted). */
   | { type: 'email_send_done'; payload: EmailSendDonePayload }
   /** Live Spotify playback state broadcast by the backend polling loop. */
-  | { type: 'spotify_state'; payload: SpotifyStatePayload };
+  | { type: 'spotify_state'; payload: SpotifyStatePayload }
+  /** Live GitHub state broadcast by the backend polling loop. */
+  | { type: 'github_state'; payload: GitHubStatePayload }
+  /** Live Google Calendar state pushed by the backend polling coroutine. */
+  | { type: 'calendar_state'; payload: CalendarStatePayload }
+  /** Backend proposes a calendar op and waits for voice confirmation. */
+  | { type: 'calendar_op_preview'; payload: CalendarOpPreviewPayload }
+  /** The calendar op confirmation flow resolved. */
+  | { type: 'calendar_op_done'; payload: CalendarOpDonePayload };
 
 export type WsOutgoing =
   | { type: 'transcript'; text: string; isFinal: boolean }
@@ -291,6 +333,44 @@ export interface GithubNotification {
   reason: string;
   title: string;
   age: string;
+}
+
+// ============ GitHub live WS payloads ============
+
+export interface GithubPRLive {
+  id: string;
+  repo: string;
+  title: string;
+  author: string;
+  html_url: string;
+  updated_at: string; // ISO
+}
+
+export interface GithubIssueLive {
+  id: string;
+  repo: string;
+  title: string;
+  html_url: string;
+  updated_at: string; // ISO
+}
+
+export interface GithubCIRunLive {
+  repo: string;
+  status: 'success' | 'failure' | 'running' | 'pending';
+  ran_at: string; // ISO
+  html_url: string;
+}
+
+/**
+ * Broadcast every `poll_interval_seconds` from the backend GitHub poller.
+ * `stale: true` means the last poll failed and this is cached data.
+ */
+export interface GitHubStatePayload {
+  prs: GithubPRLive[];
+  issues: GithubIssueLive[];
+  ci: GithubCIRunLive[];
+  fetched_at: string; // ISO
+  stale: boolean;
 }
 
 export type RepoSyncStatus = 'clean' | 'dirty' | 'ahead' | 'behind';

@@ -33,6 +33,7 @@ class Intent(Enum):
     CALENDAR_CREATE = "calendar_create"
     CALENDAR_UPDATE = "calendar_update"
     CALENDAR_DELETE = "calendar_delete"
+    DRIVE_SEARCH = "drive_search"
 
 
 @dataclass
@@ -379,6 +380,30 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\baus\s+(dem\s+)?kalender\s+(löschen|entfernen)\b",
         ],
     },
+    # ------------------------------------------------------------------
+    # Drive intent — voice-triggered read-only search.
+    # Patterns are kept distinct from web search / file explorer control.
+    # ------------------------------------------------------------------
+    Intent.DRIVE_SEARCH: {
+        "en": [
+            r"\b(search|find|look\s+for)\s+(in\s+)?drive\b",
+            r"\bdrive\s+(search|find)\b",
+            r"\bopen\s+(doc|document|file)\b",
+            r"\bfind\s+(the\s+)?(doc|document|file)\b",
+            r"\b(show|list)\s+(my\s+)?drive\s+(files?|docs?|documents?)\b",
+            r"\brecent\s+(drive\s+)?(files?|docs?|documents?)\b",
+            r"\bdrive\b.{0,30}\b(file|doc|document|spreadsheet)\b",
+        ],
+        "de": [
+            r"\bsuche?\s+in\s+drive\b",
+            r"\bdrive\s+suchen?\b",
+            r"\bfinde?\s+(das\s+)?(dokument|datei|doc)\b",
+            r"\bzeig(e)?\s+(mir\s+)?(meine?\s+)?drive\s+(dateien?|docs?|dokumente?)\b",
+            r"\bdrive\b.{0,30}\b(datei|dokument|tabelle)\b",
+            r"\bletzten?\s+(drive\s+)?(dateien?|docs?|dokumente?)\b",
+            r"\böffne?\s+(das\s+)?(dokument|datei|doc)\b",
+        ],
+    },
 }
 
 # App name aliases for PC control
@@ -483,6 +508,7 @@ class IntentParser:
             Intent.CALENDAR_CREATE,
             Intent.CALENDAR_UPDATE,
             Intent.CALENDAR_DELETE,
+            Intent.DRIVE_SEARCH,
         ]:
             confidence, extracted_params = self._match_intent(
                 text_lower, intent, language
@@ -544,6 +570,7 @@ class IntentParser:
         _EMAIL_INTENT_BASE = 0.75
         _SPOTIFY_INTENT_BASE = 0.75
         _CALENDAR_INTENT_BASE = 0.75
+        _DRIVE_INTENT_BASE = 0.75
         _SPOTIFY_INTENTS = (
             Intent.SPOTIFY_PLAY,
             Intent.SPOTIFY_PAUSE,
@@ -563,6 +590,8 @@ class IntentParser:
             confidence = min(1.0, _SPOTIFY_INTENT_BASE + (match_count * 0.1))
         elif intent in _CALENDAR_INTENTS:
             confidence = min(1.0, _CALENDAR_INTENT_BASE + (match_count * 0.1))
+        elif intent == Intent.DRIVE_SEARCH:
+            confidence = min(1.0, _DRIVE_INTENT_BASE + (match_count * 0.1))
         else:
             confidence = min(1.0, 0.4 + (match_count * 0.2))
 
@@ -584,6 +613,8 @@ class IntentParser:
             Intent.CALENDAR_DELETE,
         ):
             params = self._extract_calendar_params(text, intent)
+        elif intent == Intent.DRIVE_SEARCH:
+            params = self._extract_drive_params(text)
 
         return confidence, params
 
@@ -812,6 +843,36 @@ class IntentParser:
         )
         if time_match:
             params["time_expr"] = time_match.group(1).strip()
+
+        return params
+
+    def _extract_drive_params(self, text: str) -> dict[str, Any]:
+        """Extract a query hint from a Drive search utterance.
+
+        Args:
+            text: Lowercase user text.
+
+        Returns:
+            Dict with optional ``query`` key containing the search hint.
+        """
+        params: dict[str, Any] = {}
+
+        # Try to capture what the user is searching for after key trigger words.
+        # E.g. "find the doc budget report" -> "budget report"
+        #      "suche in drive nach Quartalsbericht" -> "Quartalsbericht"
+        patterns = [
+            r"\b(?:find|open|finde?|öffne?)\s+(?:the\s+)?(?:doc|document|file|datei|dokument)\s+(.+?)(?:[.?!]|$)",
+            r"\b(?:search|find)\s+(?:in\s+)?drive\s+(?:for\s+)?(.+?)(?:[.?!]|$)",
+            r"\bsuche?\s+(?:in\s+drive\s+)?(?:nach\s+)?(.+?)(?:[.?!]|$)",
+            r"\b(?:show|list)\s+(?:my\s+)?drive\s+(?:files?|docs?|documents?)\s+(?:about\s+|named?\s+|called\s+)?(.+?)(?:[.?!]|$)",
+        ]
+        for pat in patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                hint = m.group(1).strip()
+                if hint:
+                    params["query"] = hint
+                    break
 
         return params
 

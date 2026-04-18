@@ -100,6 +100,11 @@ _spotify_poller_task: asyncio.Task[None] | None = None
 _github_poller: Any = None  # GitHubPoller | None
 _github_session: Any = None  # aiohttp.ClientSession | None
 
+# GitLab integration — poller singleton and background task handle.
+_gitlab_client: Any = None  # GitLabClient | None
+_gitlab_poller: Any = None  # GitLabPoller | None
+_gitlab_poller_task: asyncio.Task[None] | None = None
+
 # System metrics collector + last snapshot (used for initial per-connection push)
 _metrics_collector: SystemMetricsCollector | None = None
 _metrics_task: asyncio.Task[None] | None = None
@@ -420,6 +425,30 @@ async def broadcast_calendar_op_done(payload: dict[str, Any]) -> None:
     await _broadcast(message)
 
 
+async def broadcast_drive_result(files: list[dict[str, Any]], query: str = "") -> None:
+    """Broadcast Drive search results to all connected clients.
+
+    Fired after the orchestrator builds Drive context so the frontend can
+    display results as a notification or panel. No poller — Drive state is
+    always voice-triggered.
+
+    Args:
+        files: List of serialised ``DriveFile`` dicts with camelCase keys
+            (``id``, ``name``, ``mimeType``, ``modifiedTime``, ``webViewLink``).
+        query: The search query string that produced these results.
+    """
+    message = json.dumps(
+        {
+            "type": "drive_result",
+            "payload": {
+                "query": query,
+                "files": files,
+            },
+        }
+    )
+    await _broadcast(message)
+
+
 async def broadcast_email_draft_preview(payload: dict[str, Any]) -> None:
     """Broadcast an email draft preview to all connected clients.
 
@@ -533,6 +562,89 @@ async def broadcast_github_state(payload: Any) -> None:
     }
     message = json.dumps({"type": "github_state", "payload": body})
     await _broadcast(message)
+
+
+async def broadcast_gitlab_state(payload: Any) -> None:
+    """Broadcast GitLab state payload to all connected WebSocket clients.
+
+    The payload is a :class:`integrations.gitlab.client.GitLabState` instance.
+    Serialises the dataclass fields manually to a ``gitlab_state`` WS frame.
+
+    Args:
+        payload: A ``GitLabState`` instance from the GitLab poller.
+    """
+    body = {
+        "mrs": [
+            {
+                "id": mr.id,
+                "iid": mr.iid,
+                "title": mr.title,
+                "source_branch": mr.source_branch,
+                "web_url": mr.web_url,
+                "author": mr.author,
+                "created_at": mr.created_at,
+                "draft": mr.draft,
+            }
+            for mr in payload.mrs
+        ],
+        "issues": [
+            {
+                "id": issue.id,
+                "iid": issue.iid,
+                "title": issue.title,
+                "labels": issue.labels,
+                "web_url": issue.web_url,
+                "author": issue.author,
+                "created_at": issue.created_at,
+            }
+            for issue in payload.issues
+        ],
+        "pipelines": [
+            {
+                "project": pipeline.project,
+                "status": pipeline.status,
+                "web_url": pipeline.web_url,
+                "created_at": pipeline.created_at,
+            }
+            for pipeline in payload.pipelines
+        ],
+        "error": payload.error,
+    }
+    message = json.dumps({"type": "gitlab_state", "payload": body})
+    await _broadcast(message)
+
+
+async def _start_gitlab_poller(
+    token: str,
+    url: str,
+    projects: list[str],
+    poll_interval: int,
+) -> None:
+    """Initialise the GitLab client and start the background poller task.
+
+    Creates a :class:`GitLabClient`, wraps it in a :class:`GitLabPoller`,
+    and starts the poll loop as an ``asyncio.Task``.  Stores both the client
+    and the task in module-level globals for teardown.
+
+    Args:
+        token: GitLab personal access token (``api`` + ``read_repository`` scopes).
+        url: Base URL of the GitLab instance (normalised; trailing slash stripped).
+        projects: List of project slugs or numeric IDs to watch pipelines for.
+        poll_interval: Seconds between polling ticks.
+    """
+    global _gitlab_client, _gitlab_poller, _gitlab_poller_task
+
+    from integrations.gitlab.client import GitLabClient  # noqa: PLC0415
+    from integrations.gitlab.poller import GitLabPoller  # noqa: PLC0415
+
+    _gitlab_client = GitLabClient(token=token, url=url, projects=projects)
+    _gitlab_poller = GitLabPoller(client=_gitlab_client, interval_seconds=poll_interval)
+    await _gitlab_poller.run(on_state=broadcast_gitlab_state)
+    _gitlab_poller_task = _gitlab_poller._task
+    logger.info(
+        f"GitLab poller started (interval={poll_interval}s, "
+        f"url={url}, projects={projects})"
+    )
 
 
 async def _start_github_poller(
@@ -2582,6 +2694,13 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         except Exception as _gh_exc:  # noqa: BLE001
             logger.debug(f"GitHub on-connect push failed: {_gh_exc}")
 
+    # Push cached GitLab state immediately if available.
+    if _gitlab_poller is not None and _gitlab_poller.last_state is not None:
+        try:
+            await broadcast_gitlab_state(_gitlab_poller.last_state)
+        except Exception as _gl_exc:  # noqa: BLE001
+            logger.debug(f"GitLab on-connect push failed: {_gl_exc}")
+
     # Mark the first-client event so other subsystems (scheduler, tests)
     # can still observe "at least one client has been here".
     if not _first_client_event.is_set():
@@ -2684,6 +2803,7 @@ async def start_ws_server(
     global _quick_ack_enabled, _mail_poller_task
     global _spotify_client, _spotify_poller_task
     global _github_poller, _github_session
+    global _gitlab_client, _gitlab_poller, _gitlab_poller_task
     global _calendar_poller_task
 
     from dotenv import load_dotenv
@@ -2938,6 +3058,33 @@ async def start_ws_server(
     else:
         logger.debug("GitHub integration disabled (github.enabled: false)")
 
+    # GitLab integration — token-gated; skipped silently when token absent.
+    gitlab_cfg = cfg.get_section("gitlab") or {}
+    _gitlab_token = _os.environ.get("GITLAB_TOKEN", "").strip()
+    # GITLAB_URL env var overrides config.gitlab.url
+    _gitlab_url = (
+        _os.environ.get("GITLAB_URL", "").strip()
+        or gitlab_cfg.get("url", "https://gitlab.com")
+    )
+    if gitlab_cfg.get("enabled", False) and _gitlab_token:
+        _gl_projects: list[str] = gitlab_cfg.get("projects", [])
+        _gl_interval = int(gitlab_cfg.get("poll_interval_seconds", 60))
+        try:
+            await _start_gitlab_poller(
+                token=_gitlab_token,
+                url=_gitlab_url,
+                projects=_gl_projects,
+                poll_interval=_gl_interval,
+            )
+        except Exception as _gl_exc:
+            logger.error(f"GitLab poller initialisation failed: {_gl_exc}")
+    elif gitlab_cfg.get("enabled", False) and not _gitlab_token:
+        logger.info(
+            "GitLab integration enabled but GITLAB_TOKEN is absent — poller skipped"
+        )
+    else:
+        logger.debug("GitLab integration disabled (gitlab.enabled: false)")
+
     # Keep running until cancelled (e.g. SIGINT from main.py).
     try:
         while True:
@@ -2998,6 +3145,22 @@ async def start_ws_server(
             except Exception as _gh_exc:  # noqa: BLE001
                 logger.warning(f"GitHub session close failed: {_gh_exc}")
         _github_session = None
+
+        # Stop the GitLab poller task.
+        if _gitlab_poller is not None:
+            try:
+                await _gitlab_poller.stop()
+            except Exception as _gl_exc:  # noqa: BLE001
+                logger.warning(f"GitLab poller stop failed: {_gl_exc}")
+        _gitlab_poller = None
+        _gitlab_client = None
+        if _gitlab_poller_task is not None and not _gitlab_poller_task.done():
+            _gitlab_poller_task.cancel()
+            try:
+                await _gitlab_poller_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        _gitlab_poller_task = None
 
         # Cancel any in-flight pipeline tasks before closing clients so
         # aiohttp handler coroutines aren't blocked waiting on them.

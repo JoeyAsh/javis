@@ -13,6 +13,12 @@ from integrations.google.calendar_client import (
     GoogleCalendarClient,
     get_calendar_client,
 )
+from integrations.google.drive_client import (
+    DriveClient,
+    DriveClientError,
+    DriveFile,
+    get_drive_client,
+)
 from integrations.google.gmail_client import (
     EmailDraft,
     EmailMessage,
@@ -47,4 +53,9 @@ __all__ = [
     "CalendarClientError",
     "CalendarEvent",
     "get_calendar_client",
+    # Drive
+    "DriveClient",
+    "DriveClientError",
+    "DriveFile",
+    "get_drive_client",
 ]

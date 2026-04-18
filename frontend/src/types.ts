@@ -45,7 +45,8 @@ export type PanelId =
   | 'dev'
   | 'notifications'
   | 'transcript'
-  | 'selffix';
+  | 'selffix'
+  | 'gitlab';
 
 export type PanelMode = 'compact' | 'expanded';
 
@@ -209,7 +210,9 @@ export type WsIncoming =
   /** Backend proposes a calendar op and waits for voice confirmation. */
   | { type: 'calendar_op_preview'; payload: CalendarOpPreviewPayload }
   /** The calendar op confirmation flow resolved. */
-  | { type: 'calendar_op_done'; payload: CalendarOpDonePayload };
+  | { type: 'calendar_op_done'; payload: CalendarOpDonePayload }
+  /** Live GitLab state broadcast by the backend polling loop. */
+  | { type: 'gitlab_state'; payload: GitLabStatePayload };
 
 export type WsOutgoing =
   | { type: 'transcript'; text: string; isFinal: boolean }
@@ -443,4 +446,48 @@ export interface SelfFixEntry {
   added?: number;
   removed?: number;
   startedAt: string; // ISO
+}
+
+// ============ GitLab WS payloads ============
+
+/** A single open GitLab merge request assigned to the authenticated user. */
+export interface GitLabMRPayload {
+  id: number;
+  iid: number;
+  title: string;
+  source_branch: string;
+  web_url: string;
+  author: string;
+  created_at: string; // ISO 8601
+  draft: boolean;
+}
+
+/** A single open GitLab issue assigned to the authenticated user. */
+export interface GitLabIssuePayload {
+  id: number;
+  iid: number;
+  title: string;
+  labels: string[];
+  web_url: string;
+  author: string;
+  created_at: string; // ISO 8601
+}
+
+/** The most recent pipeline for a configured project. */
+export interface GitLabPipelinePayload {
+  project: string;
+  status: 'success' | 'failed' | 'running' | 'pending' | 'canceled' | 'skipped';
+  web_url: string;
+  created_at: string; // ISO 8601
+}
+
+/**
+ * Broadcast every `poll_interval_seconds` from the backend GitLab poller.
+ * `error` is non-null when the last fetch failed (partially or completely).
+ */
+export interface GitLabStatePayload {
+  mrs: GitLabMRPayload[];
+  issues: GitLabIssuePayload[];
+  pipelines: GitLabPipelinePayload[];
+  error: string | null;
 }

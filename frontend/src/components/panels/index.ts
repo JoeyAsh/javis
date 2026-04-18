@@ -1,4 +1,5 @@
 export { AgendaPanel } from './AgendaPanel';
+export { GitLabPanel } from './GitLabPanel';
 export { MailPanel } from './MailPanel';
 export { NowPlayingPanel } from './NowPlayingPanel';
 export { LightsPanel } from './LightsPanel';

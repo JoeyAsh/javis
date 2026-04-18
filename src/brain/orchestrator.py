@@ -48,6 +48,9 @@ _CALENDAR_INTENTS: frozenset[Intent] = frozenset(
     }
 )
 
+# Intents that need Drive context injected before reaching OpenClaw.
+_DRIVE_INTENTS: frozenset[Intent] = frozenset({Intent.DRIVE_SEARCH})
+
 logger = get_logger("orchestrator")
 
 # Confidence threshold above which a local-intent classification is
@@ -380,6 +383,95 @@ class Orchestrator:
 
         return None
 
+    async def _build_drive_context(
+        self,
+        intent_result: IntentResult,
+    ) -> str | None:
+        """Fetch Drive search results and format them for prompt injection.
+
+        Called only for DRIVE_SEARCH intents. Returns ``None`` when Drive is
+        disabled or the client call fails — the turn is still forwarded to
+        OpenClaw without context rather than being aborted.
+
+        Args:
+            intent_result: Classified intent with extracted params.
+
+        Returns:
+            A short multi-line context string, or ``None`` on failure.
+        """
+        try:
+            cfg = get_config()
+            drive_cfg = cfg.get_section("drive") or {}
+            if not drive_cfg.get("enabled", False):
+                return None
+
+            from integrations.google.drive_client import (  # noqa: PLC0415
+                DriveClientError,
+                get_drive_client,
+            )
+            from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
+
+            max_results: int = int(drive_cfg.get("max_results", 10))
+            preview_chars: int = int(drive_cfg.get("preview_content_chars", 500))
+            scopes: list[str] = drive_cfg.get(
+                "scopes", ["https://www.googleapis.com/auth/drive.readonly"]
+            )
+
+            client = get_drive_client(scopes=scopes)
+            query_hint: str = intent_result.params.get("query", "")
+
+            # Build a Drive query string from the hint.
+            if query_hint:
+                drive_query = f"fullText contains '{query_hint}' or name contains '{query_hint}'"
+            else:
+                # No hint — fall back to recent files.
+                files = await client.list_recent(max_results=max_results)
+                if not files:
+                    return "Context — Drive: Keine Dateien gefunden."
+                lines = [f"Context — Drive recent files ({len(files)} results):"]
+                for f in files[:5]:
+                    lines.append(
+                        f"  • [{f.modified_time.strftime('%Y-%m-%d')}]"
+                        f" {f.name} (id={f.id})"
+                    )
+                return "\n".join(lines)
+
+            files = await client.search(drive_query, max_results=max_results)
+            if not files:
+                return (
+                    f"Context — Drive search '{query_hint}': Keine Dateien gefunden."
+                )
+
+            lines = [f"Context — Drive search '{query_hint}' ({len(files)} results):"]
+            for i, f in enumerate(files[:5]):
+                lines.append(
+                    f"  • [{f.modified_time.strftime('%Y-%m-%d')}]"
+                    f" {f.name} (id={f.id})"
+                    + (f" — {f.web_view_link}" if f.web_view_link else "")
+                )
+                # Inject content preview for the top-1 result only.
+                if i == 0:
+                    try:
+                        content = await client.get_file_content(f.id)
+                        if content:
+                            snippet = content[:preview_chars].strip()
+                            if len(content) > preview_chars:
+                                snippet += "…"
+                            lines.append(f"    Preview: {snippet}")
+                    except DriveClientError as exc:
+                        logger.debug("Drive content preview failed for {}: {}", f.id, exc)
+
+            return "\n".join(lines)
+
+        except (GoogleOAuthError,) as exc:
+            logger.warning("Drive OAuth error during context build: {}", exc)
+        except DriveClientError as exc:
+            logger.warning("Drive API error during context build: {}", exc)
+        except Exception as exc:
+            logger.warning("Unexpected error building Drive context: {}", exc)
+
+        return None
+
     async def process(
         self,
         text: str,
@@ -441,6 +533,10 @@ class Orchestrator:
             cal_ctx = await self._build_calendar_context(intent_result)
             if cal_ctx:
                 prompt_text = f"{cal_ctx}\n\nUser: {text}"
+        elif intent_result is not None and intent_result.intent in _DRIVE_INTENTS:
+            drive_ctx = await self._build_drive_context(intent_result)
+            if drive_ctx:
+                prompt_text = f"{drive_ctx}\n\nUser: {text}"
 
         return await self._agents["chat"].run(prompt_text, {}, language)
 
@@ -517,6 +613,10 @@ class Orchestrator:
             cal_ctx = await self._build_calendar_context(intent_result)
             if cal_ctx:
                 prompt_text = f"{cal_ctx}\n\nUser: {text}"
+        elif intent_result is not None and intent_result.intent in _DRIVE_INTENTS:
+            drive_ctx = await self._build_drive_context(intent_result)
+            if drive_ctx:
+                prompt_text = f"{drive_ctx}\n\nUser: {text}"
 
         openclaw = self.claude_client.openclaw
         if openclaw is None:

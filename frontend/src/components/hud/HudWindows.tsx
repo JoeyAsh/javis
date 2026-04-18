@@ -14,6 +14,7 @@ import type { SlotId } from './SlotGrid';
 import {
   AgendaPanel,
   DevPanel,
+  GitLabPanel,
   LightsPanel,
   MailPanel,
   NotificationsPanel,
@@ -102,6 +103,12 @@ const WINDOWS: ReadonlyArray<WindowSpec> = [
     title: 'Self-Fix',
     icon: <Dot />,
     render: (mode) => <SelfFixPanel mode={mode} />,
+  },
+  {
+    id: 'gitlab',
+    title: 'GitLab',
+    icon: <Dot />,
+    render: (mode) => <GitLabPanel mode={mode} />,
   },
 ];
 

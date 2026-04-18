@@ -122,6 +122,22 @@ github:
   #   - "owner/repo-a"
   #   - "owner/repo-b"
 
+gitlab:
+  # Token-gated: requires GITLAB_TOKEN in .env (personal access token with
+  # api + read_repository scopes). If the token is missing the poller does
+  # NOT start regardless of this flag.
+  # GITLAB_URL env var overrides the url key below (useful for self-hosted).
+  enabled: true
+  url: "https://gitlab.com"
+  poll_interval_seconds: 60
+  # List of "group/project" slugs or numeric project IDs to watch pipelines
+  # for. Slugs with "/" are URL-encoded automatically; bare integers are
+  # treated as numeric IDs.
+  projects: []
+  # Add projects by extending this list:
+  #   - "my-group/my-project"
+  #   - "42"
+
 google:
   # Path where the OAuth token is cached after first-use browser consent.
   # Tilde is expanded at runtime. Override with GOOGLE_TOKEN_CACHE env var.
@@ -145,6 +161,13 @@ calendar:
   scopes:
     - "https://www.googleapis.com/auth/calendar"
     - "https://www.googleapis.com/auth/calendar.events"
+
+drive:
+  enabled: true
+  scopes:
+    - "https://www.googleapis.com/auth/drive.readonly"
+  max_results: 10
+  preview_content_chars: 500
 
 gmail:
   enabled: true

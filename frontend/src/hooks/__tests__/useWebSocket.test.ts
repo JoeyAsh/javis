@@ -428,6 +428,320 @@ describe('useWebSocket — speaking/idle audio handoff', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Mail state subscriptions
+// ---------------------------------------------------------------------------
+
+describe('useWebSocket — mail WS subscriptions', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    latestMockWs = null;
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('subscribeMailState receives payload from mail_state message', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    act(() => { fireOpen(ws); });
+
+    const received: unknown[] = [];
+    act(() => {
+      result.current.subscribeMailState((payload) => {
+        received.push(payload);
+      });
+    });
+
+    act(() => {
+      fireMessage(ws, {
+        type: 'mail_state',
+        payload: {
+          messages: [
+            {
+              id: 'msg-1',
+              sender: 'Test Sender',
+              subject: 'Hello',
+              preview: 'preview text',
+              receivedAt: new Date().toISOString(),
+              isVip: false,
+              unread: true,
+            },
+          ],
+          unread_count: 1,
+        },
+      });
+    });
+
+    expect(received).toHaveLength(1);
+    expect((received[0] as { unread_count: number }).unread_count).toBe(1);
+  });
+
+  it('subscribeEmailDraftPreview receives payload from email_draft_preview message', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    act(() => { fireOpen(ws); });
+
+    const received: unknown[] = [];
+    act(() => {
+      result.current.subscribeEmailDraftPreview((payload) => {
+        received.push(payload);
+      });
+    });
+
+    act(() => {
+      fireMessage(ws, {
+        type: 'email_draft_preview',
+        payload: {
+          draft_id: 'draft-1',
+          to: 'alice@example.com',
+          subject: 'Test subject',
+          body_preview: 'This is the body.',
+          created_at: new Date().toISOString(),
+        },
+      });
+    });
+
+    expect(received).toHaveLength(1);
+    expect((received[0] as { to: string }).to).toBe('alice@example.com');
+  });
+
+  it('subscribeEmailSendDone receives payload from email_send_done message', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    act(() => { fireOpen(ws); });
+
+    const received: unknown[] = [];
+    act(() => {
+      result.current.subscribeEmailSendDone((payload) => {
+        received.push(payload);
+      });
+    });
+
+    act(() => {
+      fireMessage(ws, {
+        type: 'email_send_done',
+        payload: {
+          draft_id: 'draft-1',
+          success: true,
+          message_id: 'sent-msg-42',
+        },
+      });
+    });
+
+    expect(received).toHaveLength(1);
+    expect((received[0] as { success: boolean }).success).toBe(true);
+  });
+
+  it('subscribeMailState unsubscribe removes listener', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    act(() => { fireOpen(ws); });
+
+    const received: unknown[] = [];
+    let unsub: (() => void) | undefined;
+
+    act(() => {
+      unsub = result.current.subscribeMailState((payload) => {
+        received.push(payload);
+      });
+    });
+
+    // Unsubscribe before message arrives
+    act(() => {
+      unsub?.();
+    });
+
+    act(() => {
+      fireMessage(ws, {
+        type: 'mail_state',
+        payload: { messages: [], unread_count: 0 },
+      });
+    });
+
+    expect(received).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spotify state subscriptions
+// ---------------------------------------------------------------------------
+
+describe('useWebSocket — spotify_state subscriptions', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    latestMockWs = null;
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('subscribeSpotifyState receives payload from spotify_state message', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    act(() => { fireOpen(ws); });
+
+    const received: unknown[] = [];
+    act(() => {
+      result.current.subscribeSpotifyState((payload) => {
+        received.push(payload);
+      });
+    });
+
+    act(() => {
+      fireMessage(ws, {
+        type: 'spotify_state',
+        payload: {
+          authenticated: true,
+          track: {
+            name: 'Midnight City',
+            artist: 'M83',
+            album: 'Hurry Up',
+            durationMs: 241_000,
+            progressMs: 113_000,
+            isPlaying: true,
+          },
+          device: { name: 'Studio Monitors', type: 'Speaker', volumePercent: 72 },
+        },
+      });
+    });
+
+    expect(received).toHaveLength(1);
+    expect((received[0] as { authenticated: boolean }).authenticated).toBe(true);
+  });
+
+  it('subscribeSpotifyState receives unauthenticated payload', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    act(() => { fireOpen(ws); });
+
+    const received: unknown[] = [];
+    act(() => {
+      result.current.subscribeSpotifyState((payload) => {
+        received.push(payload);
+      });
+    });
+
+    act(() => {
+      fireMessage(ws, {
+        type: 'spotify_state',
+        payload: { authenticated: false },
+      });
+    });
+
+    expect(received).toHaveLength(1);
+    expect((received[0] as { authenticated: boolean }).authenticated).toBe(false);
+  });
+
+  it('subscribeSpotifyState unsubscribe removes listener', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    act(() => { fireOpen(ws); });
+
+    const received: unknown[] = [];
+    let unsub: (() => void) | undefined;
+
+    act(() => {
+      unsub = result.current.subscribeSpotifyState((payload) => {
+        received.push(payload);
+      });
+    });
+
+    act(() => { unsub?.(); });
+
+    act(() => {
+      fireMessage(ws, {
+        type: 'spotify_state',
+        payload: { authenticated: true },
+      });
+    });
+
+    expect(received).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sendSpotifyCmd
+// ---------------------------------------------------------------------------
+
+describe('useWebSocket — sendSpotifyCmd', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    latestMockWs = null;
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('sendSpotifyCmd sends correct spotify_cmd JSON when WS is open', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    const sendSpy = vi.spyOn(ws, 'send');
+    act(() => { fireOpen(ws); });
+
+    act(() => {
+      result.current.sendSpotifyCmd('pause');
+    });
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(sendSpy.mock.calls[0][0] as string) as {
+      type: string;
+      payload: { action: string };
+    };
+    expect(sent.type).toBe('spotify_cmd');
+    expect(sent.payload.action).toBe('pause');
+  });
+
+  it('sendSpotifyCmd includes value for volume action', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    const sendSpy = vi.spyOn(ws, 'send');
+    act(() => { fireOpen(ws); });
+
+    act(() => {
+      result.current.sendSpotifyCmd('volume', 65);
+    });
+
+    const sent = JSON.parse(sendSpy.mock.calls[0][0] as string) as {
+      type: string;
+      payload: { action: string; value: number };
+    };
+    expect(sent.payload.action).toBe('volume');
+    expect(sent.payload.value).toBe(65);
+  });
+
+  it('sendSpotifyCmd no-ops when WS is not open', () => {
+    const { result } = renderHook(() => useWebSocket());
+    const ws = latestMockWs as MockWsInstance;
+    const sendSpy = vi.spyOn(ws, 'send');
+    // Do NOT open — ws stays CONNECTING
+
+    act(() => {
+      result.current.sendSpotifyCmd('next');
+    });
+
+    expect(sendSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe('useWebSocket — error suppression', () => {
   let debugSpy: ReturnType<typeof vi.spyOn>;
   let warnSpy: ReturnType<typeof vi.spyOn>;

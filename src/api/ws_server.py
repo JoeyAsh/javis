@@ -23,11 +23,12 @@ from audio.stt import SpeechToText, create_stt_engine
 from audio.wake_word import WakeWordDetector, create_wake_word_detector
 from brain.conversation_mode import ConversationMode
 from brain.memory import MemoryStore
-from brain.intent_parser import IntentParser, get_intent_parser
+from brain.intent_parser import Intent, IntentParser, get_intent_parser
 from brain.quick_ack import QuickAckGenerator
 from brain.orchestrator import Orchestrator
 from brain.salutation import get_salutation
 from integrations.openclaw import OpenClawClient
+from integrations.spotify import SpotifyClient
 from utils.logger import get_logger
 
 logger = get_logger("ws_server")
@@ -91,6 +92,10 @@ _quick_ack_generator: QuickAckGenerator | None = None
 
 _start_time: float = time.time()
 
+# Spotify integration — client singleton and background task handle.
+_spotify_client: SpotifyClient | None = None
+_spotify_poller_task: asyncio.Task[None] | None = None
+
 # System metrics collector + last snapshot (used for initial per-connection push)
 _metrics_collector: SystemMetricsCollector | None = None
 _metrics_task: asyncio.Task[None] | None = None
@@ -98,6 +103,26 @@ _last_metrics: SystemMetrics | None = None
 
 # Per-connection state key — stored on the ws object via a dict keyed by ws id
 _connection_state: dict[int, dict[str, Any]] = {}
+
+
+def get_gmail_client(vip_senders: list[str] | None = None) -> Any:
+    """Lazy proxy for the GmailClient singleton — importable and patchable.
+
+    Wraps ``integrations.google.gmail_client.get_gmail_client`` so that tests
+    can patch ``api.ws_server.get_gmail_client`` rather than needing to reach
+    into the integration module.
+
+    Args:
+        vip_senders: Optional VIP sender list forwarded on first creation.
+
+    Returns:
+        Shared ``GmailClient`` instance.
+    """
+    from integrations.google.gmail_client import (  # noqa: PLC0415
+        get_gmail_client as _get_gc,
+    )
+
+    return _get_gc(vip_senders=vip_senders)
 
 # Audio pipeline configuration (populated from config in start_ws_server)
 _silence_threshold: float = 500.0
@@ -303,6 +328,226 @@ async def broadcast_conversation_mode(
     await _broadcast(message)
 
 
+async def broadcast_mail_state(
+    messages: list[dict[str, Any]],
+    unread_count: int,
+) -> None:
+    """Broadcast the current mail state to all connected clients.
+
+    Args:
+        messages: List of serialised ``MailMessage`` dicts (camelCase keys).
+        unread_count: Total number of unread messages.
+    """
+    message = json.dumps(
+        {
+            "type": "mail_state",
+            "payload": {
+                "messages": messages,
+                "unread_count": unread_count,
+            },
+        }
+    )
+    await _broadcast(message)
+
+
+async def broadcast_email_draft_preview(payload: dict[str, Any]) -> None:
+    """Broadcast an email draft preview to all connected clients.
+
+    Args:
+        payload: Dict with keys ``draft_id``, ``to``, ``subject``,
+            ``body_preview``, ``created_at``.
+    """
+    message = json.dumps({"type": "email_draft_preview", "payload": payload})
+    await _broadcast(message)
+
+
+async def broadcast_email_send_done(payload: dict[str, Any]) -> None:
+    """Broadcast the result of an email send attempt to all connected clients.
+
+    Args:
+        payload: Dict with keys ``draft_id``, ``success`` (bool), and
+            optionally ``message_id`` or ``error``.
+    """
+    message = json.dumps({"type": "email_send_done", "payload": payload})
+    await _broadcast(message)
+
+
+async def broadcast_spotify_state(
+    authenticated: bool,
+    track: Any = None,
+) -> None:
+    """Broadcast current Spotify playback state to all connected clients.
+
+    Args:
+        authenticated: Whether the Spotify client has a valid token.
+        track: SpotifyTrackInfo instance, or None when nothing is playing.
+    """
+    from integrations.spotify.client import SpotifyTrackInfo  # noqa: PLC0415
+
+    if track is not None and isinstance(track, SpotifyTrackInfo):
+        payload: dict[str, Any] = {
+            "authenticated": authenticated,
+            "playing": track.is_playing,
+            "title": track.name,
+            "artist": track.artist,
+            "album": track.album,
+            "progress_ms": track.progress_ms,
+            "duration_ms": track.duration_ms,
+            "shuffle": track.shuffle,
+            "repeat": track.repeat,
+            "device": track.device_name,
+        }
+        if track.album_art_url:
+            payload["album_art_url"] = track.album_art_url
+    else:
+        payload = {
+            "authenticated": authenticated,
+            "playing": False,
+            "title": "",
+            "artist": "",
+            "album": "",
+            "progress_ms": 0,
+            "duration_ms": 0,
+            "shuffle": False,
+            "repeat": "off",
+            "device": "",
+        }
+
+    message = json.dumps({"type": "spotify_state", "payload": payload})
+    await _broadcast(message)
+
+
+async def _spotify_state_loop(client: SpotifyClient, interval_seconds: int) -> None:
+    """Background poller: fetch Spotify state and broadcast to all clients.
+
+    Polling stops gracefully when no active device is detected (to avoid
+    burning API quota). A 429 rate-limit response backs off for one
+    additional interval before retrying.
+
+    Args:
+        client: Initialised SpotifyClient instance.
+        interval_seconds: Seconds between polling ticks.
+    """
+    from integrations.spotify.client import SpotifyAuthError, SpotifyPollError  # noqa: PLC0415
+
+    logger.info(f"Spotify state poller started (interval={interval_seconds}s)")
+
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+        except asyncio.CancelledError:
+            logger.info("Spotify poller cancelled")
+            return
+
+        if not client.is_authenticated():
+            await broadcast_spotify_state(authenticated=False)
+            continue
+
+        try:
+            track = await client.get_playback_state()
+            await broadcast_spotify_state(authenticated=True, track=track)
+            if track is None:
+                logger.debug("Spotify: no active device — poll returned None")
+        except SpotifyAuthError as exc:
+            logger.warning(f"Spotify auth error during poll: {exc}")
+            await broadcast_spotify_state(authenticated=False)
+        except SpotifyPollError as exc:
+            logger.warning(f"Spotify poll error (will retry): {exc}")
+            # Extra back-off for rate limit — sleep an additional interval.
+            try:
+                await asyncio.sleep(interval_seconds)
+            except asyncio.CancelledError:
+                logger.info("Spotify poller cancelled during backoff")
+                return
+        except asyncio.CancelledError:
+            logger.info("Spotify poller cancelled")
+            return
+        except Exception as exc:
+            logger.error(f"Spotify poller unexpected error: {exc}")
+
+
+async def spotify_oauth_callback_handler(request: web.Request) -> web.Response:
+    """Handle GET /oauth/spotify/callback — exchange PKCE code for token.
+
+    Registered on the HTTP server at :8766.  On success returns a plain
+    HTML page that closes the browser tab.
+
+    Args:
+        request: Incoming aiohttp request with ``code`` query parameter.
+
+    Returns:
+        200 HTML confirmation page, or 400/503 error page.
+    """
+    global _spotify_client, _spotify_poller_task
+
+    code = request.rel_url.query.get("code")
+
+    if not code:
+        return web.Response(
+            status=400,
+            content_type="text/html",
+            text=(
+                "<html><body><h2>Authorization failed.</h2>"
+                "<p>No authorization code received from Spotify.</p></body></html>"
+            ),
+        )
+
+    if _spotify_client is None:
+        return web.Response(
+            status=503,
+            content_type="text/html",
+            text=(
+                "<html><body><h2>Spotify client not ready.</h2>"
+                "<p>The backend Spotify integration is not initialised.</p></body></html>"
+            ),
+        )
+
+    from utils.config_loader import get_config as _gcfg  # noqa: PLC0415
+    from integrations.spotify.client import SpotifyAuthError  # noqa: PLC0415
+
+    try:
+        await _spotify_client.complete_auth(code)
+    except SpotifyAuthError as exc:
+        logger.error(f"Spotify OAuth callback failed: {exc}")
+        return web.Response(
+            status=400,
+            content_type="text/html",
+            text=(
+                "<html><body><h2>Authorization code expired or already used.</h2>"
+                f"<p>{exc}</p></body></html>"
+            ),
+        )
+
+    logger.info("Spotify OAuth complete — starting state poller")
+
+    # Start the poller if it isn't already running.
+    if _spotify_poller_task is None or _spotify_poller_task.done():
+        _cfg = _gcfg()
+        spotify_cfg = _cfg.get_section("spotify") or {}
+        poll_interval = int(spotify_cfg.get("poll_interval", 10))
+        _spotify_poller_task = asyncio.create_task(
+            _spotify_state_loop(_spotify_client, poll_interval)
+        )
+        logger.info(f"Spotify poller launched (interval={poll_interval}s)")
+
+    # Notify the HUD.
+    await broadcast_notification(
+        notification_id="spotify-auth-ok",
+        severity="info",
+        title="Spotify verbunden",
+        detail="Die Spotify-Authentifizierung war erfolgreich.",
+    )
+
+    return web.Response(
+        status=200,
+        content_type="text/html",
+        text=(
+            "<html><body><h2>Spotify connected. You can close this window.</h2>"
+            "<script>setTimeout(()=>window.close(),2000);</script></body></html>"
+        ),
+    )
+
+
 async def broadcast_notification(
     notification_id: str,
     severity: str,
@@ -427,6 +672,223 @@ async def _on_metrics_snapshot(metrics: SystemMetrics) -> None:
     global _last_metrics
     _last_metrics = metrics
     await broadcast_system_metrics(metrics)
+
+
+# ---------------------------------------------------------------------------
+# Gmail mail poller
+# ---------------------------------------------------------------------------
+
+# Task handle for the mail polling background coroutine.
+_mail_poller_task: asyncio.Task[None] | None = None
+
+
+def _email_message_to_dict(msg: Any) -> dict[str, Any]:
+    """Serialise an ``EmailMessage`` dataclass to a camelCase frontend dict.
+
+    Key names match the ``MailMessage`` TypeScript type in ``frontend/src/types.ts``:
+    ``preview`` (not ``snippet``) and ``unread`` (not ``isUnread``).
+    """
+    return {
+        "id": msg.id,
+        "threadId": msg.thread_id,
+        "subject": msg.subject,
+        "sender": msg.sender,
+        "senderEmail": msg.sender_email,
+        "recipient": msg.recipient,
+        "receivedAt": msg.received_at.isoformat(),
+        "preview": msg.snippet,
+        "unread": msg.is_unread,
+        "isVip": msg.is_vip,
+    }
+
+
+async def _start_mail_poller(poll_interval: int, vip_senders: list[str]) -> None:
+    """Background coroutine that polls Gmail and broadcasts ``mail_state``.
+
+    Runs indefinitely until cancelled.  Backs off to ``3 * poll_interval``
+    after three consecutive failures, then resets on the next success.
+
+    Args:
+        poll_interval: Normal interval between polls in seconds.
+        vip_senders: VIP sender list forwarded to the Gmail client.
+    """
+    from integrations.google.gmail_client import GmailClientError  # noqa: PLC0415
+    from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
+
+    logger.info(f"Mail poller started (interval={poll_interval}s)")
+    consecutive_failures = 0
+    backoff_interval = poll_interval * 3
+
+    while True:
+        try:
+            # Wait for at least one client to be connected before polling.
+            await asyncio.wait_for(_first_client_event.wait(), timeout=300)
+        except asyncio.TimeoutError:
+            logger.debug("Mail poller: no client connected yet, waiting...")
+            continue
+
+        sleep_secs = backoff_interval if consecutive_failures >= 3 else poll_interval
+        await asyncio.sleep(sleep_secs)
+
+        try:
+            client = get_gmail_client(vip_senders=vip_senders)
+            messages = await client.list_unread(max_results=5)
+            unread_count = await client.get_unread_count()
+
+            serialised = [_email_message_to_dict(m) for m in messages]
+            await broadcast_mail_state(serialised, unread_count)
+            logger.debug(f"Mail state broadcast: {unread_count} unread, {len(messages)} msgs")
+            consecutive_failures = 0
+
+        except (GoogleOAuthError,) as exc:
+            consecutive_failures += 1
+            logger.warning(
+                f"Mail poller: OAuth error (failure #{consecutive_failures}): {exc}"
+            )
+        except GmailClientError as exc:
+            consecutive_failures += 1
+            logger.warning(
+                f"Mail poller: Gmail API error (failure #{consecutive_failures}): {exc}"
+            )
+        except asyncio.CancelledError:
+            logger.info("Mail poller cancelled")
+            return
+        except Exception as exc:
+            consecutive_failures += 1
+            logger.error(f"Mail poller: unexpected error (failure #{consecutive_failures}): {exc}")
+
+
+# Per-connection email confirmation state key.
+# Stored under ``_connection_state[conn_id]["pending_email_send"]`` as a dict:
+# {"draft_id": str, "to": str, "subject": str, "confirm_event": asyncio.Event}
+# or None when no confirmation is pending.
+
+
+_CONFIRM_RE = __import__("re").compile(
+    r"\b(ja|senden|bestätige|confirm|yes|send\s+it|go\s+ahead)\b",
+    __import__("re").IGNORECASE,
+)
+_CANCEL_RE = __import__("re").compile(
+    r"\b(nein|abbrechen|stop|cancel|nicht\s+senden|abort)\b",
+    __import__("re").IGNORECASE,
+)
+
+
+async def _handle_email_confirm(
+    ws: web.WebSocketResponse,
+    text: str,
+) -> bool:
+    """Check whether ``text`` is a pending email confirmation or cancellation.
+
+    Called from ``_run_voice_pipeline_body`` immediately after STT, before
+    any other processing. If ``pending_email_send`` is set on the connection,
+    the turn is inspected against the confirm / cancel word lists:
+
+    - Confirm match → ``send_draft()`` fires, ``pending_email_send`` cleared,
+      ``email_send_done`` broadcast, returns ``True`` (turn consumed).
+    - Cancel match → ``delete_draft()`` fires, state cleared, returns ``True``.
+    - Timeout (``created_at`` older than config ``send_confirm_timeout_seconds``)
+      → state cleared, notification broadcast, returns ``False`` so the utterance
+      is processed as a fresh turn.
+    - Ambiguous → state kept, returns ``False`` (pipeline re-reads draft summary).
+
+    Args:
+        ws: The WebSocket connection.
+        text: STT transcript of the current turn.
+
+    Returns:
+        ``True`` when the turn was consumed by the confirmation machine,
+        ``False`` otherwise.
+    """
+    conn_id = id(ws)
+    state = _connection_state.get(conn_id)
+    if state is None:
+        return False
+
+    pending: dict[str, Any] | None = state.get("pending_email_send")
+    if pending is None:
+        return False
+
+    # --- Timeout check -------------------------------------------------------
+    from utils.config_loader import get_config as _get_cfg  # noqa: PLC0415
+
+    _gmail_cfg = _get_cfg().get_section("gmail") or {}
+    timeout_secs: float = float(_gmail_cfg.get("send_confirm_timeout_seconds", 60))
+    created_at: float = pending.get("created_at", 0.0)
+    if time.time() - created_at > timeout_secs:
+        draft_id_exp: str = pending.get("draft_id", "")
+        logger.info(
+            f"Email confirm window expired for draft_id={draft_id_exp} "
+            f"(>{timeout_secs:.0f}s) — clearing pending state"
+        )
+        state["pending_email_send"] = None
+        try:
+            await get_gmail_client().delete_draft(draft_id_exp)
+        except Exception as _del_exc:
+            logger.warning("Draft cleanup on timeout failed: %s", _del_exc)
+        await broadcast_email_send_done({"draft_id": draft_id_exp, "success": False})
+        await broadcast_notification(
+            notification_id=f"email-timeout-{draft_id_exp}",
+            severity="info",
+            title="E-Mail-Entwurf abgelaufen",
+            detail="Das Bestätigungsfenster ist abgelaufen. Die Anfrage wurde nicht gesendet.",
+        )
+        return False  # let the utterance be processed as a normal turn
+
+    text_lower = text.lower().strip()
+    draft_id: str = pending["draft_id"]
+    to: str = pending.get("to", "")
+
+    if _CONFIRM_RE.search(text_lower):
+        logger.info(f"Email confirmation received for draft_id={draft_id}")
+        state["pending_email_send"] = None
+
+        try:
+            client = get_gmail_client()
+            message_id = await client.send_draft(draft_id)
+            await broadcast_email_send_done(
+                {"draft_id": draft_id, "success": True, "message_id": message_id}
+            )
+            await broadcast_notification(
+                notification_id=f"email-sent-{draft_id}",
+                severity="info",
+                title=f"E-Mail an {to} gesendet",
+                detail="Die Nachricht wurde erfolgreich übermittelt.",
+            )
+            logger.info(f"Email sent successfully: message_id={message_id}")
+
+        except Exception as exc:
+            err_msg = str(exc)
+            logger.error(f"Email send failed after confirmation: {err_msg}")
+            await broadcast_email_send_done(
+                {"draft_id": draft_id, "success": False, "error": err_msg}
+            )
+            # Attempt to clean up the draft on failure — non-fatal.
+            try:
+                await get_gmail_client().delete_draft(draft_id)
+            except Exception as _del_exc:
+                logger.warning("Draft cleanup failed after send error: %s", _del_exc)
+
+        return True
+
+    if _CANCEL_RE.search(text_lower):
+        logger.info(f"Email send cancelled for draft_id={draft_id}")
+        state["pending_email_send"] = None
+
+        try:
+            await get_gmail_client().delete_draft(draft_id)
+        except Exception as exc:
+            logger.warning(f"Could not delete draft {draft_id} on cancel: {exc}")
+
+        await broadcast_email_send_done({"draft_id": draft_id, "success": False})
+        return True
+
+    # Ambiguous turn — leave pending state intact and return False so the
+    # turn is forwarded to the voice pipeline (which will re-read the summary).
+    logger.debug(
+        f"Email confirm: ambiguous turn for draft_id={draft_id} — keeping window open"
+    )
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -680,6 +1142,84 @@ async def _arm_follow_up_window(ws: web.WebSocketResponse) -> None:
     state["follow_up_timer_task"] = timer
 
 
+async def _attempt_email_compose_draft(
+    ws: web.WebSocketResponse,
+    intent_result: Any,
+    spoken_preview: str,
+) -> None:
+    """Create a Gmail draft from EMAIL_COMPOSE intent params and arm confirmation.
+
+    Called after the OpenClaw streaming pipeline finishes for an EMAIL_COMPOSE
+    turn. Extracts ``to``, ``subject``, and ``body`` from ``intent_result.params``,
+    calls ``GmailClient.create_draft``, populates ``pending_email_send`` on the
+    connection state, and broadcasts ``email_draft_preview``. If params are
+    incomplete the user is notified via a spoken fallback instead.
+
+    Args:
+        ws: Active WebSocket connection — used to look up connection state.
+        intent_result: Classified intent with ``to`` / ``subject`` / ``body``
+            params extracted by the intent parser.
+        spoken_preview: Full response text spoken by OpenClaw (used as the
+            body preview when no explicit body param is present).
+    """
+    from integrations.google.gmail_client import GmailClientError  # noqa: PLC0415
+    from utils.config_loader import get_config as _gcfg  # noqa: PLC0415
+
+    conn_id = id(ws)
+    conn_state = _connection_state.get(conn_id)
+    if conn_state is None:
+        return
+
+    params = getattr(intent_result, "params", {}) or {}
+    to: str = params.get("to", "").strip()
+    subject: str = params.get("subject", "Kein Betreff").strip() or "Kein Betreff"
+    # Use the subject hint as body when no explicit body is available.
+    body: str = params.get("body", spoken_preview[:500]).strip() or spoken_preview[:500]
+
+    if not to:
+        logger.info(
+            "EMAIL_COMPOSE: no recipient extracted from intent params — "
+            "skipping draft creation (user needs to be more specific)"
+        )
+        return
+
+    _gmail_cfg = _gcfg().get_section("gmail") or {}
+    if not _gmail_cfg.get("enabled", False):
+        return
+
+    try:
+        client = get_gmail_client(vip_senders=_gmail_cfg.get("vip_senders", []))
+        draft = await client.create_draft(to=to, subject=subject, body=body)
+
+        body_preview = body[:200]
+        conn_state["pending_email_send"] = {
+            "draft_id": draft.id,
+            "to": to,
+            "subject": subject,
+            "body_preview": body_preview,
+            "created_at": time.time(),
+        }
+        logger.info(
+            f"EMAIL_COMPOSE draft created: draft_id={draft.id} to={to!r} "
+            f"subject={subject!r}"
+        )
+
+        await broadcast_email_draft_preview(
+            {
+                "draft_id": draft.id,
+                "to": to,
+                "subject": subject,
+                "body_preview": body_preview,
+                "created_at": draft.created_at.isoformat(),
+            }
+        )
+
+    except GmailClientError as exc:
+        logger.error(f"EMAIL_COMPOSE draft creation failed: {exc}")
+        # Non-fatal — the user turn was still processed, they just won't get
+        # a confirmation prompt.
+
+
 async def _run_voice_pipeline(
     audio_chunks: list[np.ndarray],
     ws: web.WebSocketResponse,
@@ -760,6 +1300,15 @@ async def _run_voice_pipeline_body(
     # Broadcast + archive the user turn immediately — we want the
     # archive to reflect reality even if the downstream LLM call fails.
     await broadcast_transcript("user", result.text)
+
+    # --- Email confirmation gate ------------------------------------------
+    # If there is a pending draft waiting for explicit verbal confirmation,
+    # intercept this turn BEFORE sleep-phrase detection or the orchestrator.
+    # Returns True when the turn was fully handled (sent or cancelled).
+    if await _handle_email_confirm(ws, result.text):
+        logger.info("Voice pipeline: turn consumed by email confirmation gate")
+        await broadcast_state("idle")
+        return
 
     # --- Sleep-phrase short-circuit ---------------------------------------
     # If the user's utterance signals "we're done" ("danke", "thanks", ...),
@@ -1000,6 +1549,19 @@ async def _run_voice_pipeline_body(
 
     # Memory: OpenClaw owns the conversational session; the local archive
     # was already written by the ``broadcast_transcript`` calls above.
+
+    # --- EMAIL_COMPOSE: create draft + arm confirmation window -----------
+    # When the intent is EMAIL_COMPOSE and no draft is already pending,
+    # create a Gmail draft from the extracted params (to/subject from
+    # intent_result) and set pending_email_send so the next turn is
+    # intercepted by _handle_email_confirm before reaching the orchestrator.
+    if (
+        intent_result is not None
+        and intent_result.intent == Intent.EMAIL_COMPOSE
+        and conn_state is not None
+        and conn_state.get("pending_email_send") is None
+    ):
+        await _attempt_email_compose_draft(ws, intent_result, full_response_text)
 
     # --- Arm follow-up window (or go straight to idle) ------------------
     # After a successful turn, keep the mic open for a short window so the
@@ -1301,8 +1863,49 @@ async def _handle_command(
     elif cmd_type == "cancel_turn":
         await _cancel_current_turn(ws)
 
+    elif cmd_type == "spotify_cmd":
+        await _handle_spotify_cmd(payload)
+
     else:
         logger.warning(f"Unknown command type: {cmd_type}")
+
+
+async def _handle_spotify_cmd(payload: dict[str, Any]) -> None:
+    """Handle an incoming ``spotify_cmd`` WebSocket message.
+
+    Phase 1: dispatches play/pause/next/prev/volume directly to the
+    SpotifyClient when one is initialised and authenticated.  Unknown
+    actions are logged as warnings.
+
+    Args:
+        payload: ``{"action": str, "value": optional int}``
+    """
+    action = payload.get("action", "")
+    value = payload.get("value")
+    logger.info(f"spotify_cmd received: action={action!r} value={value!r}")
+
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        logger.warning("spotify_cmd received but client not authenticated — ignoring")
+        return
+
+    try:
+        if action == "play":
+            await _spotify_client.play()
+        elif action == "pause":
+            await _spotify_client.pause()
+        elif action == "next":
+            await _spotify_client.next_track()
+        elif action == "prev":
+            await _spotify_client.previous_track()
+        elif action == "volume":
+            if value is not None:
+                await _spotify_client.set_volume(int(value))
+            else:
+                logger.warning("spotify_cmd volume received without 'value' field")
+        else:
+            logger.warning(f"Unknown spotify_cmd action: {action!r}")
+    except Exception as exc:
+        logger.error(f"spotify_cmd action={action!r} failed: {exc}")
 
 
 async def _cancel_current_turn(ws: web.WebSocketResponse) -> None:
@@ -1425,6 +2028,9 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         "barge_in_grace_until": 0.0,
         # Backchannel: monotonic timestamp of last broadcast clip.
         "last_backchannel_at": 0.0,
+        # Email confirmation pending state — set when JARVIS has read back a
+        # draft and is waiting for an explicit confirm/cancel utterance.
+        "pending_email_send": None,
     }
     if _wake_word_detector:
         _wake_word_detector.reset()
@@ -1440,6 +2046,22 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     # browser tab always sees the HUD pipe is live.
     from datetime import datetime, timezone
 
+    # Fetch unread count once per connection for the welcome context line.
+    _welcome_unread_ctx = ""
+    try:
+        from utils.config_loader import get_config as _get_cfg
+
+        _gmail_cfg = _get_cfg().get_section("gmail") or {}
+        if _gmail_cfg.get("enabled", False):
+            from integrations.google.gmail_client import get_gmail_client as _get_gc
+
+            _uc = await _get_gc(
+                vip_senders=_gmail_cfg.get("vip_senders", [])
+            ).get_unread_count()
+            _welcome_unread_ctx = f" {_uc} ungelesene E-Mail(s)."
+    except Exception as _wexc:
+        logger.debug(f"Welcome unread count fetch skipped: {_wexc}")
+
     await ws.send_str(
         json.dumps(
             {
@@ -1448,7 +2070,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     "id": "startup-ok",
                     "severity": "info",
                     "title": "JARVIS online",
-                    "detail": ("Voice-Pipeline, OpenClaw-Gateway und HUD verbunden."),
+                    "detail": (
+                        "Voice-Pipeline, OpenClaw-Gateway und HUD verbunden."
+                        + _welcome_unread_ctx
+                    ),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             }
@@ -1554,7 +2179,8 @@ async def start_ws_server(
     global _filler_cache, _ack_cache, _backchannel_cache, _quick_ack_generator
     global _barge_in_enabled, _barge_in_sensitivity_ms, _barge_in_vad_rms_threshold
     global _backchannels_enabled, _backchannel_silence_threshold_ms, _backchannel_min_interval_seconds
-    global _quick_ack_enabled
+    global _quick_ack_enabled, _mail_poller_task
+    global _spotify_client, _spotify_poller_task
 
     from dotenv import load_dotenv
 
@@ -1711,6 +2337,7 @@ async def start_ws_server(
 
     http_app = web.Application(middlewares=[cors_middleware])
     http_app.router.add_get("/voices", voices_handler)
+    http_app.router.add_get("/oauth/spotify/callback", spotify_oauth_callback_handler)
 
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)
@@ -1729,6 +2356,50 @@ async def start_ws_server(
     # Background metrics broadcast — 2 s interval via SystemMetricsCollector.
     _metrics_collector = SystemMetricsCollector(interval_seconds=2.0)
     _metrics_task = asyncio.create_task(_metrics_collector.run(_on_metrics_snapshot))
+
+    # Gmail mail poller — start only when gmail.enabled is true.
+    gmail_cfg = cfg.get_section("gmail") or {}
+    if gmail_cfg.get("enabled", False):
+        _gmail_poll_interval = int(gmail_cfg.get("poll_interval_seconds", 120))
+        _gmail_vip_senders: list[str] = gmail_cfg.get("vip_senders", [])
+        _mail_poller_task = asyncio.create_task(
+            _start_mail_poller(_gmail_poll_interval, _gmail_vip_senders)
+        )
+        logger.info(f"Gmail mail poller registered (interval={_gmail_poll_interval}s)")
+
+    # Spotify integration — initialise client when enabled.
+    from integrations.spotify.client import SpotifyAuthError  # noqa: PLC0415
+
+    spotify_cfg = cfg.get_section("spotify") or {}
+    if spotify_cfg.get("enabled", False):
+        _spotify_client = SpotifyClient(spotify_cfg)
+        try:
+            await _spotify_client.initialize()
+            poll_interval_s = int(spotify_cfg.get("poll_interval", 10))
+            _spotify_poller_task = asyncio.create_task(
+                _spotify_state_loop(_spotify_client, poll_interval_s)
+            )
+            logger.info(
+                f"Spotify client ready — poller started (interval={poll_interval_s}s)"
+            )
+        except SpotifyAuthError as _sp_exc:
+            logger.warning(
+                f"Spotify auth required — no token cached: {_sp_exc}. "
+                f"Auth URL: {_spotify_client.get_auth_url()}"
+            )
+            await broadcast_notification(
+                notification_id="spotify-auth-required",
+                severity="info",
+                title="Spotify-Authentifizierung erforderlich",
+                detail=(
+                    "Bitte besuche die Auth-URL im Browser um Spotify zu verbinden. "
+                    f"URL: {_spotify_client.get_auth_url()}"
+                ),
+            )
+        except Exception as _sp_exc:
+            logger.error(f"Spotify client initialisation failed: {_sp_exc}")
+    else:
+        logger.info("Spotify integration disabled (spotify.enabled: false)")
 
     # Keep running until cancelled (e.g. SIGINT from main.py).
     try:
@@ -1749,6 +2420,24 @@ async def start_ws_server(
                 pass
         _metrics_collector = None
         _metrics_task = None
+
+        # Cancel the mail poller task if running.
+        if _mail_poller_task is not None and not _mail_poller_task.done():
+            _mail_poller_task.cancel()
+            try:
+                await _mail_poller_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        _mail_poller_task = None
+
+        # Cancel the Spotify poller task if running.
+        if _spotify_poller_task is not None and not _spotify_poller_task.done():
+            _spotify_poller_task.cancel()
+            try:
+                await _spotify_poller_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        _spotify_poller_task = None
 
         # Cancel any in-flight pipeline tasks before closing clients so
         # aiohttp handler coroutines aren't blocked waiting on them.

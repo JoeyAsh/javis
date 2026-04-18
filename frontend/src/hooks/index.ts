@@ -1,4 +1,5 @@
-export { useWebSocket, subscribeSystemMetrics } from './useWebSocket';
+export { useWebSocket, subscribeSystemMetrics, subscribeSpotifyStateStream } from './useWebSocket';
+export type { SpotifyStateListener } from './useWebSocket';
 export { useMicStream } from './useMicStream';
 export { useAudioAnalyser } from './useAudioAnalyser';
 export { useOrb } from './useOrb';

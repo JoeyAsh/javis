@@ -29,8 +29,14 @@ from brain.agents.smart_home_agent import SmartHomeAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
 from brain.intent_parser import Intent, IntentResult
+from integrations.google.gmail_client import get_gmail_client
 from utils.config_loader import get_config
 from utils.logger import get_logger
+
+# Intents that need Gmail context injected before reaching OpenClaw.
+_EMAIL_INTENTS: frozenset[Intent] = frozenset(
+    {Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE}
+)
 
 logger = get_logger("orchestrator")
 
@@ -131,6 +137,97 @@ class Orchestrator:
         if "system" in self._agents:
             self._agents["system"].tts_engine = tts_engine
 
+    async def _build_email_context(
+        self,
+        intent_result: IntentResult,
+    ) -> str | None:
+        """Fetch Gmail context and format it for injection into the prompt.
+
+        Called only for EMAIL_READ / EMAIL_SEARCH / EMAIL_COMPOSE intents.
+        Returns ``None`` when Gmail is disabled or the client call fails
+        (the turn is still forwarded to OpenClaw without context rather
+        than being aborted).
+
+        Args:
+            intent_result: Classified intent with extracted params.
+
+        Returns:
+            A short multi-line context string, or ``None`` on failure.
+        """
+        try:
+            cfg = get_config()
+            gmail_cfg = cfg.get_section("gmail") or {}
+            if not gmail_cfg.get("enabled", False):
+                return None
+
+            from integrations.google.gmail_client import GmailClientError  # noqa: PLC0415
+            from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
+
+            vip_senders: list[str] = gmail_cfg.get("vip_senders", [])
+            client = get_gmail_client(vip_senders=vip_senders)
+
+            intent = intent_result.intent
+            params = intent_result.params
+            max_results: int = int(gmail_cfg.get("max_unread_summary", 5))
+
+            if intent == Intent.EMAIL_READ:
+                messages = await client.list_unread(max_results=max_results)
+                if not messages:
+                    return "Context — unread emails: Keine ungelesenen E-Mails."
+                lines = [f"Context — unread emails ({len(messages)} of recent):"]
+                for msg in messages:
+                    lines.append(
+                        f"  • [{msg.received_at.strftime('%Y-%m-%d %H:%M')}]"
+                        f" From: {msg.sender} <{msg.sender_email}>"
+                        f" | Subject: {msg.subject}"
+                        f" | Snippet: {msg.snippet[:80]}"
+                    )
+                return "\n".join(lines)
+
+            elif intent == Intent.EMAIL_SEARCH:
+                sender = params.get("sender", "")
+                subject = params.get("subject", "")
+                query_parts: list[str] = []
+                if sender:
+                    query_parts.append(f"from:{sender}")
+                if subject:
+                    query_parts.append(subject)
+                query = " ".join(query_parts) if query_parts else "in:inbox"
+                messages = await client.search(query, max_results=max_results)
+                if not messages:
+                    return f"Context — email search '{query}': Keine E-Mails gefunden."
+                lines = [f"Context — email search results for '{query}':"]
+                for msg in messages:
+                    lines.append(
+                        f"  • [{msg.received_at.strftime('%Y-%m-%d %H:%M')}]"
+                        f" From: {msg.sender} <{msg.sender_email}>"
+                        f" | Subject: {msg.subject}"
+                        f" | Snippet: {msg.snippet[:80]}"
+                    )
+                return "\n".join(lines)
+
+            elif intent == Intent.EMAIL_COMPOSE:
+                to_hint = params.get("to", "")
+                subject_hint = params.get("subject", "")
+                parts = ["Context — email compose request:"]
+                if to_hint:
+                    parts.append(f"  Recipient hint: {to_hint}")
+                if subject_hint:
+                    parts.append(f"  Subject hint: {subject_hint}")
+                parts.append(
+                    "  NOTE: Draft an email and ask for explicit confirmation before sending."
+                )
+                return "\n".join(parts)
+
+        except (GoogleOAuthError,) as exc:
+            logger.warning(f"Gmail OAuth error during context build: {exc}")
+        except GmailClientError as exc:
+            logger.warning(f"Gmail API error during context build: {exc}")
+        except Exception as exc:
+            logger.warning(f"Unexpected error building email context: {exc}")
+
+        return None
+
     async def process(
         self,
         text: str,
@@ -171,9 +268,8 @@ class Orchestrator:
             )
 
         # --- Conversational path (single OpenClaw call) ---------------
-        # Everything else — CHAT, WEB_SEARCH, ambiguous intents — now goes
-        # straight to OpenClaw. The jarvis-main session owns persona, recall
-        # and any tool use needed to answer factual questions.
+        # EMAIL intents fall through here too; we inject Gmail context into
+        # the prompt text before forwarding to OpenClaw.
         logger.info(
             "Chat dispatch: jarvis-main session"
             + (
@@ -183,7 +279,14 @@ class Orchestrator:
                 else ""
             )
         )
-        return await self._agents["chat"].run(text, {}, language)
+
+        prompt_text = text
+        if intent_result is not None and intent_result.intent in _EMAIL_INTENTS:
+            email_ctx = await self._build_email_context(intent_result)
+            if email_ctx:
+                prompt_text = f"{email_ctx}\n\nUser: {text}"
+
+        return await self._agents["chat"].run(prompt_text, {}, language)
 
     async def process_stream(
         self,
@@ -235,6 +338,8 @@ class Orchestrator:
             )
 
         # --- Conversational path (OpenClaw WS streaming) -----------------
+        # EMAIL intents fall through here; Gmail context is injected into the
+        # prompt before streaming.
         logger.info(
             "Chat dispatch (stream): jarvis-main session"
             + (
@@ -247,10 +352,16 @@ class Orchestrator:
 
         from brain.claude_client import _with_language_hint  # local import
 
+        prompt_text = text
+        if intent_result is not None and intent_result.intent in _EMAIL_INTENTS:
+            email_ctx = await self._build_email_context(intent_result)
+            if email_ctx:
+                prompt_text = f"{email_ctx}\n\nUser: {text}"
+
         openclaw = self.claude_client.openclaw
         if openclaw is None:
             # Fallback: run one-shot chat and emit final chunk.
-            response_text = await self.claude_client.chat(text, language=language)
+            response_text = await self.claude_client.chat(prompt_text, language=language)
             yield StreamChunk(
                 type="final",
                 run_id="chat-fallback",
@@ -259,7 +370,7 @@ class Orchestrator:
             )
             return
 
-        prompt = _with_language_hint(text, language)
+        prompt = _with_language_hint(prompt_text, language)
         async for chunk in openclaw.query_agent_stream(prompt):
             yield chunk
 

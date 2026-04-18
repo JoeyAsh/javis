@@ -3,8 +3,13 @@ import type React from 'react';
 import type {
   AppOrbState,
   ConversationModePayload,
+  EmailDraftPreviewPayload,
+  EmailSendDonePayload,
+  MailStatePayload,
   NotificationPayload,
   OrbState,
+  SpotifyCmdAction,
+  SpotifyStatePayload,
   SystemMetricsPayload,
   TranscriptPayload,
   WsIncoming,
@@ -15,6 +20,10 @@ export type SystemMetricsListener = (payload: SystemMetricsPayload) => void;
 export type TranscriptListener = (payload: TranscriptPayload) => void;
 export type NotificationListener = (payload: NotificationPayload) => void;
 export type ConversationModeListener = (payload: ConversationModePayload) => void;
+export type MailStateListener = (payload: MailStatePayload) => void;
+export type EmailDraftPreviewListener = (payload: EmailDraftPreviewPayload) => void;
+export type EmailSendDoneListener = (payload: EmailSendDonePayload) => void;
+export type SpotifyStateListener = (payload: SpotifyStatePayload) => void;
 
 export interface UseWebSocketReturn {
   orbState: AppOrbState;
@@ -43,6 +52,20 @@ export interface UseWebSocketReturn {
   subscribeNotifications: (listener: NotificationListener) => () => void;
   /** Subscribe to `type: 'conversation_mode'` payloads. */
   subscribeConversationMode: (listener: ConversationModeListener) => () => void;
+  /** Subscribe to `type: 'mail_state'` payloads. */
+  subscribeMailState: (listener: MailStateListener) => () => void;
+  /** Subscribe to `type: 'email_draft_preview'` payloads. */
+  subscribeEmailDraftPreview: (listener: EmailDraftPreviewListener) => () => void;
+  /** Subscribe to `type: 'email_send_done'` payloads. */
+  subscribeEmailSendDone: (listener: EmailSendDoneListener) => () => void;
+  /** Subscribe to `type: 'spotify_state'` payloads. */
+  subscribeSpotifyState: (listener: SpotifyStateListener) => () => void;
+  /**
+   * Send a Spotify command to the backend.
+   * Phase 1: backend logs receipt; actual control is via voice → OpenClaw.
+   * No-ops when WebSocket is not open.
+   */
+  sendSpotifyCmd: (action: SpotifyCmdAction, value?: number) => void;
   /**
    * Callback registered by the audio player (useAudioAnalyser) so that a
    * ``barge_in`` message can immediately stop in-progress audio. Call
@@ -70,6 +93,15 @@ const systemListeners = new Set<SystemMetricsListener>();
 const transcriptListeners = new Set<TranscriptListener>();
 const notificationListeners = new Set<NotificationListener>();
 const conversationModeListeners = new Set<ConversationModeListener>();
+const mailStateListeners = new Set<MailStateListener>();
+const emailDraftPreviewListeners = new Set<EmailDraftPreviewListener>();
+const emailSendDoneListeners = new Set<EmailSendDoneListener>();
+const spotifyStateListeners = new Set<SpotifyStateListener>();
+
+// Module-level WS send reference — set by the hook on each connection so
+// standalone send helpers (e.g. in panels that don't call useWebSocket()) can
+// dispatch messages without prop-drilling.
+let _moduleSend: ((data: string) => void) | null = null;
 
 function emitSystem(payload: SystemMetricsPayload): void {
   systemListeners.forEach((listener) => {
@@ -107,6 +139,46 @@ function emitConversationMode(payload: ConversationModePayload): void {
       listener(payload);
     } catch (err) {
       console.error('[ws] conversation_mode listener threw', err);
+    }
+  });
+}
+
+function emitMailState(payload: MailStatePayload): void {
+  mailStateListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] mail_state listener threw', err);
+    }
+  });
+}
+
+function emitEmailDraftPreview(payload: EmailDraftPreviewPayload): void {
+  emailDraftPreviewListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] email_draft_preview listener threw', err);
+    }
+  });
+}
+
+function emitEmailSendDone(payload: EmailSendDonePayload): void {
+  emailSendDoneListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] email_send_done listener threw', err);
+    }
+  });
+}
+
+function emitSpotifyState(payload: SpotifyStatePayload): void {
+  spotifyStateListeners.forEach((listener) => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('[ws] spotify_state listener threw', err);
     }
   });
 }
@@ -205,11 +277,13 @@ export function useWebSocket(): UseWebSocketReturn {
       console.info('[ws] connected');
       setConnected(true);
       reconnectDelayRef.current = RECONNECT_DELAY_INITIAL;
+      _moduleSend = (data: string) => ws.send(data);
     };
 
     ws.onclose = () => {
       setConnected(false);
       wsRef.current = null;
+      _moduleSend = null;
       const delay = reconnectDelayRef.current;
       reconnectDelayRef.current = Math.min(delay * 2, RECONNECT_DELAY_MAX);
       console.info(`[ws] disconnected, retrying in ${delay}ms`);
@@ -306,6 +380,18 @@ export function useWebSocket(): UseWebSocketReturn {
             }
             break;
           }
+          case 'mail_state':
+            emitMailState(msg.payload);
+            break;
+          case 'email_draft_preview':
+            emitEmailDraftPreview(msg.payload);
+            break;
+          case 'email_send_done':
+            emitEmailSendDone(msg.payload);
+            break;
+          case 'spotify_state':
+            emitSpotifyState(msg.payload);
+            break;
         }
       } catch (err) {
         console.error('[ws] parse error', err);
@@ -407,6 +493,59 @@ export function useWebSocket(): UseWebSocketReturn {
     [],
   );
 
+  const subscribeMailState = useCallback(
+    (listener: MailStateListener): (() => void) => {
+      mailStateListeners.add(listener);
+      return () => {
+        mailStateListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
+  const subscribeEmailDraftPreview = useCallback(
+    (listener: EmailDraftPreviewListener): (() => void) => {
+      emailDraftPreviewListeners.add(listener);
+      return () => {
+        emailDraftPreviewListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
+  const subscribeEmailSendDone = useCallback(
+    (listener: EmailSendDoneListener): (() => void) => {
+      emailSendDoneListeners.add(listener);
+      return () => {
+        emailSendDoneListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
+  const subscribeSpotifyState = useCallback(
+    (listener: SpotifyStateListener): (() => void) => {
+      spotifyStateListeners.add(listener);
+      return () => {
+        spotifyStateListeners.delete(listener);
+      };
+    },
+    [],
+  );
+
+  const sendSpotifyCmd = useCallback(
+    (action: SpotifyCmdAction, value?: number) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        const msg: WsOutgoing = {
+          type: 'spotify_cmd',
+          payload: value !== undefined ? { action, value } : { action },
+        };
+        wsRef.current.send(JSON.stringify(msg));
+      }
+    },
+    [],
+  );
+
   return {
     orbState,
     setOrbState,
@@ -420,6 +559,11 @@ export function useWebSocket(): UseWebSocketReturn {
     subscribeTranscripts,
     subscribeNotifications,
     subscribeConversationMode,
+    subscribeMailState,
+    subscribeEmailDraftPreview,
+    subscribeEmailSendDone,
+    subscribeSpotifyState,
+    sendSpotifyCmd,
     registerStopAudio,
     notifyAudioPlaying,
     currentToolSummary,
@@ -464,4 +608,44 @@ export function subscribeConversationModeStream(
   return () => {
     conversationModeListeners.delete(listener);
   };
+}
+
+export function subscribeMailStateStream(listener: MailStateListener): () => void {
+  mailStateListeners.add(listener);
+  return () => {
+    mailStateListeners.delete(listener);
+  };
+}
+
+export function subscribeEmailDraftPreviewStream(listener: EmailDraftPreviewListener): () => void {
+  emailDraftPreviewListeners.add(listener);
+  return () => {
+    emailDraftPreviewListeners.delete(listener);
+  };
+}
+
+export function subscribeEmailSendDoneStream(listener: EmailSendDoneListener): () => void {
+  emailSendDoneListeners.add(listener);
+  return () => {
+    emailSendDoneListeners.delete(listener);
+  };
+}
+
+export function subscribeSpotifyStateStream(listener: SpotifyStateListener): () => void {
+  spotifyStateListeners.add(listener);
+  return () => {
+    spotifyStateListeners.delete(listener);
+  };
+}
+
+/**
+ * Standalone Spotify command sender — backed by the same module-level WS
+ * reference as the hook. No-ops when the WebSocket is not open. Usable from
+ * panels that subscribe via `subscribeSpotifyStateStream` without calling
+ * `useWebSocket()`.
+ */
+export function sendSpotifyCmdStream(action: SpotifyCmdAction, value?: number): void {
+  if (!_moduleSend) return;
+  const payload = value !== undefined ? { action, value } : { action };
+  _moduleSend(JSON.stringify({ type: 'spotify_cmd', payload }));
 }

@@ -1,785 +1,457 @@
-# Feature Spec: Gmail Integration
+# Feature: Gmail Integration
 
-## Summary
-Enable JARVIS to read and search Gmail messages, delivering email summaries via voice. Users can ask for unread emails, search by sender/subject, and request full message details.
+## Status
+Planned — awaiting implementation authorization
 
-## Goals
-- Read unread email summaries via voice
-- Search emails by sender, subject, or keywords
-- Summarize long emails to 2-3 sentences using Claude
-- Follow JARVIS voice UX patterns (concise, offer drill-down)
+**What is already built (pre-condition):**
+- `src/integrations/google/oauth.py` — `GoogleOAuthService` singleton with `get_credentials()`,
+  `is_authenticated()`, `revoke()`, and `build_service()` is DONE (Batch 1).
+- `frontend/src/components/panels/MailPanel.tsx` — renders `MailMessage[]` with compact/expanded
+  modes; currently wired to `mailMock`. Live wiring via WS is part of this batch.
 
-## Non-Goals
-- ~~Sending emails (deferred to Phase B)~~ — NOW IN SCOPE with gated confirmation (see Revision 2)
-- Attachment handling
-- Label/folder management
-- Push notifications (polling only)
+**What this batch (Batch 2) delivers:**
+- `src/integrations/google/gmail_client.py` — Gmail API wrapper (read + send via drafts).
+- Intent keywords for EMAIL_READ, EMAIL_SEARCH, EMAIL_COMPOSE in `src/brain/intent_parser.py`.
+- Orchestrator passthrough so email intents hit the OpenClaw chat path (no separate agent class).
+- WS message types for mail state push and gated send confirmation flow.
+- Live `MailPanel.tsx` wired to `mail_state` WS messages.
+- Polling coroutine in `ws_server.py` (120 s default, unread count only).
+- Full test coverage with mocked `googleapiclient.discovery.Resource`.
 
 ---
 
-## Technical Design
+## Goal
+Let users read unread email summaries, search by sender or subject, and send emails — all by
+voice — with the HUD MailPanel showing live unread state. Sending is strictly gated: JARVIS reads
+back the draft preview and waits for explicit verbal confirmation before executing the send.
 
-### Dependencies
-Requires `google-oauth-shared.md` to be implemented first.
+## Scope
 
-Additional dependencies: None beyond google-api-python-client (already in OAuth spec).
+### In scope
+- List and summarise unread emails (up to 5 by default, configurable).
+- Search emails by sender name or subject keyword.
+- Read a full message body on demand (summarised to ~100 words via OpenClaw).
+- Compose and send emails via a gated two-step voice confirmation flow.
+- Draft creation, preview broadcast to HUD, explicit "ja senden" / "yes send it" confirmation
+  before the actual Gmail API send call.
+- Silent abort if no confirmation within 10 s or user says anything other than a whitelisted
+  confirm phrase.
+- Polling unread count every 120 s, pushed to frontend via `mail_state` WS message.
+- Live wiring of `MailPanel.tsx` to `mail_state` WS messages (replaces mock data).
+- VIP sender flag: configurable sender list; VIP messages shown with accent colour in panel.
 
-### File Structure
+### Out of scope
+- Attachment handling.
+- Label / folder management.
+- Push/webhook notifications (polling only for this batch).
+- Mark-as-read side effects on the Gmail side (reading a mail via voice does not change
+  its unread flag).
+- Multi-account support.
+- Auto-reply or any send path not triggered by explicit user voice command.
+
+---
+
+## User Flow
+
+### Read flow
+1. User says "Check my email" or "Zeig meine E-Mails".
+2. Intent parser classifies `EMAIL_READ`; orchestrator falls through to OpenClaw chat path.
+3. `GmailClient.list_unread()` is called; results passed as context to the OpenClaw prompt.
+4. OpenClaw generates a concise spoken summary (max 5 emails, ~2 sentences each).
+5. JARVIS speaks the summary and offers drill-down. HUD MailPanel already shows live state
+   from polling.
+
+### Search flow
+1. User says "Do I have emails from Sarah?" or "E-Mails von Sarah suchen".
+2. Intent parser classifies `EMAIL_SEARCH` and extracts `sender` parameter.
+3. `GmailClient.search()` called with assembled Gmail query; results summarised via OpenClaw.
+4. JARVIS speaks the result. Offers "Soll ich eine davon vorlesen?" follow-up.
+
+### Send flow (gated confirmation — REQUIRED)
+1. User says "Send an email to Sarah about tomorrow's meeting".
+2. Intent parser classifies `EMAIL_COMPOSE`.
+3. Orchestrator passes intent + text to OpenClaw, which drafts `to`, `subject`, `body`.
+4. Backend calls `GmailClient.create_draft()` and broadcasts `email_draft_preview` WS message.
+5. JARVIS speaks: "Hier der Entwurf: An Sarah Johnson, Betreff 'Treffen morgen', […preview…].
+   Soll ich das senden, Sir?"
+6. Backend enters a 10 s confirmation wait, listening for the next STT turn.
+7. User says "Ja, senden." — matched against whitelist → `GmailClient.send_draft()` called.
+   JARVIS speaks: "Gesendet, Sir." `email_send_done` broadcast to HUD.
+8. If user says anything else or 10 s elapse without input → draft deleted,
+   JARVIS speaks: "Abgebrochen, Sir." `email_send_done` broadcast with `success: false`.
+
+---
+
+## Architecture
+
+### Modules touched
+- Backend:
+  - `src/integrations/google/gmail_client.py` (new)
+  - `src/brain/intent_parser.py` (add `EMAIL_READ`, `EMAIL_SEARCH`, `EMAIL_COMPOSE` intents
+    and keyword patterns; add `_extract_email_params()` helper)
+  - `src/brain/orchestrator.py` (add `EMAIL_*` intents to `_LOCAL_INTENTS`? — see Open
+    Questions; for now email intents fall through to the OpenClaw chat path, which is the
+    current default for anything not in `_LOCAL_INTENTS`)
+  - `src/api/ws_server.py` (add `_start_mail_poller()` background task; add
+    `_handle_email_confirm()` turn handler; add `broadcast_mail_state()` helper)
+- Frontend:
+  - `frontend/src/types.ts` (add `MailStatePayload`, `EmailDraftPreviewPayload`,
+    `EmailSendDonePayload` to `WsIncoming`)
+  - `frontend/src/components/panels/MailPanel.tsx` (replace `mailMock` default with WS-driven
+    state passed from `App.tsx` or a hook; add draft-preview sub-view)
+  - `frontend/src/hooks/useWebSocket.ts` (handle new `mail_state`, `email_draft_preview`,
+    `email_send_done` message types)
+- Config: new `gmail:` section in `config/config.yaml`
+- Env: no new vars (OAuth already covered by `GOOGLE_OAUTH_CLIENT_ID` /
+  `GOOGLE_OAUTH_CLIENT_SECRET`)
+
+### Data flow
+
 ```
-src/integrations/google/
-  gmail_client.py     # Gmail API wrapper (this spec)
+[User voice] "Check my email"
+      │
+[STT] → text
+      │
+[IntentParser] → EMAIL_READ / EMAIL_SEARCH / EMAIL_COMPOSE
+      │
+[Orchestrator.process_stream()]
+      │
+      ├─ EMAIL_READ / EMAIL_SEARCH / (EMAIL_COMPOSE draft phase)
+      │     → OpenClaw chat path (current default for non-local intents)
+      │       OpenClaw calls GmailClient helpers as context-building tools
+      │       or ws_server injects gmail results into the prompt text
+      │
+      └─ EMAIL_COMPOSE (confirm phase — 10 s window)
+            → ws_server._handle_email_confirm() intercepts next STT turn
+            → whitelist match → GmailClient.send_draft()
+            → broadcast email_send_done + TTS spoken confirmation
 
-src/brain/agents/
-  email_agent.py      # Agent for email intents (this spec)
+Polling (background, 120 s):
+[ws_server._start_mail_poller()]
+      → GmailClient.get_unread_count()
+      → broadcast_mail_state({messages: [...], unread_count: N})
+      → MailPanel.tsx re-renders with live data
 ```
 
-### GmailClient Class
+### Interfaces
 
-```python
-# src/integrations/google/gmail_client.py
+**Python — `src/integrations/google/gmail_client.py`**
 
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Literal
+```
+GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+GMAIL_SEND_SCOPE     = "https://www.googleapis.com/auth/gmail.send"
+
 
 @dataclass
 class EmailMessage:
-    """Represents a Gmail message."""
     id: str
     thread_id: str
     subject: str
-    sender: str
+    sender: str          # display name
     sender_email: str
     recipient: str
-    date: datetime
-    snippet: str  # Gmail's 100-char preview
-    body_text: str | None  # Full plain text body (loaded on demand)
-    body_html: str | None  # Full HTML body (loaded on demand)
+    received_at: datetime
+    snippet: str         # Gmail 100-char preview
+    body_text: str | None   # loaded on demand
     is_unread: bool
-    labels: list[str]
+    is_vip: bool         # True if sender_email in config vip_senders list
 
-@dataclass
-class EmailThread:
-    """Represents a Gmail thread."""
-    id: str
-    subject: str
-    participants: list[str]
-    message_count: int
-    messages: list[EmailMessage]
-    last_date: datetime
 
-class GmailClient:
-    """Async Gmail API client."""
-
-    def __init__(self, oauth_service: GoogleOAuthService) -> None:
-        """Initialize Gmail client.
-
-        Args:
-            oauth_service: Shared Google OAuth service
-        """
-        ...
-
-    async def list_unread(
-        self,
-        max_results: int = 10,
-        sender: str | None = None,
-    ) -> list[EmailMessage]:
-        """List unread messages.
-
-        Args:
-            max_results: Maximum messages to return
-            sender: Filter by sender email/name (optional)
-
-        Returns:
-            List of unread EmailMessage objects (without full body)
-        """
-        ...
-
-    async def search(
-        self,
-        query: str,
-        max_results: int = 10,
-    ) -> list[EmailMessage]:
-        """Search messages using Gmail query syntax.
-
-        Args:
-            query: Gmail search query (e.g., "from:boss subject:urgent")
-            max_results: Maximum messages to return
-
-        Returns:
-            List of matching EmailMessage objects
-        """
-        ...
-
-    async def get_message(
-        self,
-        message_id: str,
-        include_body: bool = True,
-    ) -> EmailMessage:
-        """Get a single message by ID.
-
-        Args:
-            message_id: Gmail message ID
-            include_body: Whether to fetch full body text
-
-        Returns:
-            Complete EmailMessage object
-        """
-        ...
-
-    async def get_thread(self, thread_id: str) -> EmailThread:
-        """Get all messages in a thread.
-
-        Args:
-            thread_id: Gmail thread ID
-
-        Returns:
-            EmailThread with all messages
-        """
-        ...
-
-    async def mark_as_read(self, message_id: str) -> bool:
-        """Mark a message as read.
-
-        Args:
-            message_id: Gmail message ID
-
-        Returns:
-            True if successful
-        """
-        ...
-```
-
-### Gmail API Query Building
-
-```python
-def _build_query(
-    self,
-    is_unread: bool | None = None,
-    sender: str | None = None,
-    subject: str | None = None,
-    after: datetime | None = None,
-    before: datetime | None = None,
-    has_attachment: bool | None = None,
-) -> str:
-    """Build Gmail search query string."""
-    parts = []
-    if is_unread:
-        parts.append("is:unread")
-    if sender:
-        parts.append(f"from:{sender}")
-    if subject:
-        parts.append(f"subject:{subject}")
-    if after:
-        parts.append(f"after:{after.strftime('%Y/%m/%d')}")
-    if before:
-        parts.append(f"before:{before.strftime('%Y/%m/%d')}")
-    if has_attachment:
-        parts.append("has:attachment")
-    return " ".join(parts)
-```
-
-### EmailAgent Class
-
-```python
-# src/brain/agents/email_agent.py
-
-from brain.agents.base import AgentResult, BaseAgent
-from brain.claude_client import ClaudeClient
-from integrations.google.gmail_client import GmailClient, EmailMessage
-
-class EmailAgent(BaseAgent):
-    """Agent for email operations."""
-
-    def __init__(
-        self,
-        claude_client: ClaudeClient,
-        gmail_client: GmailClient,
-    ) -> None:
-        """Initialize email agent.
-
-        Args:
-            claude_client: Claude client for summarization
-            gmail_client: Gmail API client
-        """
-        super().__init__()
-        self.claude_client = claude_client
-        self.gmail_client = gmail_client
-        self._current_messages: list[EmailMessage] = []  # For drill-down
-
-    async def run(
-        self,
-        task: str,
-        params: dict[str, Any],
-        language: str,
-    ) -> AgentResult:
-        """Execute email action.
-
-        Args:
-            task: Task description
-            params: Action parameters (action, sender, query, etc.)
-            language: Response language
-
-        Returns:
-            AgentResult with spoken response
-        """
-        action = params.get("action", "list_unread")
-
-        if action == "list_unread":
-            return await self._handle_list_unread(params, language)
-        elif action == "search":
-            return await self._handle_search(params, language)
-        elif action == "read_detail":
-            return await self._handle_read_detail(params, language)
-        else:
-            return await self._handle_list_unread(params, language)
-
-    async def _handle_list_unread(
-        self,
-        params: dict[str, Any],
-        language: str,
-    ) -> AgentResult:
-        """Handle listing unread emails."""
-        max_results = params.get("max_results", 5)
-        sender = params.get("sender")
-
-        messages = await self.gmail_client.list_unread(
-            max_results=max_results,
-            sender=sender,
-        )
-
-        self._current_messages = messages  # Cache for drill-down
-
-        if not messages:
-            return AgentResult(
-                spoken_response=self._no_emails_response(language),
-                success=True,
-                data={"count": 0},
-            )
-
-        # Generate spoken summary
-        response = await self._generate_summary(messages, language)
-
-        return AgentResult(
-            spoken_response=response,
-            success=True,
-            data={"count": len(messages), "messages": [m.id for m in messages]},
-        )
-
-    async def _generate_summary(
-        self,
-        messages: list[EmailMessage],
-        language: str,
-    ) -> str:
-        """Generate spoken summary of emails using Claude."""
-        # Build context for Claude
-        email_list = "\n".join([
-            f"- From: {m.sender} ({m.sender_email}), "
-            f"Subject: {m.subject}, "
-            f"Preview: {m.snippet}"
-            for m in messages
-        ])
-
-        prompt = f"""Summarize these {len(messages)} emails for voice output.
-Keep it concise (1-2 sentences per email, max 3 emails detailed).
-{self._get_language_instruction(language)}
-
-Emails:
-{email_list}
-
-End with: "Would you like me to read any of these in full?" (in {language})"""
-
-        summary = await self.claude_client.complete(
-            prompt=prompt,
-            max_tokens=200,
-            temperature=0.5,
-        )
-
-        return summary
-
-    def _no_emails_response(self, language: str) -> str:
-        if language == "de":
-            return "Sie haben keine ungelesenen E-Mails, Sir."
-        return "You have no unread emails, sir."
-```
-
-### Intent Parser Updates
-
-Add to `Intent` enum:
-```python
-class Intent(Enum):
-    # ... existing ...
-    EMAIL_READ = "email_read"
-    EMAIL_SEARCH = "email_search"
-```
-
-Add to `INTENT_KEYWORDS`:
-```python
-Intent.EMAIL_READ: {
-    "en": [
-        r"\b(check|read|show|get)\s+(my\s+)?(email|mail|inbox)\b",
-        r"\bunread\s+(email|mail|message)s?\b",
-        r"\b(any\s+)?(new\s+)?(email|mail)s?\b",
-        r"\bwhat('s| is)\s+in\s+my\s+inbox\b",
-    ],
-    "de": [
-        r"\b(zeig|lies|check|hol)\s+(meine?\s+)?(email|mail|post)\b",
-        r"\bungelesene?\s+(email|mail|nachricht)en?\b",
-        r"\b(neue?\s+)?(email|mail|post)\b",
-        r"\bwas\s+(ist|liegt)\s+in\s+meinem\s+posteingang\b",
-    ],
-},
-Intent.EMAIL_SEARCH: {
-    "en": [
-        r"\b(email|mail)\s+(from|about|regarding)\b",
-        r"\bfind\s+(email|mail|message)s?\s+(from|about)\b",
-        r"\bsearch\s+(my\s+)?(email|mail|inbox)\b",
-        r"\bmessages?\s+from\b",
-    ],
-    "de": [
-        r"\b(email|mail)\s+(von|über|betreff)\b",
-        r"\bfinde?\s+(email|mail|nachricht)en?\s+(von|über)\b",
-        r"\bsuche?\s+(in\s+)?(meine[mr]?\s+)?(email|mail|posteingang)\b",
-        r"\bnachrichten?\s+von\b",
-    ],
-},
-```
-
-Add parameter extraction:
-```python
-def _extract_email_params(self, text: str) -> dict[str, Any]:
-    """Extract parameters for email intents."""
-    params: dict[str, Any] = {"action": "list_unread"}
-
-    # Check for search patterns
-    if re.search(r"\b(from|von)\s+(\w+)", text):
-        params["action"] = "search"
-        match = re.search(r"\b(from|von)\s+(\w+[\w\s]*)", text)
-        if match:
-            params["sender"] = match.group(2).strip()
-
-    if re.search(r"\b(about|regarding|über|betreff)\s+", text):
-        params["action"] = "search"
-        match = re.search(r"\b(about|regarding|über|betreff)\s+(.+)", text)
-        if match:
-            params["subject"] = match.group(2).strip()
-
-    return params
-```
-
----
-
-## Voice UX Design
-
-### Unread Email Summary
-**User:** "Check my email"
-**JARVIS:** "You have 3 unread emails, sir. First, from John Smith about the project deadline - he's asking for an update by Friday. Second, from Amazon confirming your order shipment. Third, from your bank with a security alert. Would you like me to read any of these in full?"
-
-### Email Search
-**User:** "Do I have any emails from my boss?"
-**JARVIS:** "You have 2 recent emails from Sarah Johnson. The most recent, from yesterday, is about the Q4 budget review. The earlier one from Monday discusses team restructuring. Would you like details on either?"
-
-### Drill-Down
-**User:** "Read the first one"
-**JARVIS:** "The email from John Smith, received today at 2:15 PM, says: [full body summarized to ~100 words]. End of message."
-
-### No Results
-**User:** "Check my email"
-**JARVIS:** "Your inbox is clear, sir. No unread emails."
-
----
-
-## Configuration
-
-### config.yaml additions
-```yaml
-email:
-  enabled: true
-  provider: "gmail"
-  max_unread_summary: 5      # Max emails in voice summary
-  summary_max_chars: 150     # Max chars per email in summary
-  full_read_max_chars: 500   # Max chars when reading full email
-```
-
----
-
-## Error Handling
-
-| Error | User-Facing Response |
-|-------|---------------------|
-| OAuth not configured | "Email access is not configured. Please set up Google authentication." |
-| Token expired, refresh failed | "I need you to re-authenticate with Google. Please check the terminal." |
-| API rate limit | "Gmail is temporarily unavailable. Please try again in a moment." |
-| Network error | "I couldn't reach Gmail. Please check your internet connection." |
-| No results | "I couldn't find any emails matching that criteria." |
-
----
-
-## Testing Strategy
-
-### Unit Tests
-| Test Case | Description |
-|-----------|-------------|
-| `test_list_unread_returns_messages` | Mocked API returns correct EmailMessage objects |
-| `test_list_unread_empty` | Handles empty inbox gracefully |
-| `test_search_by_sender` | Builds correct query for sender filter |
-| `test_search_by_subject` | Builds correct query for subject filter |
-| `test_get_message_with_body` | Fetches and parses full message body |
-| `test_summary_generation` | Claude produces valid voice-friendly summary |
-| `test_intent_parser_email_read` | "check my email" -> EMAIL_READ intent |
-| `test_intent_parser_email_search` | "email from boss" -> EMAIL_SEARCH with sender param |
-
-### Integration Tests (with mocked Gmail API)
-| Test Case | Description |
-|-----------|-------------|
-| `test_full_flow_list_unread` | End-to-end: intent -> agent -> spoken response |
-| `test_full_flow_search` | End-to-end: search query -> results -> summary |
-| `test_oauth_refresh_on_401` | 401 response triggers token refresh |
-
-### Mocking Gmail API
-```python
-@pytest.fixture
-def mock_gmail_service():
-    with patch("integrations.google.gmail_client.build") as mock:
-        service = MagicMock()
-        mock.return_value = service
-        yield service
-
-async def test_list_unread_returns_messages(mock_gmail_service):
-    mock_gmail_service.users().messages().list().execute.return_value = {
-        "messages": [{"id": "msg1"}, {"id": "msg2"}]
-    }
-    mock_gmail_service.users().messages().get().execute.return_value = {
-        "id": "msg1",
-        "payload": {...},
-        "snippet": "Preview text...",
-    }
-    # ... test assertions
-```
-
----
-
-## Files Created
-
-| File | Purpose |
-|------|---------|
-| `src/integrations/google/gmail_client.py` | Gmail API client |
-| `src/brain/agents/email_agent.py` | Email agent |
-| `tests/integrations/google/test_gmail_client.py` | Gmail client unit tests |
-| `tests/brain/agents/test_email_agent.py` | Email agent unit tests |
-
-## Files Modified
-
-| File | Change |
-|------|--------|
-| `src/brain/intent_parser.py` | Add EMAIL_READ, EMAIL_SEARCH intents + keywords |
-| `src/brain/orchestrator.py` | Register EmailAgent, update system prompt |
-| `config/config.yaml` | Add email section |
-
----
-
-## Acceptance Criteria
-
-| # | Criterion | Verification |
-|---|-----------|--------------|
-| 1 | "check my email" returns spoken summary of up to 5 unread emails | Integration test |
-| 2 | "email from [name]" filters results to that sender | Unit test on query building |
-| 3 | Empty inbox returns friendly "no unread emails" response | Unit test |
-| 4 | Each email summary is <= 2 sentences | Verify Claude prompt constraints |
-| 5 | German trigger phrases work: "zeig meine emails" | Intent parser unit test |
-| 6 | OAuth error triggers re-auth prompt without crash | Integration test |
-| 7 | API rate limit returns retry message, does not crash | Error handling test |
-| 8 | Orchestrator routes EMAIL_* intents to email agent | Routing test |
-
----
-
-## Dependencies
-
-- **Upstream:** google-oauth-shared.md
-- **Downstream:** None (independent feature)
-
----
-
-## Revision 2 — 2026-04-16
-
-### Summary of Changes
-This revision adds email sending capability with a strictly gated voice-confirmation flow.
-
-### Email Sending — NOW IN SCOPE
-
-Email sending is allowed but strictly gated by a multi-step confirmation flow to prevent accidental sends.
-
-### Email Send Flow (Gated Confirmation)
-
-#### Flow Steps
-1. **Draft Creation**: JARVIS drafts the email (body + subject + recipient) based on user's voice request
-2. **Visual Preview**: Draft renders in HUD via `email_draft_preview` WS message (modal or dedicated EmailDraftPanel)
-3. **Voice Confirmation Request**: JARVIS asks by voice:
-   - English: "Shall I send this, Sir?"
-   - German: "Soll ich das senden, Sir?"
-4. **Explicit Verbal Confirmation Required**: User must say one of the whitelisted confirmations:
-   - German: "ja senden", "ja schick es", "senden", "abschicken", "ja"
-   - English: "yes send", "send it", "go ahead", "confirm", "yes"
-5. **Send Execution**: ONLY on explicit verbal confirmation → `email_send_request_confirmed` WS message sent, backend executes send
-6. **Abort on Non-Confirmation**: Any other response OR silence >10 seconds → abort send, draft stays visible for editing
-7. **Completion Notification**: `email_send_done` WS message with success/fail status; JARVIS speaks confirmation
-
-#### WebSocket Message Types (New)
-
-| Type | Direction | Payload |
-|------|-----------|---------|
-| `email_draft_preview` | BE → FE | `{ draft_id: string, to: string, subject: string, body_preview: string, created_at: ISO8601 }` |
-| `email_send_request_confirmed` | FE → BE | `{ draft_id: string }` |
-| `email_send_done` | BE → FE | `{ draft_id: string, success: bool, message_id?: string, error?: string }` |
-
-### GmailClient Interface — Extended
-
-Add the following methods:
-
-```python
 @dataclass
 class EmailDraft:
-    """Email draft."""
     id: str
     to: str
     subject: str
     body: str
     created_at: datetime
 
+
+class GmailClientError(Exception):
+    spoken_message: str
+
+
 class GmailClient:
-    # ... existing methods ...
+    def __init__(self, oauth_service: GoogleOAuthService, vip_senders: list[str]) -> None: ...
+
+    async def list_unread(
+        self,
+        max_results: int = 5,
+        sender: str | None = None,
+    ) -> list[EmailMessage]: ...
+
+    async def search(
+        self,
+        query: str,
+        max_results: int = 10,
+    ) -> list[EmailMessage]: ...
+
+    async def get_message(
+        self,
+        message_id: str,
+        include_body: bool = True,
+    ) -> EmailMessage: ...
+
+    async def get_unread_count(self) -> int: ...
+        # Lightweight: messages().list(labelIds=["UNREAD"], maxResults=1, fields="resultSizeEstimate")
 
     async def create_draft(
         self,
         to: str,
         subject: str,
         body: str,
-    ) -> EmailDraft:
-        """Create a draft email.
+    ) -> EmailDraft: ...
 
-        Args:
-            to: Recipient email address
-            subject: Email subject
-            body: Email body (plain text)
+    async def send_draft(self, draft_id: str) -> str: ...
+        # Returns sent message ID. Raises GmailClientError on failure.
 
-        Returns:
-            Created EmailDraft object
-        """
-        ...
-
-    async def send_draft(self, draft_id: str) -> str:
-        """Send an existing draft.
-
-        Args:
-            draft_id: Draft ID from create_draft
-
-        Returns:
-            Sent message ID
-
-        Raises:
-            GmailSendError: If send fails
-        """
-        ...
-
-    async def delete_draft(self, draft_id: str) -> bool:
-        """Delete a draft.
-
-        Args:
-            draft_id: Draft ID to delete
-
-        Returns:
-            True if deleted
-        """
-        ...
+    async def delete_draft(self, draft_id: str) -> bool: ...
 ```
 
-### EmailAgent — Extended
+**WebSocket messages — additions to `WsIncoming` in `frontend/src/types.ts`**
 
-Add send flow handling:
+| Type | Direction | Payload |
+|------|-----------|---------|
+| `mail_state` | BE → FE | `{ messages: MailMessage[]; unread_count: number }` |
+| `email_draft_preview` | BE → FE | `{ draft_id: string; to: string; subject: string; body_preview: string; created_at: string }` |
+| `email_send_done` | BE → FE | `{ draft_id: string; success: boolean; message_id?: string; error?: string }` |
 
-```python
-async def _handle_compose(
-    self,
-    params: dict[str, Any],
-    language: str,
-) -> AgentResult:
-    """Handle email composition request."""
-    to = params.get("to")
-    subject = params.get("subject")
-    body = params.get("body")
+`MailMessage` already exists in `frontend/src/types.ts` — no shape change needed; `is_vip` maps
+to the existing `isVip` field. The `mail_state` payload uses camelCase keys matching the
+existing type.
 
-    # Create draft
-    draft = await self.gmail_client.create_draft(to, subject, body)
+**aiohttp broadcast helpers — `src/api/ws_server.py`**
 
-    # Broadcast preview to frontend
-    await self._ws_broadcaster("email_draft_preview", {
-        "draft_id": draft.id,
-        "to": draft.to,
-        "subject": draft.subject,
-        "body_preview": draft.body[:200],
-        "created_at": draft.created_at.isoformat(),
-    })
-
-    # Ask for confirmation
-    confirm_msg = (
-        "Soll ich das senden, Sir?" if language == "de"
-        else "Shall I send this, Sir?"
-    )
-
-    return AgentResult(
-        spoken_response=confirm_msg,
-        success=True,
-        data={"draft_id": draft.id, "awaiting_confirmation": True},
-    )
+```
+async def broadcast_mail_state(messages: list[dict], unread_count: int) -> None: ...
+async def broadcast_email_draft_preview(payload: dict) -> None: ...
+async def broadcast_email_send_done(payload: dict) -> None: ...
 ```
 
-### Intent Parser — Extended
+No new HTTP endpoints — all communication is over the existing aiohttp WS on `:8765`.
 
-Add compose/send intents:
+### External dependencies
 
-```python
-Intent.EMAIL_COMPOSE: {
-    "en": [
-        r"\b(write|compose|draft|send)\s+(an?\s+)?(email|mail)\b",
-        r"\bemail\s+\w+\s+(about|regarding)\b",
-        r"\bsend\s+(an?\s+)?(email|message)\s+to\b",
-    ],
-    "de": [
-        r"\b(schreib|verfass|send)[e]?\s+(eine?\s+)?(email|mail|nachricht)\b",
-        r"\bemail\s+an\s+\w+\b",
-        r"\bschick\s+(eine?\s+)?(email|nachricht)\s+an\b",
-    ],
-},
-```
+No new pip packages. `google-api-python-client`, `google-auth`, `google-auth-oauthlib` are
+already present from Batch 1.
 
-### OAuth Scopes — Updated
-
-Gmail compose scope required:
-- Add `https://www.googleapis.com/auth/gmail.compose` to required scopes
-- Update `google-oauth-shared.md` DEFAULT_SCOPES
-
-### Acceptance Criteria — Extended
-
-| # | Criterion | Verification |
-|---|-----------|--------------|
-| 9 | "Send an email to John about the meeting" creates draft | Integration test |
-| 10 | Draft preview appears in HUD | Visual inspection |
-| 11 | "ja senden" sends the email | Integration test |
-| 12 | "nein" / silence aborts send, draft remains | Integration test |
-| 13 | `email_send_done` message received on completion | Unit test |
-
-### Voice UX — Send Flow Example
-
-**User:** "Send an email to Sarah about tomorrow's meeting"
-
-**JARVIS:** "I'll draft that for you, Sir."
-*[Draft appears in HUD preview panel]*
-
-**JARVIS:** "Here's the draft: To Sarah Johnson, subject 'Tomorrow's Meeting', body: 'Hi Sarah, I wanted to confirm our meeting tomorrow. Looking forward to it. Best regards.' Shall I send this, Sir?"
-
-**User:** "Yes, send it"
-
-**JARVIS:** "Done. Email sent to Sarah Johnson, Sir."
+No new npm packages.
 
 ---
 
-**Status:** Planned — awaiting implementation authorization
+## Edge Cases & Failure Modes
+
+- **OAuth not yet completed (first run)** → `get_credentials()` raises `GoogleOAuthFlowError`;
+  `GmailClient` catches it, JARVIS speaks "Ich brauche Zugriff auf Gmail — bitte
+  authentifiziere dich im Terminal." Poller skips the cycle and retries next interval.
+- **Token expired, refresh fails** → `GoogleOAuthTokenError` propagated; same spoken fallback.
+  Poller backs off to 5-minute interval after three consecutive failures.
+- **Gmail API rate limit (429)** → `GmailClientError` with spoken "Gmail ist gerade nicht
+  erreichbar, bitte kurz warten." Poller backs off.
+- **Network error during list / search** → `GmailClientError`; JARVIS speaks fallback and
+  continues. Poller does not crash.
+- **Empty inbox / zero results** → `list_unread()` returns `[]`; spoken response "Keine
+  ungelesenen E-Mails, Sir."
+- **Compose: OpenClaw returns incomplete draft fields** (`to` missing) → `GmailClient` raises
+  before creating the draft; JARVIS asks user to repeat the request with more detail.
+- **Compose: user says "senden" before draft preview has been read back** → the 10 s
+  confirmation window is not yet open; the word "senden" is not on the active confirmation
+  whitelist, so it routes as a new intent. JARVIS clarifies before proceeding.
+- **Confirmation window expires (10 s silence)** → `_handle_email_confirm()` resolves with
+  timeout; backend calls `delete_draft()`, broadcasts `email_send_done` with `success: false`.
+  JARVIS speaks "Abgebrochen, Sir."
+- **User says non-confirm phrase during window** → same abort path as timeout.
+- **`send_draft()` fails after confirmation** → `GmailClientError`; JARVIS speaks "Senden
+  fehlgeschlagen, Sir. Die Nachricht wurde nicht gesendet." `email_send_done` broadcast with
+  `success: false, error: <message>`.
+- **`delete_draft()` fails on abort** → logged as warning; non-fatal. Draft may remain as
+  orphan in Gmail — acceptable for this scope (no label management in scope).
+- **MailPanel receives `mail_state` while draft preview is open** → draft preview sub-view
+  takes precedence; the mail list update is applied silently in state, re-rendered when
+  the draft view is dismissed.
+- **Raspberry Pi / headless** → no display-specific code in this batch; headless OAuth path
+  already handled by Batch 1.
+- **Max results exceeds Gmail API page size (500)** → cap `max_results` at 50 in
+  `GmailClient`; documented constraint.
+- **VIP list is empty** → `is_vip` is always `False`; no change in rendering logic needed.
 
 ---
 
-## Revision 3 — Full OpenClaw Adoption (2026-04-16)
+## Acceptance Criteria
 
-### Decisions Applied
-1. **OpenClaw as full backbone** — Gmail via OpenClaw only
-2. **No JARVIS-side service client** — All Gmail operations via OpenClaw
+1. `GmailClient.list_unread(max_results=5)` returns a list of `EmailMessage` objects with
+   correct `id`, `subject`, `sender_email`, `is_unread=True`, using a mocked
+   `googleapiclient.discovery.Resource` — verified by unit test.
+2. `GmailClient.search(query="from:sarah")` calls
+   `service.users().messages().list(userId="me", q="from:sarah", ...)` — verified by
+   asserting the mock call arguments in unit test.
+3. `GmailClient.get_unread_count()` executes a single API call and returns an integer —
+   verified by unit test with mocked `.execute()` returning `{"resultSizeEstimate": 7}`.
+4. `GmailClient.create_draft()` calls `service.users().drafts().create()` with a base64-encoded
+   RFC 2822 message and returns an `EmailDraft` — verified by unit test.
+5. `GmailClient.send_draft(draft_id)` calls `service.users().drafts().send()` — verified by
+   unit test asserting the mock call and correct draft_id in request body.
+6. `GmailClient.delete_draft(draft_id)` calls `service.users().drafts().delete()` — unit test.
+7. Intent parser classifies "check my email" as `EMAIL_READ` with confidence ≥ 0.8 — unit test.
+8. Intent parser classifies "zeig meine E-Mails" as `EMAIL_READ` with confidence ≥ 0.8 — unit test.
+9. Intent parser classifies "email from Sarah" as `EMAIL_SEARCH` and extracts
+   `params["sender"] == "Sarah"` — unit test.
+10. Intent parser classifies "send an email to John about the project" as `EMAIL_COMPOSE`
+    and extracts a non-empty `params["to"]` hint — unit test.
+11. The polling coroutine in `ws_server.py` calls `GmailClient.get_unread_count()` and
+    broadcasts a `mail_state` WS message at the configured interval — verified by async unit
+    test with mocked `GmailClient` and mocked `broadcast_mail_state`.
+12. Backend broadcasts `email_draft_preview` WS message synchronously after `create_draft()`
+    succeeds — verified by integration test asserting the message is in the WS queue before
+    JARVIS speaks the read-back.
+13. Backend does NOT call `send_draft()` if no confirmation arrives within 10 s; calls
+    `delete_draft()` and broadcasts `email_send_done` with `success: false` — async unit test.
+14. Backend calls `send_draft()` when the next STT turn matches a whitelisted confirm phrase
+    ("ja senden", "yes send it", "confirm", "go ahead", "senden", "send it") — async unit test.
+15. Backend does NOT call `send_draft()` when the next STT turn is a non-confirm phrase
+    ("nein", "cancel", "stop") — async unit test.
+16. `MailPanel.tsx` renders live `MailMessage` data received via `mail_state` WS message
+    instead of `mailMock` when the WS connection is active — Vitest + RTL component test
+    asserting mock-data sender names are absent and live-data sender names are present.
+17. `MailPanel.tsx` renders a draft-preview sub-view when an `email_draft_preview` WS message
+    arrives — Vitest + RTL component test asserting `to` and `subject` text are visible.
+18. `GoogleOAuthError` during `GmailClient` initialisation does not crash the server; the
+    polling task logs the error and skips the cycle — async unit test.
 
-### Integration Assessment
-**OpenClaw FULLY replaces this spec's core functionality.**
+---
 
-### OpenClaw Coverage
-| Feature | OpenClaw Capability | Coverage |
-|---------|---------------------|----------|
-| List unread emails | Gmail integration | Full |
-| Search by sender/subject | Gmail integration | Full |
-| Read full message | Gmail integration | Full |
-| Create draft | Gmail integration | Full |
-| Send email | Gmail integration | Full |
-| OAuth/auth | Handled by OpenClaw | Full |
+## Implementation Plan
 
-### What JARVIS-Native Retains
-1. **MailPanel** — HUD visualization of email state
-2. **Voice UX** — Email summary formatting, confirmation flow for sending
-3. **Email draft preview** — WebSocket message flow to frontend
-4. **VIP mail detection** — Proactive alert triggers (configured sender whitelist)
-5. **EmailMessage dataclass** — For HUD panel rendering
+1. `backend-dev` → add `gmail:` section to `config/config.yaml` with keys:
+   `enabled: true`, `max_unread_summary: 5`, `poll_interval_seconds: 120`,
+   `send_confirm_timeout_seconds: 10`, `vip_senders: []`.
 
-### What Is REMOVED (This Spec)
-- ~~GmailClient~~ — REMOVED (OpenClaw handles)
-- ~~EmailAgent~~ — REMOVED (queries go to OpenClaw)
-- ~~google-oauth-shared.md dependency~~ — REMOVED (OpenClaw handles OAuth)
-- ~~All Gmail API wrapper code~~ — REMOVED
+2. `backend-dev` → create `src/integrations/google/gmail_client.py` implementing
+   `EmailMessage`, `EmailDraft`, `GmailClientError`, and `GmailClient` with the six async
+   public methods specified in the Interfaces section. Use
+   `get_google_oauth_service().build_service("gmail", "v1", scopes=[GMAIL_READONLY_SCOPE, GMAIL_SEND_SCOPE])`
+   as the sole client factory. All Gmail API calls wrapped in `asyncio.to_thread`.
 
-### Migration Path
-1. All email voice commands route to OpenClaw via `query_agent()`
-2. OpenClaw returns email data
-3. JARVIS maps response to `EmailMessage` for MailPanel
-4. Send confirmation flow: OpenClaw draft → HUD preview → voice confirm → OpenClaw send
+3. `backend-dev` → add `EMAIL_READ`, `EMAIL_SEARCH`, `EMAIL_COMPOSE` to `Intent` enum in
+   `src/brain/intent_parser.py`; add EN + DE keyword patterns; add `_extract_email_params()`
+   private helper that extracts `sender`, `subject`, and a `to` hint from the raw text.
 
-### Simplified Architecture
+4. `backend-dev` → add `broadcast_mail_state()`, `broadcast_email_draft_preview()`,
+   `broadcast_email_send_done()` helper functions to `src/api/ws_server.py` following the
+   existing `broadcast_*` pattern (JSON-serialise payload, call `_broadcast()`).
+
+5. `backend-dev` → add `_start_mail_poller()` background coroutine to `src/api/ws_server.py`.
+   On each cycle: call `GmailClient.list_unread(max_results=5)`, call
+   `broadcast_mail_state(messages, unread_count)`. Handle `GmailClientError` and
+   `GoogleOAuthError` with backoff (triple interval after 3 consecutive failures). Register
+   the task in `start_ws_server()` alongside the existing metrics task.
+
+6. `backend-dev` → add `_handle_email_confirm()` coroutine to `src/api/ws_server.py`. Called
+   from the voice pipeline after JARVIS reads back a draft preview. Opens a 10 s window
+   waiting on the next STT result (use an `asyncio.Event` set by the existing audio handler).
+   On whitelist match → `send_draft()`; on timeout or non-match → `delete_draft()`. Broadcasts
+   `email_send_done` in both paths. Speaks confirmation via `broadcast_audio`.
+
+7. `frontend-dev` → add `MailStatePayload`, `EmailDraftPreviewPayload`, `EmailSendDonePayload`
+   types to `frontend/src/types.ts` and add the three new message variants to `WsIncoming`.
+
+8. `frontend-dev` → update `frontend/src/hooks/useWebSocket.ts` to handle `mail_state`,
+   `email_draft_preview`, and `email_send_done` message types; expose `mailMessages`,
+   `unreadCount`, `draftPreview` from the hook.
+
+9. `frontend-dev` → update `frontend/src/components/panels/MailPanel.tsx` to accept live
+   `messages` and `draftPreview` via props (remove `mailMock` as default); add a
+   `DraftPreview` sub-component rendered when `draftPreview` is non-null, showing `to`,
+   `subject`, `body_preview` in the existing HUD design language.
+
+10. `tester` → create `tests/integrations/google/test_gmail_client.py` covering acceptance
+    criteria 1–6 and 18. Mock via `unittest.mock.MagicMock`: construct the mock as
+    `mock_service = MagicMock()` and patch `googleapiclient.discovery.build` to return it;
+    chain calls as `mock_service.users().messages().list().execute.return_value = {...}`.
+
+11. `tester` → create `tests/brain/test_intent_parser_email.py` covering acceptance criteria
+    7–10. Use the live `IntentParser` instance; no mocking needed.
+
+12. `tester` → create `tests/api/test_mail_poller.py` covering acceptance criterion 11.
+    Use `pytest-asyncio`; mock `GmailClient` and `broadcast_mail_state`.
+
+13. `tester` → create `tests/api/test_email_confirm.py` covering acceptance criteria 12–15.
+    Use `pytest-asyncio`; mock `GmailClient.send_draft`, `GmailClient.delete_draft`, and
+    `broadcast_*` helpers.
+
+14. `tester` → create `frontend/src/hooks/__tests__/useWebSocket.mailMessages.test.ts`
+    covering acceptance criterion 16 (hook emits live `mailMessages` on `mail_state` message).
+    Use Vitest + RTL `renderHook`; supply a mock WS server via `msw` or direct event dispatch.
+
+15. `tester` → create `frontend/src/components/panels/__tests__/MailPanel.test.tsx` covering
+    acceptance criteria 16–17. Render `MailPanel` with live props and with a `draftPreview`
+    prop; assert mock-data names are absent, live names present, draft sub-view visible.
+
+16. `reviewer` → review all new/modified files in this batch against this spec.
+    Verdict: `PASS` or `NEEDS_CHANGES`.
+
+---
+
+## Manual Verification
+
+After implementation, run the following in order:
+
+```bash
+# 1. Unit and integration tests
+PYTHONPATH=src .venv/bin/pytest tests/integrations/google/test_gmail_client.py \
+    tests/brain/test_intent_parser_email.py \
+    tests/api/test_mail_poller.py \
+    tests/api/test_email_confirm.py -v
+# expect: all green
+
+# 2. Full backend suite — no regressions
+PYTHONPATH=src .venv/bin/pytest --tb=short
+# expect: all previously passing tests still pass
+
+# 3. Frontend tests
+cd frontend && npm test -- --reporter=verbose
+# expect: all green
+
+# 4. Live smoke test (requires real Google credentials in .env)
+PYTHONPATH=src .venv/bin/python -m main &
+cd frontend && npm run dev &
+# Open http://localhost:5173, open MailPanel — should show live unread count within 120 s.
+
+# 5. Voice read test
+# Say "Check my email" → JARVIS should speak unread summary.
+
+# 6. Voice send test (gated confirmation)
+# Say "Send an email to <real address> about testing" →
+#   JARVIS reads back draft → say "ja senden" → confirm email arrives.
+# Repeat and say "nein" → JARVIS aborts, email is NOT sent.
 ```
-Voice: "Check my email"
-       ↓
-[Intent Parser] → EMAIL_READ intent
-       ↓
-[Orchestrator] → Forward to OpenClaw
-       ↓
-[OpenClaw Gmail skill]
-       ↓
-[Response] → Map to EmailMessage for HUD + spoken summary
-```
 
-### Send Flow with OpenClaw
-```
-Voice: "Send an email to Sarah about the meeting"
-       ↓
-[OpenClaw] → Creates draft, returns draft_id + preview
-       ↓
-[JARVIS WS] → email_draft_preview to frontend
-       ↓
-[JARVIS TTS] → "Shall I send this, Sir?"
-       ↓
-[User] → "Yes, send it"
-       ↓
-[JARVIS] → Confirm to OpenClaw → OpenClaw sends
-```
+---
 
-### Files Created — REDUCED
-| File | Purpose | Status |
-|------|---------|--------|
-| `src/integrations/google/gmail_client.py` | Gmail API client | SKIP (OpenClaw) |
-| `src/brain/agents/email_agent.py` | Email agent | SKIP (OpenClaw) |
-| `src/integrations/email/models.py` | EmailMessage dataclass | KEEP (HUD needs) |
+## Open Questions
 
-### Files Modified — REDUCED
-| File | Change | Status |
-|------|--------|--------|
-| `src/brain/intent_parser.py` | Add EMAIL_* intents | KEEP |
-| `src/brain/orchestrator.py` | Route to OpenClaw | MODIFIED |
-| `src/api/ws_server.py` | Bridge OpenClaw email events | KEEP |
-| `config/config.yaml` | Email section (provider: openclaw) | SIMPLIFIED |
+1. **Orchestrator routing for EMAIL_* intents**: the current `_LOCAL_INTENTS` set contains
+   only `PC_CONTROL`, `SMART_HOME`, and `SYSTEM`. Email intents therefore fall through to the
+   OpenClaw chat path, which is the intended behaviour for read/search (OpenClaw can call
+   `GmailClient` methods as context or the prompt injects the results). For the
+   `EMAIL_COMPOSE` confirmation phase, `ws_server._handle_email_confirm()` must intercept
+   the *next* STT turn before it reaches the orchestrator. The exact intercept mechanism
+   (e.g. a per-connection `asyncio.Event` + flag, or a dedicated confirmation queue) needs
+   to align with how the existing audio pipeline in `ws_server.py` sequences turns — confirm
+   with `backend-dev` before step 6.
 
-### Config — Simplified
-```yaml
-email:
-  enabled: true
-  provider: "openclaw"
-  vip_senders: []  # Sender whitelist for proactive alerts
-```
+2. **GmailClient initialisation point**: should `GmailClient` be instantiated once in
+   `start_ws_server()` alongside `_orchestrator` and `_intent_parser`, or lazily on first
+   voice command? Singleton is cleaner for the poller; lazy construction avoids startup
+   delay for users who never use Gmail. Decide before step 5.
 
-### Implementation Reduction
-**Original estimate:** 6-8 hours
-**With OpenClaw:** 2-3 hours (HUD panel + voice UX only)
-**Reduction:** ~60%
+3. **How gmail read context reaches OpenClaw**: for EMAIL_READ / EMAIL_SEARCH turns, the
+   orchestrator sends text to OpenClaw. The GmailClient results must be prepended to the
+   prompt (e.g. "Context — unread emails: …\n\nUser: Check my email") OR the orchestrator
+   must call `GmailClient` before dispatching. The preferred injection point should be
+   decided before step 3 so the intent params and orchestrator changes are consistent.
 
-### Prerequisites
-- `openclaw-integration.md` — REQUIRED (handles all email operations)
+4. **`email_send_done` on frontend**: currently `MailPanel.tsx` has no toast or status
+   indicator. Should `email_send_done` trigger a HUD notification (reusing the existing
+   `notification` WS message type) in addition to the TTS spoken confirmation, or is the
+   `email_send_done` WS type intended solely to dismiss the draft-preview sub-view? Clarify
+   before step 7.

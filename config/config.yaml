@@ -93,6 +93,23 @@ openclaw:
   # Patience between deltas after streaming has begun.
   stream_inter_delta_timeout_seconds: 20
 
+spotify:
+  enabled: true
+  # Seconds between playback-state polls. Lower values give snappier HUD
+  # updates but cost more Spotify API quota.
+  poll_interval: 10
+  # Path where the PKCE token is cached. Tilde is expanded at runtime.
+  # Override with SPOTIFY_TOKEN_CACHE env var.
+  token_cache_path: "~/.jarvis/spotify_token.json"
+  # Set to a Spotify Connect device name or ID to force a default device;
+  # null lets the API return the currently active device.
+  default_device: null
+  # OAuth scopes required by the integration.
+  scopes:
+    - "user-read-playback-state"
+    - "user-modify-playback-state"
+    - "user-read-currently-playing"
+
 google:
   # Path where the OAuth token is cached after first-use browser consent.
   # Tilde is expanded at runtime. Override with GOOGLE_TOKEN_CACHE env var.
@@ -101,6 +118,16 @@ google:
   # before the flow times out. Applies to the interactive flow only;
   # silent refresh calls use the google-auth library's default socket timeout.
   timeout_seconds: 120
+
+gmail:
+  enabled: true
+  max_unread_summary: 5
+  poll_interval_seconds: 120
+  send_confirm_timeout_seconds: 60  # per authorized decision: 60s per-connection timeout
+  vip_senders: []
+  scopes:
+    - "https://www.googleapis.com/auth/gmail.readonly"
+    - "https://www.googleapis.com/auth/gmail.send"
 
 persona:
   enabled: true

@@ -21,6 +21,14 @@ class Intent(Enum):
     SMART_HOME = "smart_home"
     WEB_SEARCH = "web_search"
     SYSTEM = "system"
+    EMAIL_READ = "email_read"
+    EMAIL_SEARCH = "email_search"
+    EMAIL_COMPOSE = "email_compose"
+    SPOTIFY_PLAY = "spotify_play"
+    SPOTIFY_PAUSE = "spotify_pause"
+    SPOTIFY_NEXT = "spotify_next"
+    SPOTIFY_PREV = "spotify_prev"
+    SPOTIFY_VOLUME = "spotify_volume"
 
 
 @dataclass
@@ -146,6 +154,146 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\bwelche\s+stimmen\b",
         ],
     },
+    Intent.EMAIL_READ: {
+        "en": [
+            r"\bcheck\s+(my\s+)?email(s)?\b",
+            r"\bread\s+(my\s+)?email(s)?\b",
+            r"\bshow\s+(my\s+)?email(s)?\b",
+            r"\bany\s+(new\s+)?email(s)?\b",
+            r"\bdo\s+i\s+have\s+(any\s+)?(new\s+)?email(s)?\b",
+            r"\bunread\s+email(s)?\b",
+            r"\bmy\s+inbox\b",
+        ],
+        "de": [
+            r"\bzeig(e)?\s+(mir\s+)?(meine\s+)?e-?mails?\b",
+            r"\bprüfe?\s+(meine\s+)?e-?mails?\b",
+            r"\blies(e)?\s+(meine\s+)?e-?mails?\b",
+            r"\be-?mails?\s+(lesen|prüfen|anzeigen)\b",
+            r"\bposteingang\b",
+            r"\bungelesene\s+e-?mails?\b",
+            r"\bnachricht(en)?\s+(prüfen|lesen|anzeigen)\b",
+        ],
+    },
+    Intent.EMAIL_SEARCH: {
+        "en": [
+            r"\bemail(s)?\s+from\b",
+            r"\bemail(s)?\s+about\b",
+            r"\bany\s+email(s)?\s+from\b",
+            r"\bdo\s+i\s+have\s+(any\s+)?email(s)?\s+from\b",
+            r"\bsearch\s+(my\s+)?email(s)?\b",
+            r"\bfind\s+(an?\s+)?email\b",
+            r"\blook\s+for\s+(an?\s+)?email\b",
+        ],
+        "de": [
+            r"\be-?mails?\s+von\b",
+            r"\be-?mails?\s+(über|zu|betreff)\b",
+            r"\be-?mails?\s+suchen\b",
+            r"\be-?mails?\s+von\s+\w+\s+suchen\b",
+            r"\bsuche?\s+(nach\s+)?e-?mails?\b",
+            r"\bnachrichten\s+von\b",
+        ],
+    },
+    Intent.EMAIL_COMPOSE: {
+        "en": [
+            r"\bsend\s+(an?\s+)?email\b",
+            r"\bwrite\s+(an?\s+)?email\b",
+            r"\bcompose\s+(an?\s+)?email\b",
+            r"\bdraft\s+(an?\s+)?email\b",
+            r"\bemail\s+\w+\s+about\b",
+            r"\bsend\s+a\s+message\s+to\b",
+        ],
+        "de": [
+            r"\be-?mail\s+(schreiben|senden|verfassen|schicken)\b",
+            r"\bschreibe?\s+(eine\s+)?e-?mail\b",
+            r"\bsende?\s+(eine\s+)?e-?mail\b",
+            r"\bverfasse?\s+(eine\s+)?e-?mail\b",
+            r"\bnachricht\s+schreiben\s+an\b",
+            r"\bnachricht\s+senden\s+an\b",
+            # Covers "E-Mail an <person> schreiben" (object first)
+            r"\be-?mail\s+an\s+\S+\s+(schreiben|senden|verfassen|schicken)\b",
+        ],
+    },
+    # ------------------------------------------------------------------
+    # Spotify intents — each maps to a dedicated control action.
+    # Patterns are intentionally narrow so they don't clash with PC
+    # control (which also has "open spotify" via app alias).
+    # ------------------------------------------------------------------
+    Intent.SPOTIFY_PLAY: {
+        "en": [
+            r"\bplay\s+(music|spotify|song|track|the\s+music)\b",
+            r"\bresume\s+(music|spotify|playback)\b",
+            r"\bstart\s+(playing|music|spotify)\b",
+            r"\bplay\s+it\b",
+            r"\bplay\s+again\b",
+        ],
+        "de": [
+            r"\babspielen\b",
+            r"\bwiedergabe\s+(starten|fortsetzen)\b",
+            r"\bmusik\s+(abspielen|starten|spielen)\b",
+            r"\bspiele?\s+(musik|spotify|den\s+song|weiter)\b",
+            r"\bfortsetzen\b",
+        ],
+    },
+    Intent.SPOTIFY_PAUSE: {
+        "en": [
+            r"\bpause\s*(the\s+)?(music|spotify|song|playback|it)?\b",
+            r"\bstop\s+(the\s+)?(music|spotify|song|playback)\b",
+            r"\bstop\s+playing\b",
+        ],
+        "de": [
+            r"\bpausiere?\s*(die\s+)?(musik|spotify|wiedergabe)?\b",
+            r"\bmusik\s+pausieren\b",
+            r"\bwiedergabe\s+pausieren\b",
+            r"\bstoppiere?\s*(die\s+)?(musik|spotify)?\b",
+            r"\banhalten\b",
+        ],
+    },
+    Intent.SPOTIFY_NEXT: {
+        "en": [
+            r"\bnext\s+(song|track|title)?\b",
+            r"\bskip\s*(this)?\s*(song|track|title)?\b",
+            r"\bforward\s+(song|track)\b",
+        ],
+        "de": [
+            r"\bnächste(r|s|n)?\s*(song|titel|track|lied)?\b",
+            r"\büberspringen\b",
+            r"\bweiter\s*(schalten|springen)?\b",
+            r"\bnächster\s+titel\b",
+            r"\bskippen\b",
+        ],
+    },
+    Intent.SPOTIFY_PREV: {
+        "en": [
+            r"\bprevious\s*(song|track|title)?\b",
+            r"\bback\s+(to\s+(the\s+)?last|to\s+previous)?\s*(song|track|title)?\b",
+            r"\breplay\b",
+            r"\bplay\s+(it\s+)?again\b",
+            r"\blast\s+(song|track|title)\b",
+        ],
+        "de": [
+            r"\bvorheriger?\s*(song|titel|track|lied)?\b",
+            r"\bzurück\s*(zum\s+(letzten|vorherigen))?\s*(song|titel|track)?\b",
+            r"\bwieder(holen|spielen)?\b",
+            r"\bletzter?\s+(titel|song|track|lied)\b",
+        ],
+    },
+    Intent.SPOTIFY_VOLUME: {
+        "en": [
+            r"\bspotify\s+volume\b",
+            r"\bmusic\s+volume\b",
+            r"\bvolume\s+(up|down|\d+)\b",
+            r"\bturn\s+(up|down)\s+(the\s+)?music\b",
+            r"\blouder\b",
+            r"\bquieter\b",
+        ],
+        "de": [
+            r"\bspotify\s+lautstärke\b",
+            r"\bmusik\s+lautstärke\b",
+            r"\blauter\s*(machen|stellen)?\b",
+            r"\bleiser\s*(machen|stellen)?\b",
+            r"\blautstärke\s+(hoch|runter|\d+)\b",
+        ],
+    },
 }
 
 # App name aliases for PC control
@@ -237,7 +385,15 @@ class IntentParser:
             Intent.SYSTEM,
             Intent.PC_CONTROL,
             Intent.SMART_HOME,
+            Intent.EMAIL_COMPOSE,
+            Intent.EMAIL_SEARCH,
+            Intent.EMAIL_READ,
             Intent.WEB_SEARCH,
+            Intent.SPOTIFY_PLAY,
+            Intent.SPOTIFY_PAUSE,
+            Intent.SPOTIFY_NEXT,
+            Intent.SPOTIFY_PREV,
+            Intent.SPOTIFY_VOLUME,
         ]:
             confidence, extracted_params = self._match_intent(
                 text_lower, intent, language
@@ -294,8 +450,23 @@ class IntentParser:
         if match_count == 0:
             return 0.0, params
 
-        # Calculate confidence based on match count
-        confidence = min(1.0, 0.4 + (match_count * 0.2))
+        # Email intents have a higher base confidence because their keyword
+        # patterns are highly specific (e.g. "check my email" is unambiguous).
+        _EMAIL_INTENT_BASE = 0.75
+        _SPOTIFY_INTENT_BASE = 0.75
+        _SPOTIFY_INTENTS = (
+            Intent.SPOTIFY_PLAY,
+            Intent.SPOTIFY_PAUSE,
+            Intent.SPOTIFY_NEXT,
+            Intent.SPOTIFY_PREV,
+            Intent.SPOTIFY_VOLUME,
+        )
+        if intent in (Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE):
+            confidence = min(1.0, _EMAIL_INTENT_BASE + (match_count * 0.1))
+        elif intent in _SPOTIFY_INTENTS:
+            confidence = min(1.0, _SPOTIFY_INTENT_BASE + (match_count * 0.1))
+        else:
+            confidence = min(1.0, 0.4 + (match_count * 0.2))
 
         # Extract parameters based on intent
         if intent == Intent.PC_CONTROL:
@@ -306,6 +477,8 @@ class IntentParser:
             params = self._extract_search_params(text)
         elif intent == Intent.SYSTEM:
             params = self._extract_system_params(text)
+        elif intent in (Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE):
+            params = self._extract_email_params(text, intent)
 
         return confidence, params
 
@@ -450,6 +623,48 @@ class IntentParser:
             query = re.sub(prefix, "", query, flags=re.IGNORECASE)
 
         params["query"] = query.strip()
+        return params
+
+    def _extract_email_params(self, text: str, intent: Intent) -> dict[str, Any]:
+        """Extract parameters for email intents.
+
+        Args:
+            text: Lowercase user text.
+            intent: The specific email intent variant.
+
+        Returns:
+            Extracted parameters with keys ``sender``, ``subject``, ``to``
+            (any may be absent when not found in the text).
+        """
+        params: dict[str, Any] = {}
+
+        # Extract sender for EMAIL_SEARCH (e.g. "emails from Sarah")
+        sender_match = re.search(
+            r"\b(?:from|von)\s+([A-Za-zÄäÖöÜüß][A-Za-zÄäÖöÜüß\s]{1,30}?)(?:\s*[,?.]|$)",
+            text,
+            re.IGNORECASE,
+        )
+        if sender_match:
+            params["sender"] = sender_match.group(1).strip()
+
+        # Extract recipient hint for EMAIL_COMPOSE (e.g. "email to John", "an John")
+        to_match = re.search(
+            r"\b(?:to|an)\s+([A-Za-zÄäÖöÜüß][A-Za-zÄäÖöÜüß\s]{1,30}?)(?:\s+(?:about|über|betreff|re:|:)|[,?.]|$)",
+            text,
+            re.IGNORECASE,
+        )
+        if to_match:
+            params["to"] = to_match.group(1).strip()
+
+        # Extract subject hint (e.g. "about the meeting", "über das Treffen")
+        subject_match = re.search(
+            r"\b(?:about|über|betreff|subject|re:)\s+(.+?)(?:[.?!]|$)",
+            text,
+            re.IGNORECASE,
+        )
+        if subject_match:
+            params["subject"] = subject_match.group(1).strip()
+
         return params
 
     def _extract_system_params(self, text: str) -> dict[str, Any]:

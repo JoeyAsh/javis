@@ -1,65 +1,178 @@
-# Feature Spec: Spotify Integration
+# Feature: Spotify Integration
 
-## Summary
-Integrate Spotify for music control and ambient awareness. Users can control playback via voice ("play some jazz", "pause the music", "skip this song") and see current track info in the NowPlayingPanel. The integration uses `spotipy` with OAuth2 PKCE flow for authentication.
+## Status
+Planned — awaiting implementation authorization
 
-## Goals
-- Enable voice-controlled Spotify playback: play, pause, next, previous, volume
-- Display current track info (title, artist, album, album art) in NowPlayingPanel
-- Support device selection when multiple Spotify devices are available
-- Implement OAuth2 PKCE flow (no client secret required)
-- Poll Spotify state at configurable interval to keep UI in sync
+### What exists today (2026-04-18)
+- `SPOTIFY_CLIENT_ID` populated in `.env`
+- `frontend/src/components/panels/NowPlayingPanel.tsx` — fully built UI (compact + expanded modes, transport buttons, progress bar) consuming `NowPlayingTrack` from mock data
+- `frontend/src/mock/nowPlayingMock.ts` — static mock track in use
+- `NowPlayingTrack` type defined in `frontend/src/types.ts`
+- Redirect URI `http://127.0.0.1:8766/oauth/spotify/callback` must be registered in Spotify Developer Dashboard (user action required before first run)
 
-## Non-Goals
-- Playlist creation or modification
-- Social features (sharing, collaborative playlists)
+### What is NOT yet built
+- `src/integrations/spotify/` package
+- OAuth PKCE callback endpoint on the aiohttp HTTP server (:8766)
+- Spotify state polling loop + WS broadcast
+- `spotify_state` / `spotify_cmd` WS message types
+- `useSpotify` hook wiring `NowPlayingPanel` to live WS data
+- Voice command routing (intent + `src/brain/orchestrator.py` hookup)
+- Config yaml section, `.env.example` additions, `requirements.txt` entry
+
+---
+
+## Goal
+Enable JARVIS to display live Spotify playback state in the NowPlayingPanel and accept voice commands (play, pause, skip, volume, "what's playing") routed through the existing OpenClaw conversational path. The integration is intentionally split: OpenClaw handles all playback-control commands; JARVIS-native code handles OAuth token storage, state polling, and HUD data delivery.
+
+## Scope
+
+### In scope
+- OAuth 2.0 PKCE flow: `SPOTIFY_CLIENT_ID` from `.env`, no client secret, token cached at `~/.jarvis/spotify_token.json`
+- aiohttp HTTP callback handler at `GET /oauth/spotify/callback` on port 8766
+- `SpotifyClient` (read-only polling): `get_playback_state()`, `is_authenticated()`, wrapping spotipy in `asyncio.to_thread`
+- Background polling loop at configurable interval (default 5 s), broadcasting `spotify_state` WS frames to all connected clients
+- `useSpotify` hook consuming `spotify_state` frames and sending `spotify_cmd` frames via the existing `wsRef` from `useWebSocket`
+- Wire `NowPlayingPanel` to live data from `useSpotify` (replace `nowPlayingMock` default prop)
+- Voice intent detection added to `src/brain/intent_parser.py` (`Intent.SPOTIFY`)
+- Orchestrator routes `Intent.SPOTIFY` to the OpenClaw conversational path (already the fallthrough for non-local intents); spoken confirmation TTS via existing pipeline
+- Unit tests for `SpotifyClient` (mocked spotipy) and `useSpotify` hook (mocked WS)
+
+### Out of scope
+- JARVIS-native playback control (play/pause/skip implementation) — OpenClaw Spotify skill handles this
+- Device-selection UI — deferred
+- Playlist browsing UI
+- Album-art proxy / caching — panel loads `album_art_url` directly from Spotify CDN
 - Podcast-specific controls
 - Lyrics display
-- Offline playback (Spotify Premium streaming only)
+- Any WS `spotify_cmd` server-side handler beyond logging the receipt (control goes through voice → OpenClaw, not through panel button → backend → Spotify API directly in this iteration)
 
-## Prerequisites
-- **Spotify Premium account** — required for playback control
-- **Spotify Developer App** — user must create at https://developer.spotify.com/dashboard
-- Active Spotify device (desktop app, mobile app, or web player)
+---
+
+## User Flow
+
+1. On first run, `SpotifyClient.initialize()` finds no cached token, generates the PKCE auth URL, and logs it. JARVIS broadcasts a `notification` WS frame instructing the user to visit the URL.
+2. User visits the URL in a browser, grants permission, and is redirected to `http://127.0.0.1:8766/oauth/spotify/callback?code=…`.
+3. The aiohttp callback handler exchanges the code via spotipy's `SpotifyPKCE.get_access_token()`, writes the token to `~/.jarvis/spotify_token.json`, and returns a plain HTML confirmation page.
+4. `SpotifyClient` detects the now-valid token on the next polling tick, begins polling, and starts broadcasting `spotify_state` frames every 5 s.
+5. `NowPlayingPanel` transitions from showing the mock track to showing live Spotify data.
+6. User says "Hey JARVIS, skip this song." Orchestrator classifies `Intent.SPOTIFY` and routes to the OpenClaw conversational path; OpenClaw's Spotify skill handles the skip; on the next poll the updated state appears in the HUD.
+7. Spotify playback is paused or closed: next poll returns `None`, a `spotify_state` frame with `playing: false` and empty track fields is broadcast, panel shows "No active playback."
 
 ---
 
 ## Architecture
 
-### Backend Components
+### Modules touched
+
+- **Backend — new:**
+  - `src/integrations/spotify/__init__.py`
+  - `src/integrations/spotify/client.py`
+- **Backend — modified:**
+  - `src/api/ws_server.py` — add `spotify_state_loop` background task, `spotify_cmd` incoming handler, OAuth callback route, `SpotifyClient` global
+  - `src/brain/intent_parser.py` — add `Intent.SPOTIFY` enum value and keyword patterns
+  - `src/brain/orchestrator.py` — no structural change; `Intent.SPOTIFY` is already not in `_LOCAL_INTENTS`, so it falls through to `ChatAgent` / OpenClaw automatically. One guard: if Spotify is not authenticated, intercept and return a spoken auth-prompt instead of routing to OpenClaw.
+  - `src/main.py` — initialise `SpotifyClient`, pass to `start_ws_server`
+  - `config/config.yaml` — add `spotify:` section
+  - `.env.example` — add `SPOTIFY_CLIENT_ID`, `SPOTIFY_REDIRECT_URI`, token cache override comment
+  - `requirements.txt` — add `spotipy`
+- **Frontend — new:**
+  - `frontend/src/hooks/useSpotify.ts`
+- **Frontend — modified:**
+  - `frontend/src/components/panels/NowPlayingPanel.tsx` — accept optional `liveTrack` prop from `useSpotify`; fall back to mock only when hook returns `null` (dev mode)
+  - `frontend/src/types.ts` — extend `WsIncoming` union with `spotify_state`; add `WsOutgoing` variant `spotify_cmd`
+- **Config keys added to `config/config.yaml`:**
+  ```
+  spotify.enabled
+  spotify.poll_interval_seconds
+  spotify.show_album_art
+  ```
+- **Env vars (`.env` / `.env.example`):**
+  ```
+  SPOTIFY_CLIENT_ID          # already populated
+  SPOTIFY_REDIRECT_URI       # default: http://127.0.0.1:8766/oauth/spotify/callback
+  SPOTIFY_TOKEN_CACHE        # optional override; default: ~/.jarvis/spotify_token.json
+  ```
+
+### Data flow
 
 ```
-src/integrations/spotify/
-  __init__.py
-  client.py           # SpotifyClient - spotipy wrapper
+[Spotify API]
+      |
+      | spotipy.current_playback() — asyncio.to_thread
+      v
+[SpotifyClient.get_playback_state()]  (5 s poll)
+      |
+      v
+[_spotify_state_loop() in ws_server.py]
+      |  _broadcast(json) — existing _broadcast helper
+      v
+[WS frame: {"type":"spotify_state", "payload": SpotifyStatePayload}]
+      |
+      v
+[useWebSocket (existing) — receives message]
+      |
+      v
+[useSpotify hook — subscribes via wsRef message listener]
+      |
+      v
+[NowPlayingPanel — re-renders with live NowPlayingTrack]
 
-src/brain/agents/
-  spotify_agent.py    # SpotifyAgent - voice intent handler
+
+Voice control path:
+[Wake word] → [STT] → [IntentParser: Intent.SPOTIFY]
+      |
+      v (not in _LOCAL_INTENTS → falls to ChatAgent)
+[OpenClaw conversational path via ws_client.py]
+      |
+      v
+[OpenClaw Spotify skill — executes play/pause/skip/volume]
+      |
+      v (next 5 s poll picks up new state)
+[NowPlayingPanel updates]
+
+
+Panel button path (Phase 1 scope):
+[TransportButton click] → [useSpotify.sendCommand()]
+      |
+      v
+[WS frame: {"type":"spotify_cmd", "payload": {action, value}}]
+      |
+      v
+[ws_server spotify_cmd handler — logs receipt, no direct Spotify API call]
+      NOTE: Panel buttons are wired for future use. In this iteration
+      they send a WS frame but the backend does not act on it beyond
+      logging. Voice is the authoritative control path.
+
+
+OAuth path:
+[SpotifyClient.initialize() — no cached token]
+      |
+      v
+[PKCE auth URL generated → broadcast notification WS frame with URL]
+      |
+      v (user opens browser)
+[GET /oauth/spotify/callback?code=… on :8766]
+      |
+      v
+[aiohttp handler: SpotifyPKCE.get_access_token(code)]
+      |
+      v
+[Token written to ~/.jarvis/spotify_token.json]
+      |
+      v
+[HTML confirmation page returned to browser]
 ```
 
-### Frontend Components
+### Interfaces
 
-```
-frontend/src/
-  components/panels/
-    NowPlayingPanel.tsx
-  hooks/
-    useSpotify.ts
-```
-
----
-
-## Spotify Client (`src/integrations/spotify/client.py`)
-
-### Interface
+**Python — `src/integrations/spotify/client.py`:**
 
 ```python
 from dataclasses import dataclass
 from typing import Any
 
 @dataclass
-class SpotifyTrack:
-    """Current track information."""
+class SpotifyTrackInfo:
     track_id: str
     name: str
     artist: str
@@ -68,974 +181,198 @@ class SpotifyTrack:
     duration_ms: int
     progress_ms: int
     is_playing: bool
-
-@dataclass
-class SpotifyDevice:
-    """Spotify playback device."""
-    id: str
-    name: str
-    type: str  # "Computer", "Smartphone", "Speaker", etc.
-    is_active: bool
-    volume_percent: int
-
-@dataclass
-class SpotifyState:
-    """Full playback state."""
-    track: SpotifyTrack | None
-    device: SpotifyDevice | None
     shuffle: bool
-    repeat: str  # "off", "track", "context"
+    repeat: str        # "off" | "track" | "context"
+    device_name: str
+
+class SpotifyAuthError(Exception): ...
+class SpotifyPollError(Exception): ...
 
 class SpotifyClient:
-    """Async Spotify client wrapping spotipy."""
-
-    def __init__(self, config: dict[str, Any]) -> None:
-        """Initialize with config.
-
-        Args:
-            config: Spotify section from config.yaml
-        """
-        ...
-
-    async def initialize(self) -> None:
-        """Initialize OAuth and verify connection.
-
-        Raises:
-            SpotifyAuthError: If authentication fails
-        """
-        ...
-
-    async def get_playback_state(self) -> SpotifyState | None:
-        """Get current playback state.
-
-        Returns:
-            SpotifyState if playing, None if no active playback
-        """
-        ...
-
-    async def play(self, context_uri: str | None = None, device_id: str | None = None) -> bool:
-        """Start or resume playback.
-
-        Args:
-            context_uri: Optional Spotify URI (album, playlist, artist)
-            device_id: Optional device to play on
-
-        Returns:
-            True if successful
-        """
-        ...
-
-    async def pause(self) -> bool:
-        """Pause playback."""
-        ...
-
-    async def next_track(self) -> bool:
-        """Skip to next track."""
-        ...
-
-    async def previous_track(self) -> bool:
-        """Skip to previous track."""
-        ...
-
-    async def set_volume(self, volume_percent: int) -> bool:
-        """Set volume.
-
-        Args:
-            volume_percent: 0-100
-        """
-        ...
-
-    async def search(self, query: str, types: list[str] = ["track"]) -> list[dict]:
-        """Search Spotify catalog.
-
-        Args:
-            query: Search query
-            types: Types to search (track, album, artist, playlist)
-
-        Returns:
-            List of search results
-        """
-        ...
-
-    async def get_devices(self) -> list[SpotifyDevice]:
-        """Get available playback devices."""
-        ...
-
-    async def transfer_playback(self, device_id: str) -> bool:
-        """Transfer playback to another device."""
-        ...
-
-    def is_authenticated(self) -> bool:
-        """Check if client has valid auth."""
-        ...
-
-
-class SpotifyAuthError(Exception):
-    """Raised when Spotify authentication fails."""
-    pass
-
-
-class SpotifyPlaybackError(Exception):
-    """Raised when playback control fails (e.g., no active device)."""
-    pass
+    def __init__(self, config: dict[str, Any]) -> None: ...
+    async def initialize(self) -> None: ...
+    async def get_playback_state(self) -> SpotifyTrackInfo | None: ...
+    def is_authenticated(self) -> bool: ...
+    def get_auth_url(self) -> str: ...
+    async def complete_auth(self, code: str) -> None: ...
 ```
 
-### OAuth2 PKCE Implementation
+**Python — `src/api/ws_server.py` additions:**
 
 ```python
-import spotipy
-from spotipy.oauth2 import SpotifyPKCE
-from pathlib import Path
-import os
+async def spotify_oauth_callback_handler(request: web.Request) -> web.Response: ...
+# Registered as: http_app.router.add_get("/oauth/spotify/callback", spotify_oauth_callback_handler)
 
-SCOPES = [
-    "user-read-playback-state",
-    "user-modify-playback-state",
-    "user-read-currently-playing",
-    "user-library-read",
-    "user-read-recently-played",
-    "playlist-read-private",
-]
-
-class SpotifyClient:
-    def __init__(self, config: dict[str, Any]) -> None:
-        self._config = config
-        self._client: spotipy.Spotify | None = None
-
-        # OAuth config
-        self._client_id = os.getenv("SPOTIFY_CLIENT_ID")
-        self._redirect_uri = os.getenv(
-            "SPOTIFY_REDIRECT_URI",
-            "http://localhost:8766/callback/spotify"
-        )
-        self._token_cache_path = Path(
-            os.getenv("SPOTIFY_TOKEN_CACHE", "~/.jarvis/spotify_token.json")
-        ).expanduser()
-
-    async def initialize(self) -> None:
-        if not self._client_id:
-            raise SpotifyAuthError("SPOTIFY_CLIENT_ID not set")
-
-        # Ensure cache directory exists
-        self._token_cache_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # PKCE flow - no client secret needed
-        auth_manager = SpotifyPKCE(
-            client_id=self._client_id,
-            redirect_uri=self._redirect_uri,
-            scope=" ".join(SCOPES),
-            cache_path=str(self._token_cache_path),
-            open_browser=False,  # We'll handle auth flow ourselves
-        )
-
-        # Check for existing token
-        if not auth_manager.get_cached_token():
-            # Need to authenticate - log instructions
-            auth_url = auth_manager.get_authorize_url()
-            logger.info(f"Spotify auth required. Visit: {auth_url}")
-            raise SpotifyAuthError(
-                f"Please authenticate Spotify. Visit: {auth_url}"
-            )
-
-        self._client = spotipy.Spotify(auth_manager=auth_manager)
-
-        # Verify connection
-        try:
-            self._client.current_user()
-        except spotipy.SpotifyException as e:
-            raise SpotifyAuthError(f"Failed to verify Spotify connection: {e}")
+async def _spotify_state_loop(client: SpotifyClient, interval_seconds: int) -> None: ...
+# Started as asyncio.create_task in start_ws_server after SpotifyClient.initialize() succeeds
 ```
 
-### Thread Safety
+**WebSocket messages — new variants:**
 
-Spotipy is synchronous. Wrap in `asyncio.to_thread`:
-
-```python
-async def get_playback_state(self) -> SpotifyState | None:
-    if not self._client:
-        return None
-
-    try:
-        playback = await asyncio.to_thread(self._client.current_playback)
-        if not playback or not playback.get("item"):
-            return None
-
-        item = playback["item"]
-        device = playback.get("device")
-
-        return SpotifyState(
-            track=SpotifyTrack(
-                track_id=item["id"],
-                name=item["name"],
-                artist=", ".join(a["name"] for a in item["artists"]),
-                album=item["album"]["name"],
-                album_art_url=item["album"]["images"][0]["url"] if item["album"]["images"] else "",
-                duration_ms=item["duration_ms"],
-                progress_ms=playback.get("progress_ms", 0),
-                is_playing=playback.get("is_playing", False),
-            ),
-            device=SpotifyDevice(
-                id=device["id"],
-                name=device["name"],
-                type=device["type"],
-                is_active=device["is_active"],
-                volume_percent=device["volume_percent"],
-            ) if device else None,
-            shuffle=playback.get("shuffle_state", False),
-            repeat=playback.get("repeat_state", "off"),
-        )
-    except spotipy.SpotifyException as e:
-        logger.error(f"Failed to get playback state: {e}")
-        return None
-```
-
----
-
-## Spotify Agent (`src/brain/agents/spotify_agent.py`)
-
-### Interface
-
-```python
-from brain.agents.base import BaseAgent, AgentResult
-
-class SpotifyAgent(BaseAgent):
-    """Agent for Spotify music control."""
-
-    def __init__(self, spotify_client: "SpotifyClient") -> None:
-        super().__init__()
-        self._spotify = spotify_client
-
-    async def run(
-        self,
-        task: str,
-        params: dict[str, Any],
-        language: str,
-    ) -> AgentResult:
-        """Execute Spotify command.
-
-        Args:
-            task: Full user request text
-            params: Parsed parameters from intent parser
-            language: Response language
-
-        Returns:
-            AgentResult with spoken response
-        """
-        ...
-```
-
-### Action Handlers
-
-```python
-async def _handle_play(self, params: dict, language: str) -> AgentResult:
-    """Handle play/resume request."""
-    query = params.get("query")
-
-    if query:
-        # Search and play
-        results = await self._spotify.search(query)
-        if not results:
-            return self._no_results_response(query, language)
-
-        # Play first result
-        track = results[0]
-        await self._spotify.play(context_uri=track["uri"])
-        return AgentResult(
-            spoken_response=self._format_playing(track, language),
-            success=True,
-        )
-    else:
-        # Resume playback
-        await self._spotify.play()
-        return AgentResult(
-            spoken_response=self._resumed_response(language),
-            success=True,
-        )
-
-async def _handle_pause(self, language: str) -> AgentResult:
-    """Handle pause request."""
-    await self._spotify.pause()
-    return AgentResult(
-        spoken_response="Paused." if language == "en" else "Pausiert.",
-        success=True,
-    )
-
-async def _handle_next(self, language: str) -> AgentResult:
-    """Handle skip request."""
-    await self._spotify.next_track()
-    state = await self._spotify.get_playback_state()
-    if state and state.track:
-        return AgentResult(
-            spoken_response=self._format_now_playing(state.track, language),
-            success=True,
-        )
-    return AgentResult(
-        spoken_response="Next track." if language == "en" else "Nächster Titel.",
-        success=True,
-    )
-
-async def _handle_previous(self, language: str) -> AgentResult:
-    """Handle previous request."""
-    await self._spotify.previous_track()
-    return AgentResult(
-        spoken_response="Previous track." if language == "en" else "Vorheriger Titel.",
-        success=True,
-    )
-
-async def _handle_volume(self, params: dict, language: str) -> AgentResult:
-    """Handle volume adjustment."""
-    level = params.get("level")
-    direction = params.get("direction")
-
-    if level is not None:
-        await self._spotify.set_volume(level)
-        return AgentResult(
-            spoken_response=f"Volume set to {level}%." if language == "en" else f"Lautstärke auf {level}%.",
-            success=True,
-        )
-    elif direction == "up":
-        state = await self._spotify.get_playback_state()
-        new_vol = min(100, (state.device.volume_percent if state and state.device else 50) + 10)
-        await self._spotify.set_volume(new_vol)
-        return AgentResult(
-            spoken_response=f"Volume up to {new_vol}%." if language == "en" else f"Lautstärke erhöht auf {new_vol}%.",
-            success=True,
-        )
-    elif direction == "down":
-        state = await self._spotify.get_playback_state()
-        new_vol = max(0, (state.device.volume_percent if state and state.device else 50) - 10)
-        await self._spotify.set_volume(new_vol)
-        return AgentResult(
-            spoken_response=f"Volume down to {new_vol}%." if language == "en" else f"Lautstärke reduziert auf {new_vol}%.",
-            success=True,
-        )
-
-    return AgentResult(
-        spoken_response="I didn't understand the volume command." if language == "en" else "Ich habe den Lautstärkebefehl nicht verstanden.",
-        success=False,
-    )
-```
-
-### Response Formatters
-
-```python
-def _format_now_playing(self, track: SpotifyTrack, language: str) -> str:
-    if language == "de":
-        return f"Jetzt läuft {track.name} von {track.artist}."
-    return f"Now playing {track.name} by {track.artist}."
-
-def _format_playing(self, track: dict, language: str) -> str:
-    name = track["name"]
-    artist = track["artists"][0]["name"]
-    if language == "de":
-        return f"Spiele {name} von {artist}."
-    return f"Playing {name} by {artist}."
-
-def _resumed_response(self, language: str) -> str:
-    if language == "de":
-        return "Wiedergabe fortgesetzt."
-    return "Resuming playback."
-
-def _no_results_response(self, query: str, language: str) -> str:
-    if language == "de":
-        return f"Ich konnte nichts für '{query}' finden."
-    return f"I couldn't find anything for '{query}'."
-```
-
----
-
-## Intent Parser Updates
-
-Add to `src/brain/intent_parser.py`:
-
-```python
-class Intent(Enum):
-    # ... existing intents ...
-    SPOTIFY = "spotify"
-
-INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
-    # ... existing patterns ...
-    Intent.SPOTIFY: {
-        "en": [
-            r"\bplay\s+(some\s+)?music\b",
-            r"\bplay\s+(the\s+)?(song|track|album|artist|playlist)\b",
-            r"\bpause\s+(the\s+)?music\b",
-            r"\bstop\s+(the\s+)?music\b",
-            r"\bskip\s+(this\s+)?(song|track)\b",
-            r"\bnext\s+(song|track)\b",
-            r"\bprevious\s+(song|track)\b",
-            r"\bwhat('s|\s+is)\s+playing\b",
-            r"\bcurrent\s+(song|track)\b",
-            r"\bspotify\b",
-            r"\bmusic\s+volume\b",
-        ],
-        "de": [
-            r"\bspiel(e)?\s+(etwas\s+)?musik\b",
-            r"\bspiel(e)?\s+(das\s+)?(lied|song|album|künstler|playlist)\b",
-            r"\bmusik\s+(an)?halten\b",
-            r"\bpausiere?\s+(die\s+)?musik\b",
-            r"\bstopp(e)?\s+(die\s+)?musik\b",
-            r"\büberspringen?\b",
-            r"\bnächstes?\s+(lied|song)\b",
-            r"\bvorheriges?\s+(lied|song)\b",
-            r"\bwas\s+(läuft|spielt)\b",
-            r"\baktuelles?\s+(lied|song)\b",
-            r"\bspotify\b",
-            r"\bmusik\s+lautstärke\b",
-        ],
-    },
-}
-```
-
-### Parameter Extraction
-
-```python
-def _extract_spotify_params(self, text: str) -> dict[str, Any]:
-    """Extract Spotify command parameters.
-
-    Args:
-        text: Lowercase user input
-
-    Returns:
-        Extracted parameters
-    """
-    params: dict[str, Any] = {"action": "unknown"}
-
-    # Play commands
-    if re.search(r"\b(play|spiel)\b", text):
-        params["action"] = "play"
-        # Extract what to play
-        match = re.search(r"(?:play|spiele?)\s+(.+?)(?:\s+on|\s+by|$)", text)
-        if match:
-            query = match.group(1).strip()
-            # Remove common filler words
-            query = re.sub(r"^(some|the|das|die|der|etwas)\s+", "", query)
-            if query and query not in ["music", "musik"]:
-                params["query"] = query
-
-    # Pause/stop
-    elif re.search(r"\b(pause|stop|stopp|anhalten)\b", text):
-        params["action"] = "pause"
-
-    # Next/skip
-    elif re.search(r"\b(next|skip|nächst|überspringen)\b", text):
-        params["action"] = "next"
-
-    # Previous
-    elif re.search(r"\b(previous|vorherig|zurück)\b", text):
-        params["action"] = "previous"
-
-    # Volume
-    elif re.search(r"\b(volume|lautstärke)\b", text):
-        params["action"] = "volume"
-        match = re.search(r"(\d+)\s*(%|percent|prozent)?", text)
-        if match:
-            params["level"] = int(match.group(1))
-        elif re.search(r"\b(up|höher|lauter)\b", text):
-            params["direction"] = "up"
-        elif re.search(r"\b(down|niedriger|leiser)\b", text):
-            params["direction"] = "down"
-
-    # What's playing
-    elif re.search(r"\b(what.*playing|was.*läuft|was.*spielt|current|aktuell)\b", text):
-        params["action"] = "status"
-
-    return params
-```
-
----
-
-## State Broadcast Loop
-
-Add to `src/api/ws_server.py`:
-
-```python
-# Global
-_spotify_client: SpotifyClient | None = None
-
-async def _spotify_state_loop() -> None:
-    """Background task to broadcast Spotify state."""
-    global _spotify_client
-
-    if not _spotify_client:
-        return
-
-    poll_interval = 5  # seconds, from config
-
-    while True:
-        try:
-            state = await _spotify_client.get_playback_state()
-            if state and state.track:
-                payload = {
-                    "playing": state.track.is_playing,
-                    "track": state.track.name,
-                    "artist": state.track.artist,
-                    "album": state.track.album,
-                    "album_art_url": state.track.album_art_url,
-                    "progress_ms": state.track.progress_ms,
-                    "duration_ms": state.track.duration_ms,
-                    "device": state.device.name if state.device else "Unknown",
-                }
-                await _broadcast(json.dumps({
-                    "type": "spotify_state",
-                    "payload": payload,
-                }))
-        except Exception as e:
-            logger.error(f"Error polling Spotify state: {e}")
-
-        await asyncio.sleep(poll_interval)
-```
-
----
-
-## NowPlayingPanel (`frontend/src/components/panels/NowPlayingPanel.tsx`)
-
+`WsIncoming` additions (server → client):
 ```typescript
-import { useState, useEffect } from 'react';
-import { PanelBase } from './PanelBase';
-import { useSpotify } from '../../hooks/useSpotify';
-
-export function NowPlayingPanel() {
-  const { state, loading, error, sendCommand } = useSpotify();
-
-  if (!state || !state.track) {
-    return (
-      <PanelBase title="NOW PLAYING" loading={loading} error={error}>
-        <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
-          No active playback
-        </div>
-      </PanelBase>
-    );
+// Broadcast every poll_interval_seconds.
+// payload mirrors NowPlayingTrack with an extra `authenticated` flag.
+| {
+    type: 'spotify_state';
+    payload: {
+      authenticated: boolean;
+      playing: boolean;
+      title: string;
+      artist: string;
+      album: string;
+      album_art_url: string;   // empty string when no art
+      progress_ms: number;
+      duration_ms: number;
+      shuffle: boolean;
+      repeat: 'off' | 'all' | 'one';
+      device: string;
+    };
   }
-
-  const { track, artist, album, album_art_url, playing, progress_ms, duration_ms } = state;
-  const progress = duration_ms > 0 ? (progress_ms / duration_ms) * 100 : 0;
-
-  return (
-    <PanelBase
-      title="NOW PLAYING"
-      icon={<MusicIcon />}
-    >
-      {/* Album art */}
-      {album_art_url && (
-        <img
-          src={album_art_url}
-          alt={album}
-          style={{
-            width: '100%',
-            aspectRatio: '1',
-            objectFit: 'cover',
-            borderRadius: '2px',
-            marginBottom: '12px',
-          }}
-        />
-      )}
-
-      {/* Track info */}
-      <div style={{ marginBottom: '12px' }}>
-        <div
-          style={{
-            fontSize: '14px',
-            fontWeight: 500,
-            color: 'var(--text)',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {track}
-        </div>
-        <div
-          style={{
-            fontSize: '12px',
-            color: 'var(--text-secondary)',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {artist}
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div
-        style={{
-          height: '4px',
-          background: 'var(--panel-border)',
-          borderRadius: '2px',
-          marginBottom: '12px',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            width: `${progress}%`,
-            height: '100%',
-            background: 'var(--accent)',
-            transition: 'width 1s linear',
-          }}
-        />
-      </div>
-
-      {/* Controls */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: '16px',
-        }}
-      >
-        <ControlButton onClick={() => sendCommand('prev')} icon={<PrevIcon />} />
-        <ControlButton
-          onClick={() => sendCommand(playing ? 'pause' : 'play')}
-          icon={playing ? <PauseIcon /> : <PlayIcon />}
-          primary
-        />
-        <ControlButton onClick={() => sendCommand('next')} icon={<NextIcon />} />
-      </div>
-    </PanelBase>
-  );
-}
-
-interface ControlButtonProps {
-  onClick: () => void;
-  icon: React.ReactNode;
-  primary?: boolean;
-}
-
-function ControlButton({ onClick, icon, primary }: ControlButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: primary ? 40 : 32,
-        height: primary ? 40 : 32,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: primary ? 'var(--accent)' : 'transparent',
-        border: primary ? 'none' : '1px solid var(--panel-border)',
-        borderRadius: '4px',
-        color: primary ? 'var(--bg)' : 'var(--text)',
-        cursor: 'pointer',
-        transition: 'all 150ms',
-      }}
-    >
-      {icon}
-    </button>
-  );
-}
-
-// SVG icons (simplified)
-function MusicIcon() { return <svg>...</svg>; }
-function PlayIcon() { return <svg>...</svg>; }
-function PauseIcon() { return <svg>...</svg>; }
-function NextIcon() { return <svg>...</svg>; }
-function PrevIcon() { return <svg>...</svg>; }
-
-export default NowPlayingPanel;
 ```
 
----
-
-## useSpotify Hook (`frontend/src/hooks/useSpotify.ts`)
-
+`WsOutgoing` additions (client → server):
 ```typescript
-import { useState, useEffect, useCallback } from 'react';
-import { SpotifyState } from '../types';
+| {
+    type: 'spotify_cmd';
+    payload: {
+      action: 'play' | 'pause' | 'next' | 'prev' | 'volume';
+      value?: number;   // volume level 0-100
+    };
+  }
+```
 
-interface UseSpotifyResult {
-  state: SpotifyState | null;
-  loading: boolean;
-  error: string | null;
+**REST endpoints — new:**
+```
+GET /oauth/spotify/callback
+  Query params: code (string), state (string, ignored)
+  On success: 200 text/html — "Spotify connected. You can close this window."
+  On missing code: 400 text/html — "Authorization failed."
+```
+
+**Frontend — `frontend/src/hooks/useSpotify.ts`:**
+```typescript
+export interface UseSpotifyResult {
+  track: NowPlayingTrack | null;
+  authenticated: boolean;
   sendCommand: (action: 'play' | 'pause' | 'next' | 'prev' | 'volume', value?: number) => void;
 }
 
-export function useSpotify(wsRef: React.RefObject<WebSocket | null>): UseSpotifyResult {
-  const [state, setState] = useState<SpotifyState | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const ws = wsRef.current;
-    if (!ws) return;
-
-    const handleMessage = (event: MessageEvent) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'spotify_state') {
-          setState(msg.payload);
-          setLoading(false);
-          setError(null);
-        }
-      } catch {
-        // Ignore binary messages
-      }
-    };
-
-    ws.addEventListener('message', handleMessage);
-    return () => ws.removeEventListener('message', handleMessage);
-  }, [wsRef]);
-
-  const sendCommand = useCallback(
-    (action: 'play' | 'pause' | 'next' | 'prev' | 'volume', value?: number) => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-      ws.send(JSON.stringify({
-        type: 'spotify_cmd',
-        payload: { action, value },
-      }));
-    },
-    [wsRef]
-  );
-
-  return { state, loading, error, sendCommand };
-}
+export function useSpotify(
+  wsRef: React.RefObject<WebSocket | null>
+): UseSpotifyResult
 ```
+
+### External dependencies
+
+- `spotipy>=2.23.0` (pip) — OAuth PKCE + playback state polling
+- Spotify Developer App with redirect URI registered (user setup, documented in Manual Verification)
+- Spotify Premium account (required for active-device state; confirmed)
 
 ---
 
-## Configuration
+## Edge Cases & Failure Modes
 
-### config.yaml
-
-```yaml
-spotify:
-  enabled: false              # Enable after OAuth setup
-  poll_interval_seconds: 5    # How often to fetch playback state
-  show_album_art: true        # Display album art in panel
-```
-
-### .env.example
-
-```bash
-# Spotify OAuth2 (PKCE - no client secret needed)
-SPOTIFY_CLIENT_ID=your_spotify_client_id
-SPOTIFY_REDIRECT_URI=http://localhost:8766/callback/spotify
-# Token cache (default: ~/.jarvis/spotify_token.json)
-# SPOTIFY_TOKEN_CACHE=~/.jarvis/spotify_token.json
-```
-
----
-
-## OAuth Callback Handler
-
-Add callback endpoint to `src/api/ws_server.py`:
-
-```python
-async def spotify_callback_handler(request: web.Request) -> web.Response:
-    """Handle Spotify OAuth callback.
-
-    Args:
-        request: aiohttp request with authorization code
-
-    Returns:
-        Success page or error
-    """
-    code = request.query.get("code")
-    if not code:
-        return web.Response(text="Authorization failed", status=400)
-
-    # The SpotifyClient's auth manager handles the code exchange
-    # Redirect user to confirmation page
-    return web.Response(
-        text="Spotify connected! You can close this window.",
-        content_type="text/html",
-    )
-```
+- **No cached token on startup** → `initialize()` raises `SpotifyAuthError`, `_spotify_state_loop` is not started. Backend logs auth URL, broadcasts `notification` frame with URL to frontend. Polling resumes after `complete_auth()` succeeds (triggered by OAuth callback).
+- **Token expired between polls** → spotipy's `SpotifyPKCE` auto-refreshes silently. If refresh fails (revoked app access), `get_playback_state()` raises `spotipy.SpotifyException`; caught, logged, broadcast `spotify_state` with `authenticated: false`.
+- **No active Spotify device** → `current_playback()` returns `None`. Broadcast `spotify_state` with `playing: false`, empty title/artist/album. Panel shows "No active playback." No error surfaced.
+- **Spotify app not running / no Premium** → Same as above — no active device.
+- **`SPOTIFY_CLIENT_ID` missing from `.env`** → `initialize()` raises immediately with a clear message; backend logs warning and skips Spotify entirely (`spotify.enabled` remains irrelevant).
+- **OAuth callback received but `SpotifyClient` not initialised** → Handler returns 503 with message "Spotify client not ready."
+- **OAuth callback code already consumed (double-redirect)** → spotipy raises on `get_access_token`; handler returns 400 "Authorization code expired or already used."
+- **Poll interval network error (Spotify API rate limit / 5xx)** → `SpotifyPollError` caught in loop, one warning log, sleep for `poll_interval_seconds`, retry. No WS broadcast on error (stale data remains on frontend; no confusing empty-state flash).
+- **Frontend receives `spotify_state` while WS reconnecting** → hook initialises `track` as `null`; panel shows mock data (dev fallback) until first live frame arrives.
+- **Panel transport button pressed when WS disconnected** → `sendCommand` no-ops (checks `ws.readyState !== WebSocket.OPEN`).
+- **`~/.jarvis/` directory does not exist** → `initialize()` calls `token_cache_path.parent.mkdir(parents=True, exist_ok=True)` before constructing `SpotifyPKCE`.
+- **RPi 4 / low-memory target** → spotipy call is wrapped in `asyncio.to_thread`; no blocking of the asyncio event loop. Poll interval default of 5 s is conservative enough for RPi.
+- **`spotify.enabled: false` in config** → `SpotifyClient` is not instantiated; `_spotify_state_loop` is not started; routes and WS handlers are still registered (no-op responses). This allows the server to boot without credentials.
 
 ---
 
 ## Acceptance Criteria
 
-| # | Criterion | Verification |
-|---|-----------|--------------|
-| 1 | SpotifyClient initializes with valid OAuth token | Unit test with mocked spotipy |
-| 2 | "Play some jazz" triggers search and playback | Integration test |
-| 3 | "Pause the music" pauses playback | Integration test |
-| 4 | "Skip this song" advances to next track | Integration test |
-| 5 | "What's playing" returns current track info | Integration test |
-| 6 | NowPlayingPanel displays track, artist, album art | Visual inspection |
-| 7 | Play/pause button toggles correctly | Visual inspection |
-| 8 | Progress bar updates every poll interval | Visual inspection |
-| 9 | German voice commands work ("Spiele Musik") | Integration test |
-| 10 | spotify_state WS message broadcasts every 5s | Unit test |
-| 11 | No crash when Spotify not authenticated | Integration test |
-| 12 | Graceful handling when no active device | Integration test |
-| 13 | OAuth PKCE flow completes successfully | Manual test |
-| 14 | Token refresh works automatically | Integration test with mocked expired token |
-
----
-
-## Files Created
-
-| File | Purpose |
-|------|---------|
-| `src/integrations/spotify/__init__.py` | Package init |
-| `src/integrations/spotify/client.py` | SpotifyClient |
-| `src/brain/agents/spotify_agent.py` | SpotifyAgent |
-| `frontend/src/components/panels/NowPlayingPanel.tsx` | Panel component |
-| `frontend/src/hooks/useSpotify.ts` | Spotify state hook |
-| `tests/integrations/spotify/test_client.py` | Client tests |
-| `tests/brain/agents/test_spotify_agent.py` | Agent tests |
-
-## Files Modified
-
-| File | Change |
-|------|--------|
-| `src/brain/intent_parser.py` | Add SPOTIFY intent + keywords |
-| `src/brain/orchestrator.py` | Register SpotifyAgent |
-| `src/api/ws_server.py` | Add spotify_state_loop, spotify_cmd handler, callback endpoint |
-| `src/main.py` | Initialize SpotifyClient |
-| `config/config.yaml` | Add spotify section |
-| `.env.example` | Add Spotify credentials |
-| `requirements.txt` | Add spotipy |
-
----
-
-## Dependencies
-
-### pip packages
-```
-spotipy>=2.23.0
-```
-
-### External
-- Spotify Developer App (user creates)
-- Spotify Premium account (for playback control)
+1. When `SPOTIFY_CLIENT_ID` is set and a valid token exists in `~/.jarvis/spotify_token.json`, `SpotifyClient.initialize()` completes without raising.
+2. When no token exists, `SpotifyClient.initialize()` raises `SpotifyAuthError` and `get_auth_url()` returns a non-empty PKCE URL.
+3. `GET /oauth/spotify/callback?code=<valid_code>` returns HTTP 200 with an HTML body containing "Spotify connected".
+4. `GET /oauth/spotify/callback` with no `code` parameter returns HTTP 400.
+5. `SpotifyClient.get_playback_state()` returns a `SpotifyTrackInfo` dataclass when a track is playing, and `None` when no active playback.
+6. `SpotifyClient.get_playback_state()` does not block the asyncio event loop (wraps spotipy in `asyncio.to_thread`).
+7. The backend broadcasts a `{"type":"spotify_state"}` WS frame at each poll interval when authenticated; the payload matches the `SpotifyStatePayload` schema.
+8. When Spotify is not authenticated, a `{"type":"spotify_state", "payload": {"authenticated": false}}` frame is broadcast (no track data sent).
+9. `useSpotify` hook returns `track: null` initially, then a populated `NowPlayingTrack` after the first `spotify_state` frame arrives.
+10. `NowPlayingPanel` renders live `title`, `artist`, `album`, `progressMs`, `durationMs`, and `playing` fields from the `useSpotify` hook.
+11. `NowPlayingPanel` renders the fallback state ("No active playback" or equivalent) when `useSpotify` returns `track: null`.
+12. Voice utterance "Pause the music" is classified as `Intent.SPOTIFY` by `IntentParser` in both `en` and `de` variants.
+13. `Intent.SPOTIFY` is absent from `_LOCAL_INTENTS` in `orchestrator.py`, confirming it falls through to the OpenClaw path.
+14. The backend boots cleanly when `spotify.enabled: false` in `config.yaml` and `SPOTIFY_CLIENT_ID` is absent from `.env`.
+15. All new Python modules pass `pytest` with external spotipy calls mocked via `unittest.mock.patch`.
 
 ---
 
 ## Implementation Plan
 
-### Batch 1 — Backend client
-1. `code` → Create `src/integrations/spotify/__init__.py`
-2. `code` → Create `src/integrations/spotify/client.py` with SpotifyClient
-3. `test` → Create `tests/integrations/spotify/test_client.py`
-4. `review` → Review batch 1
+Steps 1–6 are parallelisable (backend and frontend can proceed independently). Steps 7–9 are sequential and depend on both tracks completing.
 
-### Batch 2 — Agent and intents
-5. `code` → Update `src/brain/intent_parser.py` with SPOTIFY intent
-6. `code` → Create `src/brain/agents/spotify_agent.py`
-7. `code` → Update `src/brain/orchestrator.py` to register SpotifyAgent
-8. `test` → Create `tests/brain/agents/test_spotify_agent.py`
-9. `review` → Review batch 2
-
-### Batch 3 — WS integration
-10. `code` → Update `src/api/ws_server.py` with state loop and command handler
-11. `code` → Update `src/main.py` to initialize SpotifyClient
-12. `code` → Add callback endpoint for OAuth
-13. `test` → Integration tests for WS messages
-14. `review` → Review batch 3
-
-### Batch 4 — Frontend
-15. `design` → Create `frontend/src/hooks/useSpotify.ts`
-16. `design` → Create `frontend/src/components/panels/NowPlayingPanel.tsx`
-17. `test` → Frontend tests
-18. `review` → Final review
+1. `backend-dev` → create `src/integrations/spotify/__init__.py` (empty package init) and `src/integrations/spotify/client.py` implementing `SpotifyClient`, `SpotifyTrackInfo`, `SpotifyAuthError`, `SpotifyPollError` per the interfaces above. Use `asyncio.to_thread` for all spotipy calls. Token cache path: `Path(os.getenv("SPOTIFY_TOKEN_CACHE", "~/.jarvis/spotify_token.json")).expanduser()`. Redirect URI: `os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8766/oauth/spotify/callback")`.
+2. `backend-dev` → add `Intent.SPOTIFY` to `src/brain/intent_parser.py`: enum value, `en` + `de` keyword patterns covering play/pause/skip/volume/status utterances.
+3. `backend-dev` → add to `src/api/ws_server.py`: (a) `_spotify_client: SpotifyClient | None` global, (b) `spotify_oauth_callback_handler` aiohttp handler registered as `http_app.router.add_get("/oauth/spotify/callback", ...)`, (c) `_spotify_state_loop` background task, (d) incoming `spotify_cmd` frame handler (log-only in Phase 1), (e) wire startup in `start_ws_server`: construct `SpotifyClient` when `spotify.enabled`, call `initialize()` in try/except (log + notify on auth failure), launch `_spotify_state_loop` task.
+4. `backend-dev` → update `src/main.py` to pass spotify config into `start_ws_server` (if not already forwarded via the config dict) and add `spotipy>=2.23.0` to `requirements.txt`. Add `spotify:` block to `config/config.yaml` and Spotify vars to `.env.example`.
+5. `frontend-dev` → extend `frontend/src/types.ts`: add `spotify_state` to `WsIncoming` union; add `spotify_cmd` to `WsOutgoing` union.
+6. `frontend-dev` → create `frontend/src/hooks/useSpotify.ts` implementing `UseSpotifyResult`, subscribing to `spotify_state` frames via `wsRef`, and exposing `sendCommand`.
+7. `frontend-dev` → update `frontend/src/components/panels/NowPlayingPanel.tsx`: import `useSpotify`, call it with `wsRef` (prop-drilled or via context — see Open Questions), map `SpotifyStatePayload` fields to `NowPlayingTrack`, replace the `nowPlayingMock` default prop fallback with live data. Add "No active playback" empty state. Wire `TransportButton` `onClick` handlers to `useSpotify.sendCommand`.
+8. `tester` → write `tests/integrations/spotify/test_client.py`: unit tests for `initialize()` with valid cached token (mock `SpotifyPKCE`), `initialize()` with no token (assert `SpotifyAuthError`), `get_playback_state()` with playback active (assert `SpotifyTrackInfo` fields), `get_playback_state()` with `None` API response, `complete_auth()` happy path, network error in `get_playback_state()` (assert `None` return). Mock all spotipy calls.
+9. `tester` → write `tests/api/test_spotify_ws.py`: test that `_spotify_state_loop` broadcasts correctly shaped `spotify_state` frames; test OAuth callback handler for 200/400 paths; test `spotify_cmd` incoming handler logs receipt without raising.
+10. `tester` → write `frontend/src/hooks/__tests__/useSpotify.test.ts` (Vitest + RTL): mock WS message dispatch, assert `track` transitions from `null` to populated `NowPlayingTrack`, assert `sendCommand` sends correct `spotify_cmd` frame, assert unauthenticated `spotify_state` leaves `track: null`.
+11. `reviewer` → review entire batch against this spec, checking: aiohttp-only (no FastAPI), no blocking calls in event loop, `asyncio.to_thread` present, token cache path expansion, `_LOCAL_INTENTS` unchanged, `WsIncoming`/`WsOutgoing` types consistent, panel fallback state present.
 
 ---
 
-## Open Questions — Partially Resolved
+## Manual Verification
 
-1. **Spotify Premium:** ✓ RESOLVED — User has Spotify Premium. Full playback controls enabled.
+```bash
+# 1. Register redirect URI in Spotify Developer Dashboard
+#    https://developer.spotify.com/dashboard → your app → Edit Settings
+#    Add: http://127.0.0.1:8766/oauth/spotify/callback
 
-2. **Default device:** Still open — If multiple devices available, which should be default? First active? Or should JARVIS ask?
+# 2. Ensure .env has SPOTIFY_CLIENT_ID populated
+grep SPOTIFY_CLIENT_ID .env
 
-3. **Search specificity:** Still open — Should "play jazz" search for genre/mood, or try to find artist/album named "jazz"?
+# 3. Start backend
+PYTHONPATH=src .venv/bin/python -m main
+
+# 4. Watch for the auth URL in logs (first run, no token cache)
+#    Expected log line:
+#    "Spotify auth required. Visit: https://accounts.spotify.com/authorize?..."
+
+# 5. Visit the URL in a browser, authenticate, watch for the callback:
+#    Browser should show: "Spotify connected. You can close this window."
+#    Backend log: "Spotify OAuth complete — token cached at ~/.jarvis/spotify_token.json"
+
+# 6. Start a track in any Spotify client (desktop/mobile/web)
+#    Within 5 s, check the NowPlayingPanel in the HUD (http://localhost:5173)
+#    Expected: live track title, artist, album monogram, progress bar moving
+
+# 7. Voice test: say "Hey JARVIS, pause the music"
+#    Expected: OpenClaw Spotify skill pauses; next poll → NowPlayingPanel shows pause icon
+
+# 8. Voice test (German): "JARVIS, nächster Titel"
+#    Expected: skip occurs; HUD updates within 5 s
+
+# 9. Close Spotify entirely, wait one poll interval
+#    Expected: NowPlayingPanel shows "No active playback" or empty-state UI
+
+# 10. Confirm no blocking: during a poll, the WS audio pipeline must remain responsive
+#     (send a voice command mid-poll — it should not stall)
+```
 
 ---
 
-**Status:** Planned — awaiting implementation authorization
+## Open Questions
 
----
+1. **`wsRef` access in `NowPlayingPanel`**: `useWebSocket` exposes `wsRef` at the App level. The panel needs it to call `useSpotify`. Options: (a) prop-drill `wsRef` from App → panel container → `NowPlayingPanel`, (b) expose a `subscribeSpotify` callback from `useWebSocket` similar to existing `subscribeSystem`/`subscribeNotifications`, (c) React context. Recommend option (b) — it is consistent with the existing subscription pattern and avoids new context boilerplate. Dev agent should confirm with the orchestrator before implementing.
 
-## Revision 3 — Full OpenClaw Adoption (2026-04-16)
+2. **Phase 1 panel buttons — backend no-op**: Transport buttons send `spotify_cmd` frames, but the backend does not act on them (control is voice-only via OpenClaw). Is this acceptable UX for the first iteration, or should at least play/pause be wired to a direct Spotify API call? If direct wiring is wanted, `SpotifyClient` needs `play()`, `pause()`, `next_track()`, `previous_track()`, and the `spotify_cmd` handler must call them — scope expands by roughly one backend step.
 
-### Decisions Applied
-1. **OpenClaw as full backbone** — Spotify control via OpenClaw
-2. **State polling remains JARVIS-native** — HUD requires real-time playback state
+3. **Album art in NowPlayingPanel expanded view**: The current implementation uses `track.monogram` (text initials) as the art placeholder. When a live `album_art_url` is available, should the panel render an `<img>` tag instead of the monogram box? `NowPlayingTrack` type does not have `albumArtUrl`; adding it requires a type extension and a conditional render. Recommend yes — add `albumArtUrl?: string` to `NowPlayingTrack` and render `<img>` when present, monogram as fallback.
 
-### Integration Assessment
-**OpenClaw PARTIALLY replaces this spec — control via OpenClaw, state polling native.**
-
-### OpenClaw Coverage
-| Feature | OpenClaw Capability | Coverage |
-|---------|---------------------|----------|
-| Play/pause/skip | Spotify skill | Full |
-| Search and play | Spotify skill | Full |
-| Volume control | Spotify skill | Full |
-| Current playback state | Not exposed for polling | None |
-| Device selection | TBD (verify) | Unknown |
-| OAuth/auth | OpenClaw handles | Full |
-
-### What JARVIS-Native Retains
-1. **SpotifyClient (state polling only)** — HUD needs real-time playback state
-2. **NowPlayingPanel** — HUD visualization with album art, progress bar
-3. **State polling loop** — 5-second interval for playback state
-4. **Voice UX** — "Now playing X by Y" spoken responses
-5. **Panel controls** — Play/pause/next buttons (send to OpenClaw)
-
-### What Is REMOVED (This Spec)
-- ~~SpotifyAgent~~ — REMOVED (commands go to OpenClaw)
-- ~~Playback control implementation~~ — REMOVED (OpenClaw handles)
-- ~~OAuth PKCE implementation~~ — REMOVED (OpenClaw handles auth)
-
-### Two-Layer Architecture
-```
-Layer 1 (OpenClaw): Playback control commands
-  Voice: "Play jazz music"
-         ↓
-  [Orchestrator] → Forward to OpenClaw
-         ↓
-  [OpenClaw Spotify skill] → Playback starts
-
-Layer 2 (JARVIS): State observation for HUD
-  [SpotifyClient] → Poll spotipy.current_playback()
-         ↓
-  [WS broadcast] → spotify_state message
-         ↓
-  [NowPlayingPanel] → Displays track, artist, album art
-```
-
-### Files Created — REDUCED
-| File | Purpose | Status |
-|------|---------|--------|
-| `src/integrations/spotify/__init__.py` | Package init | KEEP |
-| `src/integrations/spotify/client.py` | SpotifyClient (polling only) | KEEP (simplified) |
-| `src/brain/agents/spotify_agent.py` | SpotifyAgent | SKIP (OpenClaw) |
-| `frontend/src/components/panels/NowPlayingPanel.tsx` | Panel component | KEEP |
-| `frontend/src/hooks/useSpotify.ts` | Spotify state hook | KEEP |
-
-### Files Modified — REDUCED
-| File | Change | Status |
-|------|--------|--------|
-| `src/brain/intent_parser.py` | Add SPOTIFY intent | KEEP |
-| `src/brain/orchestrator.py` | Route to OpenClaw | MODIFIED |
-| `src/api/ws_server.py` | spotify_state_loop (read-only) | SIMPLIFIED |
-| `config/config.yaml` | Spotify section | SIMPLIFIED |
-
-### Config — Simplified
-```yaml
-spotify:
-  enabled: true
-  control_provider: "openclaw"
-  state_polling: true
-  poll_interval_seconds: 5
-  show_album_art: true
-```
-
-### Implementation Reduction
-**Original estimate:** 8-10 hours
-**With OpenClaw:** 4-5 hours (state polling + HUD only)
-**Reduction:** ~50%
-
-### Prerequisites
-- `openclaw-integration.md` — REQUIRED
-- OpenClaw Spotify skill enabled in workspace
-
-### Open Questions — Updated
-1. **Device selection:** If OpenClaw Spotify skill doesn't support device selection, JARVIS can add thin wrapper — verify during implementation.
+4. **`spotify.enabled` guard in server startup**: If `SpotifyClient.initialize()` fails (no token), should the poll loop be retried on a backoff schedule (e.g., every 60 s until auth succeeds), or only re-attempted when `complete_auth()` is called via the OAuth callback? Recommend callback-triggered retry only — avoids log spam and the callback path is the explicit intent signal.

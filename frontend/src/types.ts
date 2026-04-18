@@ -104,6 +104,40 @@ export interface ToolCallPayload {
   summary: string;
 }
 
+// ============ Gmail / Mail WS payloads ============
+
+/**
+ * Pushed by the mail poller every `poll_interval_seconds` (default 120 s).
+ * Contains the latest unread count and up to `max_unread_summary` messages.
+ */
+export interface MailStatePayload {
+  messages: MailMessage[];
+  unread_count: number;
+}
+
+/**
+ * Broadcast when the backend creates a Gmail draft and is waiting for
+ * verbal confirmation before sending.
+ */
+export interface EmailDraftPreviewPayload {
+  draft_id: string;
+  to: string;
+  subject: string;
+  body_preview: string;
+  created_at: string; // ISO
+}
+
+/**
+ * Broadcast after the send-confirmation flow resolves — either the email
+ * was sent (`success: true`) or the draft was discarded (`success: false`).
+ */
+export interface EmailSendDonePayload {
+  draft_id: string;
+  success: boolean;
+  message_id?: string;
+  error?: string;
+}
+
 export type WsIncoming =
   | {
       type: 'audio';
@@ -122,7 +156,18 @@ export type WsIncoming =
    *  the audio queue and stop any currently playing clip. */
   | { type: 'barge_in' }
   /** OpenClaw tool-call lifecycle event. Used to drive the `working` orb state. */
-  | { type: 'tool_call'; payload: ToolCallPayload };
+  | { type: 'tool_call'; payload: ToolCallPayload }
+  /** Live mail state pushed by the backend polling coroutine. */
+  | { type: 'mail_state'; payload: MailStatePayload }
+  /**
+   * Backend has composed a draft and is waiting for verbal confirmation.
+   * The HUD should show the draft preview until `email_send_done` arrives.
+   */
+  | { type: 'email_draft_preview'; payload: EmailDraftPreviewPayload }
+  /** The send-confirmation flow completed (either sent or aborted). */
+  | { type: 'email_send_done'; payload: EmailSendDonePayload }
+  /** Live Spotify playback state broadcast by the backend polling loop. */
+  | { type: 'spotify_state'; payload: SpotifyStatePayload };
 
 export type WsOutgoing =
   | { type: 'transcript'; text: string; isFinal: boolean }
@@ -133,7 +178,12 @@ export type WsOutgoing =
    * nothing is running. The backend replies with a ``status=idle`` frame
    * and an info notification titled "Konversation gestoppt".
    */
-  | { type: 'cancel_turn' };
+  | { type: 'cancel_turn' }
+  /**
+   * Panel transport / volume command sent to the backend.
+   * Phase 1: backend logs receipt only; actual control flows via voice → OpenClaw.
+   */
+  | { type: 'spotify_cmd'; payload: { action: SpotifyCmdAction; value?: number } };
 
 // ============ HUD mock types ============
 
@@ -162,6 +212,7 @@ export interface NowPlayingTrack {
   artist: string;
   album: string;
   monogram: string;
+  albumArtUrl?: string;
   progressMs: number;
   durationMs: number;
   playing: boolean;
@@ -169,6 +220,37 @@ export interface NowPlayingTrack {
   repeat: 'off' | 'all' | 'one';
   device: string;
 }
+
+// ============ Spotify WS payloads ============
+
+export interface SpotifyTrackPayload {
+  name: string;
+  artist: string;
+  album: string;
+  albumArtUrl?: string;
+  durationMs: number;
+  progressMs: number;
+  isPlaying: boolean;
+}
+
+export interface SpotifyDevicePayload {
+  name: string;
+  type: string;
+  volumePercent: number;
+}
+
+/**
+ * Broadcast every `poll_interval_seconds` from the backend Spotify loop.
+ * When `authenticated` is false, track and device are absent.
+ */
+export interface SpotifyStatePayload {
+  authenticated: boolean;
+  track?: SpotifyTrackPayload;
+  device?: SpotifyDevicePayload;
+  error?: string;
+}
+
+export type SpotifyCmdAction = 'play' | 'pause' | 'next' | 'prev' | 'volume';
 
 export interface LightDevice {
   id: string;

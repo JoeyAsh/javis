@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 interface UseAudioAnalyserReturn {
   analyser: AnalyserNode | null;
   isSpeaking: boolean;
-  enqueue: (base64Mp3: string, volume?: number) => void;
+  enqueue: (base64Mp3: string, volume?: number, channel?: string) => void;
   /** Stop the currently playing clip and clear the entire queue. */
   stopAll: () => void;
 }
@@ -20,9 +20,12 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  // Queue items carry optional volume so backchannel clips play at 0.3.
-  const queueRef = useRef<Array<{ data: string; volume: number }>>([]);
+  // Queue items carry volume and channel so backchannel / notification clips behave correctly.
+  const queueRef = useRef<Array<{ data: string; volume: number; channel: string }>>([]);
   const playingRef = useRef(false);
+  // True while the currently playing item is a "speech" clip — notifications
+  // must not start until this clears and no speech items remain in the queue.
+  const speechPlayingRef = useRef(false);
   // Track the active BufferSourceNode so stopAll can stop it immediately.
   const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
@@ -46,7 +49,18 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
     if (playingRef.current || queueRef.current.length === 0) return;
 
     const item = queueRef.current[0];
+
+    // A notification must wait until no speech clip is playing and no speech
+    // item exists earlier in the queue (the onended callback re-invokes playNext,
+    // so this check naturally re-evaluates after every clip finishes).
+    if (item.channel === 'notification') {
+      const hasSpeechAhead = speechPlayingRef.current
+        || queueRef.current.some((q) => q.channel === 'speech');
+      if (hasSpeechAhead) return;
+    }
+
     playingRef.current = true;
+    speechPlayingRef.current = item.channel === 'speech';
     setIsSpeaking(true);
 
     try {
@@ -84,11 +98,14 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
       source.onended = () => {
         activeSourceRef.current = null;
         gainRef.current = null;
+        speechPlayingRef.current = false;
         queueRef.current = queueRef.current.slice(1);
         playingRef.current = false;
         if (queueRef.current.length === 0) {
           setIsSpeaking(false);
         } else {
+          // Re-evaluate from the front of the queue; notification items may now
+          // be eligible if no remaining speech clips precede them.
           void playNext();
         }
       };
@@ -98,6 +115,7 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
       console.error('[audio] playback error:', err);
       activeSourceRef.current = null;
       gainRef.current = null;
+      speechPlayingRef.current = false;
       queueRef.current = queueRef.current.slice(1);
       playingRef.current = false;
       if (queueRef.current.length === 0) {
@@ -109,8 +127,8 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
   }, [getAudioContext]);
 
   const enqueue = useCallback(
-    (base64Mp3: string, volume = 1.0) => {
-      queueRef.current = [...queueRef.current, { data: base64Mp3, volume }];
+    (base64Mp3: string, volume = 1.0, channel = 'speech') => {
+      queueRef.current = [...queueRef.current, { data: base64Mp3, volume, channel }];
       void playNext();
     },
     [playNext],
@@ -125,6 +143,7 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
     }
     activeSourceRef.current = null;
     gainRef.current = null;
+    speechPlayingRef.current = false;
     // Clear pending queue.
     queueRef.current = [];
     playingRef.current = false;

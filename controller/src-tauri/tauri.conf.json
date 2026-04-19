@@ -14,7 +14,7 @@
         "title": "JARVIS Controller",
         "width": 1260,
         "height": 960,
-        "resizable": false,
+        "resizable": true,
         "fullscreen": false,
         "decorations": true,
         "theme": "Dark"

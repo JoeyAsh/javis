@@ -1,0 +1,27 @@
+# One-time install:
+#   cp ops/jarvis-frontend.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+# Optional auto-start on login:
+#   systemctl --user enable jarvis-frontend.service
+# WARNING: Running `npm run dev` manually while this service is active will
+#   cause a port 5173 conflict — the service will enter `failed` state. Use
+#   one or the other, not both.
+# WARNING: Node version v24.15.0 is hardcoded below and must match
+#   jarvis-backend.service. Update both files in lockstep after a node upgrade.
+
+[Unit]
+Description=JARVIS Frontend (Vite dev server, :5173)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/paps/Repos/Jarvis/frontend
+Environment="PATH=/home/paps/.nvm/versions/node/v24.15.0/bin:/home/paps/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/paps/.nvm/versions/node/v24.15.0/bin/npm run dev
+Restart=always
+RestartSec=3
+StandardOutput=append:/tmp/jarvis-frontend.log
+StandardError=append:/tmp/jarvis-frontend.log
+
+[Install]
+WantedBy=default.target

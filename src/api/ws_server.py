@@ -2955,6 +2955,227 @@ async def voices_handler(request: web.Request) -> web.Response:
 
 
 # ---------------------------------------------------------------------------
+# /notify/wife — Ezgi WhatsApp inbound TTS notification endpoint
+# ---------------------------------------------------------------------------
+
+# SOUL.md persona extract cached at first handler call — avoids re-reading on
+# every request. Only the sections relevant to spoken announcements are kept;
+# the DM Auto-Reply Policy table is excluded (irrelevant for TTS generation).
+_soul_extract_cache: str | None = None
+_SOUL_MD_PATH: Path = Path("/home/paps/.openclaw/workspace/SOUL.md")
+_SOUL_SECTIONS_WANTED = {
+    "## Core Directives",
+    "## Response Style",
+    "## Language Handling",
+    "## Voice Context",
+}
+_SOUL_SECTION_STOP = "## DM Auto-Reply Policy"
+
+
+def _load_soul_extract() -> str:
+    """Read SOUL.md and return only the announcement-relevant sections."""
+    global _soul_extract_cache
+    if _soul_extract_cache is not None:
+        return _soul_extract_cache
+    try:
+        raw = _SOUL_MD_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning(f"notify_wife: Could not read SOUL.md: {exc}")
+        return ""
+    lines = raw.splitlines()
+    collecting = False
+    result: list[str] = []
+    current_section: str | None = None
+    for line in lines:
+        stripped = line.strip()
+        # Check if we hit a stop section
+        if stripped == _SOUL_SECTION_STOP:
+            break
+        # Check if line is a section header we want
+        is_h2 = stripped.startswith("## ")
+        if is_h2:
+            current_section = stripped
+            collecting = current_section in _SOUL_SECTIONS_WANTED
+        if collecting:
+            result.append(line)
+    _soul_extract_cache = "\n".join(result).strip()
+    return _soul_extract_cache
+
+
+async def _generate_wife_announcement(bodies: list[str], cfg_wife: dict[str, Any]) -> str:
+    """Call the Anthropic API to produce a single spoken announcement sentence.
+
+    Args:
+        bodies: List of (already truncated) message body strings.
+        cfg_wife: The ``notifications.wife`` config dict.
+
+    Returns:
+        A TTS-friendly announcement sentence, or the configured fallback on error.
+    """
+    import os  # noqa: PLC0415
+    import anthropic as _anthropic  # noqa: PLC0415
+
+    fallback = str(cfg_wife.get("fallback_text", "Sir, Ihre Frau hat Ihnen eine Nachricht geschickt."))
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        logger.warning("notify_wife: ANTHROPIC_API_KEY not set — using fallback text")
+        return fallback
+
+    model = str(cfg_wife.get("announcement_model", "claude-sonnet-4-6"))
+    soul_extract = _load_soul_extract()
+    system_prompt = (
+        "You are JARVIS. Produce a single-sentence spoken announcement for Johannes "
+        "— no markdown, no lists, TTS-friendly, < 40 words.\n\n"
+        + soul_extract
+    )
+
+    non_empty = [b for b in bodies if b.strip()]
+    all_empty = len(non_empty) == 0
+
+    if all_empty:
+        user_prompt = (
+            "Ihre Frau Ezgi hat Johannes während einer Abwesenheit ein Foto/Video/"
+            "eine Sprachnachricht via WhatsApp geschickt. Formulieren Sie eine kurze "
+            "Ansage (ein Satz, TTS-tauglich, keine Markdown-Formatierung) für Johannes."
+        )
+    elif len(non_empty) == 1:
+        user_prompt = (
+            f"Ihre Frau Ezgi hat Johannes während einer Abwesenheit eine WhatsApp-Nachricht"
+            f" geschickt: «{non_empty[0]}». Formulieren Sie eine kurze Ansage "
+            f"(ein Satz, TTS-tauglich, keine Markdown-Formatierung) für Johannes, "
+            f"um ihn zu informieren."
+        )
+    else:
+        numbered = "\n".join(f"{i + 1}. {b}" for i, b in enumerate(non_empty))
+        # Bound the total joined length to keep the prompt reasonable
+        if len(numbered) > 600:
+            numbered = numbered[:600] + "…"
+        user_prompt = (
+            f"Ihre Frau Ezgi hat Johannes mehrere WhatsApp-Nachrichten während einer "
+            f"Abwesenheit geschickt:\n{numbered}\n"
+            f"Fassen Sie das in einem einzigen Satz zusammen (TTS-tauglich, keine "
+            f"Markdown-Formatierung)."
+        )
+
+    try:
+        client = _anthropic.AsyncAnthropic(api_key=api_key)
+        response = await client.messages.create(
+            model=model,
+            max_tokens=80,
+            temperature=0.7,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        return response.content[0].text.strip()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"notify_wife: Anthropic API error, using fallback: {exc}")
+        return fallback
+
+
+async def notify_wife_handler(request: web.Request) -> web.Response:
+    """Handle POST /notify/wife — play a TTS announcement for an Ezgi WhatsApp message.
+
+    Accepts both single-message and batched payloads from the ezgi-notifier hook.
+    Validates sender_id against the configured allowlist, generates a spoken announcement
+    via the Anthropic API, synthesizes it via Fish Audio TTS, and broadcasts the MP3
+    to all connected WebSocket clients on the ``notification`` channel.
+    """
+    import uuid  # noqa: PLC0415
+    from utils.config_loader import get_config as _get_cfg  # noqa: PLC0415
+
+    utterance_id = str(uuid.uuid4())
+
+    # --- Parse body -----------------------------------------------------------
+    try:
+        payload = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"notify_wife: Invalid JSON body: {exc}")
+        return web.json_response({"accepted": False, "error": "invalid JSON"}, status=400)
+
+    sender_id: str = payload.get("sender_id", "")
+    sender_label: str = payload.get("sender_label", "")
+
+    # Normalise to batch format
+    if "messages" in payload:
+        raw_messages: list[dict[str, Any]] = payload.get("messages", [])
+    else:
+        # Single-message shape
+        raw_messages = [
+            {
+                "body": payload.get("body", ""),
+                "timestamp": payload.get("timestamp", ""),
+                "message_id": payload.get("message_id", utterance_id),
+            }
+        ]
+
+    # --- Config ---------------------------------------------------------------
+    cfg = _get_cfg()
+    cfg_wife: dict[str, Any] = (cfg.get_section("notifications") or {}).get("wife", {})
+    allowed_sender = str(cfg_wife.get("sender_id", "+41765005527"))
+    enabled = bool(cfg_wife.get("enabled", True))
+    max_body_chars = int(cfg_wife.get("max_body_chars", 200))
+    fallback_text = str(cfg_wife.get("fallback_text", "Sir, Ihre Frau hat Ihnen eine Nachricht geschickt."))
+
+    # --- Validate sender_id ---------------------------------------------------
+    if sender_id != allowed_sender:
+        logger.warning(
+            f"notify_wife: Rejected sender_id={sender_id!r} (allowed: {allowed_sender!r})"
+        )
+        return web.json_response(
+            {"accepted": False, "error": "sender_id not in allowlist"}, status=403
+        )
+
+    # --- Feature flag ---------------------------------------------------------
+    if not enabled:
+        logger.info("notify_wife: feature disabled via config — skipping")
+        return web.json_response(
+            {"accepted": True, "utterance_id": None, "skipped": "disabled"}, status=200
+        )
+
+    # --- Truncate bodies ------------------------------------------------------
+    bodies: list[str] = []
+    for msg in raw_messages:
+        body = str(msg.get("body", ""))
+        if len(body) > max_body_chars:
+            body = body[:max_body_chars] + "…"
+        bodies.append(body)
+
+    message_ids = [str(m.get("message_id", "")) for m in raw_messages]
+    logger.info(
+        f"notify_wife: accepted sender={sender_label!r} ({sender_id}), "
+        f"utterance_id={utterance_id}, messages={len(bodies)}, "
+        f"message_ids={message_ids}"
+    )
+
+    # --- Generate announcement text -------------------------------------------
+    utterance = await _generate_wife_announcement(bodies, cfg_wife)
+    logger.info(f"notify_wife: utterance_id={utterance_id}, text={utterance!r}")
+
+    # --- Synthesize TTS -------------------------------------------------------
+    if _fish_tts is None:
+        logger.warning(f"notify_wife: _fish_tts is None — TTS unavailable, utterance_id={utterance_id}")
+        return web.json_response(
+            {"accepted": True, "utterance_id": utterance_id, "tts": "failed"}, status=200
+        )
+
+    try:
+        tts_text = strip_markdown_for_tts(utterance)
+        audio_bytes = await _fish_tts.synthesize(tts_text)
+    except FishTTSError as exc:
+        logger.error(f"notify_wife: FishTTSError — {exc}, utterance_id={utterance_id}")
+        return web.json_response(
+            {"accepted": True, "utterance_id": utterance_id, "tts": "failed"}, status=200
+        )
+
+    # --- Broadcast to WebSocket clients ---------------------------------------
+    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+    await broadcast_audio(audio_b64, utterance, channel="notification")
+    logger.info(f"notify_wife: broadcast complete, utterance_id={utterance_id}")
+
+    return web.json_response({"accepted": True, "utterance_id": utterance_id}, status=200)
+
+
+# ---------------------------------------------------------------------------
 # /api/config/repos — GET + POST (localhost-only)
 # ---------------------------------------------------------------------------
 
@@ -3342,6 +3563,7 @@ async def start_ws_server(
     http_app = web.Application(middlewares=[cors_middleware])
     http_app.router.add_get("/health", health_handler)
     http_app.router.add_get("/voices", voices_handler)
+    http_app.router.add_post("/notify/wife", notify_wife_handler)
     http_app.router.add_get("/oauth/spotify/callback", spotify_oauth_callback_handler)
     http_app.router.add_get("/api/config/repos", config_repos_get_handler)
     http_app.router.add_post("/api/config/repos", config_repos_post_handler)

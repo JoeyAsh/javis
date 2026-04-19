@@ -42,7 +42,7 @@ export type TurnTimingListener = (payload: TurnTimingPayload) => void;
 export interface UseWebSocketReturn {
   orbState: AppOrbState;
   setOrbState: (state: OrbState) => void;
-  audioQueue: Array<{ data: string; volume: number }>;
+  audioQueue: Array<{ data: string; volume: number; channel: 'speech' | 'notification' | 'backchannel' }>;
   consumeAudio: () => void;
   sendTranscript: (text: string) => void;
   /**
@@ -313,7 +313,7 @@ const RECONNECT_DELAY_MAX = 30000;
  * playing, and keeps it visually active while Claude Code tools are running.
  */
 export function useWebSocket(): UseWebSocketReturn {
-  const [audioQueue, setAudioQueue] = useState<Array<{ data: string; volume: number }>>([]);
+  const [audioQueue, setAudioQueue] = useState<Array<{ data: string; volume: number; channel: 'speech' | 'notification' | 'backchannel' }>>([]);
   const [connected, setConnected] = useState(false);
 
   // --- Orb state derivation state ---
@@ -436,7 +436,11 @@ export function useWebSocket(): UseWebSocketReturn {
               pendingIdleRef.current = false;
               // Backchannel clips play at 30% volume; all other clips at full.
               const vol = msg.channel === 'backchannel' ? 0.3 : 1.0;
-              setAudioQueue((prev) => [...prev, { data: msg.data, volume: vol }]);
+              const ch: 'speech' | 'notification' | 'backchannel' =
+                msg.channel === 'backchannel' ? 'backchannel'
+                : msg.channel === 'notification' ? 'notification'
+                : 'speech';
+              setAudioQueue((prev) => [...prev, { data: msg.data, volume: vol, channel: ch }]);
             } else {
               // TTS failed — return to idle
               setBackendState('idle');

@@ -76,11 +76,11 @@ function AppInner(): ReactElement {
   // backend's post-TTS grace window.
   useMicStream({ wsRef, paused: muted });
 
-  // Feed incoming audio to the audio analyser queue (with per-clip volume).
+  // Feed incoming audio to the audio analyser queue (with per-clip volume and channel).
   useEffect(() => {
     if (audioQueue.length > 0) {
       const item = audioQueue[0];
-      enqueue(item.data, item.volume);
+      enqueue(item.data, item.volume, item.channel);
       consumeAudio();
     }
   }, [audioQueue, enqueue, consumeAudio]);

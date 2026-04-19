@@ -19,18 +19,40 @@
         <div class="service-card">
           <div class="service-label">JARVIS</div>
 
-          <section class="status-section">
-            <div class="status-pill" id="jarvis-status-pill">
-              <span class="dot" id="jarvis-dot"></span>
-              <span class="state-text" id="jarvis-state-text">checking...</span>
-            </div>
-            <div class="http-indicator" id="jarvis-http-indicator">HTTP :8766 · checking</div>
-          </section>
+          <!-- Backend sub-row -->
+          <div class="sub-service">
+            <div class="sub-service-label">BACKEND</div>
+            <section class="status-section">
+              <div class="status-pill" id="backend-status-pill">
+                <span class="dot" id="backend-dot"></span>
+                <span class="state-text" id="backend-state-text">checking...</span>
+              </div>
+              <div class="http-indicator" id="backend-http-indicator">HTTP :8766 · checking</div>
+            </section>
+            <section class="controls">
+              <button class="btn btn-start"   id="btn-backend-start"   disabled>START</button>
+              <button class="btn btn-stop"    id="btn-backend-stop"    disabled>STOP</button>
+              <button class="btn btn-restart" id="btn-backend-restart" disabled>RESTART</button>
+            </section>
+          </div>
 
-          <section class="controls">
-            <button class="btn btn-start" id="btn-jarvis-start" disabled>START</button>
-            <button class="btn btn-stop"  id="btn-jarvis-stop"  disabled>STOP</button>
-          </section>
+          <!-- Frontend sub-row -->
+          <div class="sub-service">
+            <div class="sub-service-label">FRONTEND</div>
+            <section class="status-section">
+              <div class="status-pill" id="frontend-status-pill">
+                <span class="dot" id="frontend-dot"></span>
+                <span class="state-text" id="frontend-state-text">checking...</span>
+              </div>
+              <div class="http-indicator" id="frontend-http-indicator">HTTP :5173 · checking</div>
+            </section>
+            <section class="controls">
+              <button class="btn btn-start"   id="btn-frontend-start"   disabled>START</button>
+              <button class="btn btn-stop"    id="btn-frontend-stop"    disabled>STOP</button>
+              <button class="btn btn-restart" id="btn-frontend-restart" disabled>RESTART</button>
+            </section>
+            <button class="btn btn-link" id="btn-link-jarvis" disabled>Open JARVIS UI →</button>
+          </div>
         </div>
 
         <!-- ── OpenClaw section ── -->
@@ -56,7 +78,6 @@
 
       <!-- ── Link buttons ── -->
       <section class="links-row">
-        <button class="btn btn-link" id="btn-link-jarvis">Open JARVIS UI →</button>
         <button class="btn btn-link" id="btn-link-openclaw">Open OpenClaw Control →</button>
       </section>
 

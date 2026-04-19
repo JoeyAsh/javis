@@ -286,3 +286,25 @@ html, body {
 .toast.error {
   color: #e85c5c;
 }
+
+/* ── Sub-service rows (JARVIS card) ── */
+.sub-service {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+}
+
+.sub-service:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.sub-service-label {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+}

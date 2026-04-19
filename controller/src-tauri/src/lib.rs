@@ -37,6 +37,11 @@ async fn check_http_openclaw() -> bool {
     check_http_url("http://127.0.0.1:18789/").await
 }
 
+/// Check HTTP reachability of the Vite dev server; returns true on any 2xx within 500ms.
+async fn check_http_frontend() -> bool {
+    check_http_url("http://127.0.0.1:5173/").await
+}
+
 /// Generic HTTP check: true if URL responds with 2xx within 500 ms.
 async fn check_http_url(url: &str) -> bool {
     let client = match reqwest::Client::builder()
@@ -54,7 +59,7 @@ async fn check_http_url(url: &str) -> bool {
 }
 
 pub mod commands {
-    use super::{StatusInfo, check_http_jarvis, check_http_openclaw, run_systemctl};
+    use super::{StatusInfo, check_http_frontend, check_http_jarvis, check_http_openclaw, run_systemctl};
     use tokio::process::Command;
 
     // ── JARVIS commands ──────────────────────────────────────────────────────
@@ -67,6 +72,11 @@ pub mod commands {
     #[tauri::command]
     pub async fn stop_jarvis() -> Result<String, String> {
         run_systemctl(&["--user", "stop", "jarvis-backend.service"]).await
+    }
+
+    #[tauri::command]
+    pub async fn restart_jarvis() -> Result<String, String> {
+        run_systemctl(&["--user", "restart", "jarvis-backend.service"]).await
     }
 
     #[tauri::command]
@@ -155,6 +165,37 @@ pub mod commands {
             }
         }
     }
+
+    // ── Frontend commands ────────────────────────────────────────────────────
+
+    #[tauri::command]
+    pub async fn start_frontend() -> Result<String, String> {
+        run_systemctl(&["--user", "start", "jarvis-frontend.service"]).await
+    }
+
+    #[tauri::command]
+    pub async fn stop_frontend() -> Result<String, String> {
+        run_systemctl(&["--user", "stop", "jarvis-frontend.service"]).await
+    }
+
+    #[tauri::command]
+    pub async fn restart_frontend() -> Result<String, String> {
+        run_systemctl(&["--user", "restart", "jarvis-frontend.service"]).await
+    }
+
+    #[tauri::command]
+    pub async fn frontend_status() -> Result<StatusInfo, String> {
+        let output = Command::new("systemctl")
+            .args(["--user", "is-active", "jarvis-frontend.service"])
+            .output()
+            .await
+            .map_err(|e| format!("failed to run systemctl: {e}"))?;
+
+        let state = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let http_ok = check_http_frontend().await;
+
+        Ok(StatusInfo { state, http_ok })
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -164,12 +205,17 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::start_jarvis,
             commands::stop_jarvis,
+            commands::restart_jarvis,
             commands::jarvis_status,
             commands::start_openclaw,
             commands::stop_openclaw,
             commands::restart_openclaw,
             commands::openclaw_status,
             commands::openclaw_url,
+            commands::start_frontend,
+            commands::stop_frontend,
+            commands::restart_frontend,
+            commands::frontend_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running JARVIS Controller");

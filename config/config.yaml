@@ -311,3 +311,13 @@ voice:
 
   # Phrase cache
   cache_directory: "data/voice_cache"
+
+notifications:
+  wife:
+    enabled: true
+    sender_id: "+41765005527"
+    # Model used to synthesize the announcement text (not the TTS audio).
+    # Defaults to sonnet for cost/latency; opus is only needed if persona fidelity matters.
+    announcement_model: "claude-sonnet-4-6"
+    max_body_chars: 200
+    fallback_text: "Sir, Ihre Frau hat Ihnen eine Nachricht geschickt."

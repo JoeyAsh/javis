@@ -179,8 +179,8 @@ export type WsIncoming =
       type: 'audio';
       data: string;
       text: string;
-      /** Optional channel tag — ``"backchannel"`` means lower volume (0.3). */
-      channel?: 'backchannel';
+      /** Optional channel tag — ``"backchannel"`` means lower volume (0.3); ``"notification"`` defers behind speech. */
+      channel?: 'backchannel' | 'notification';
     }
   | { type: 'status'; state: OrbState }
   | { type: 'text'; text: string }

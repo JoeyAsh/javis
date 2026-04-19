@@ -6,12 +6,21 @@ interface StatusInfo {
   http_ok: boolean;
 }
 
-// ── DOM refs — JARVIS ────────────────────────────────────────────────────────
-const jarvisDot          = document.getElementById("jarvis-dot")           as HTMLSpanElement;
-const jarvisStateText    = document.getElementById("jarvis-state-text")    as HTMLSpanElement;
-const jarvisHttpIndicator= document.getElementById("jarvis-http-indicator")as HTMLDivElement;
-const btnJarvisStart     = document.getElementById("btn-jarvis-start")     as HTMLButtonElement;
-const btnJarvisStop      = document.getElementById("btn-jarvis-stop")      as HTMLButtonElement;
+// ── DOM refs — Backend (JARVIS backend service) ───────────────────────────────
+const backendDot           = document.getElementById("backend-dot")           as HTMLSpanElement;
+const backendStateText     = document.getElementById("backend-state-text")    as HTMLSpanElement;
+const backendHttpIndicator = document.getElementById("backend-http-indicator")as HTMLDivElement;
+const btnBackendStart      = document.getElementById("btn-backend-start")     as HTMLButtonElement;
+const btnBackendStop       = document.getElementById("btn-backend-stop")      as HTMLButtonElement;
+const btnBackendRestart    = document.getElementById("btn-backend-restart")   as HTMLButtonElement;
+
+// ── DOM refs — Frontend (JARVIS frontend service) ─────────────────────────────
+const frontendDot           = document.getElementById("frontend-dot")           as HTMLSpanElement;
+const frontendStateText     = document.getElementById("frontend-state-text")    as HTMLSpanElement;
+const frontendHttpIndicator = document.getElementById("frontend-http-indicator")as HTMLDivElement;
+const btnFrontendStart      = document.getElementById("btn-frontend-start")     as HTMLButtonElement;
+const btnFrontendStop       = document.getElementById("btn-frontend-stop")      as HTMLButtonElement;
+const btnFrontendRestart    = document.getElementById("btn-frontend-restart")   as HTMLButtonElement;
 
 // ── DOM refs — OpenClaw ──────────────────────────────────────────────────────
 const openclawDot          = document.getElementById("openclaw-dot")           as HTMLSpanElement;
@@ -58,18 +67,37 @@ function applyDot(dot: HTMLSpanElement, state: string): void {
   }
 }
 
-function applyJarvisStatus(info: StatusInfo): void {
+function applyBackendStatus(info: StatusInfo): void {
   const state = info.state.toLowerCase().trim();
-  applyDot(jarvisDot, state);
-  jarvisStateText.textContent = state;
+  applyDot(backendDot, state);
+  backendStateText.textContent = state;
 
-  jarvisHttpIndicator.textContent = `HTTP :8766 · ${info.http_ok ? "reachable" : "unreachable"}`;
-  jarvisHttpIndicator.className = "http-indicator " + (info.http_ok ? "reachable" : "unreachable");
+  backendHttpIndicator.textContent = `HTTP :8766 · ${info.http_ok ? "reachable" : "unreachable"}`;
+  backendHttpIndicator.className = "http-indicator " + (info.http_ok ? "reachable" : "unreachable");
 
   const isRunning = state === "active" || state === "activating";
   const isStopped = state === "inactive" || state === "failed";
-  btnJarvisStart.disabled = isRunning;
-  btnJarvisStop.disabled  = isStopped;
+  btnBackendStart.disabled   = isRunning;
+  btnBackendStop.disabled    = isStopped;
+  btnBackendRestart.disabled = isStopped;
+}
+
+function applyFrontendStatus(info: StatusInfo): void {
+  const state = info.state.toLowerCase().trim();
+  applyDot(frontendDot, state);
+  frontendStateText.textContent = state;
+
+  frontendHttpIndicator.textContent = `HTTP :5173 · ${info.http_ok ? "reachable" : "unreachable"}`;
+  frontendHttpIndicator.className = "http-indicator " + (info.http_ok ? "reachable" : "unreachable");
+
+  const isRunning = state === "active" || state === "activating";
+  const isStopped = state === "inactive" || state === "failed";
+  btnFrontendStart.disabled   = isRunning;
+  btnFrontendStop.disabled    = isStopped;
+  btnFrontendRestart.disabled = isStopped;
+
+  // Gate link button on HTTP probe only — the link either works or it doesn't
+  btnLinkJarvis.disabled = !info.http_ok;
 }
 
 function applyOpenclawStatus(info: StatusInfo): void {
@@ -89,16 +117,26 @@ function applyOpenclawStatus(info: StatusInfo): void {
 
 // ── Polling ───────────────────────────────────────────────────────────────────
 async function pollAll(): Promise<void> {
-  // Poll both services in parallel; errors are independent
+  // Poll all three services in parallel; errors are independent
   await Promise.allSettled([
     (async () => {
       try {
         const info = await invoke<StatusInfo>("jarvis_status");
-        applyJarvisStatus(info);
+        applyBackendStatus(info);
       } catch (e) {
-        jarvisStateText.textContent = "error";
-        jarvisDot.className = "dot unknown";
-        console.error("jarvis status poll failed:", e);
+        backendStateText.textContent = "error";
+        backendDot.className = "dot unknown";
+        console.error("backend status poll failed:", e);
+      }
+    })(),
+    (async () => {
+      try {
+        const info = await invoke<StatusInfo>("frontend_status");
+        applyFrontendStatus(info);
+      } catch (e) {
+        frontendStateText.textContent = "error";
+        frontendDot.className = "dot unknown";
+        console.error("frontend status poll failed:", e);
       }
     })(),
     (async () => {
@@ -130,29 +168,82 @@ function timestamp(): string {
   return new Date().toLocaleTimeString("en-GB", { hour12: false });
 }
 
-// ── JARVIS button handlers ────────────────────────────────────────────────────
-btnJarvisStart.addEventListener("click", async () => {
-  btnJarvisStart.disabled = true;
+// ── Backend button handlers ───────────────────────────────────────────────────
+btnBackendStart.addEventListener("click", async () => {
+  btnBackendStart.disabled = true;
   stopPolling();
   try {
     await invoke<string>("start_jarvis");
-    showToast(`jarvis · started · ${timestamp()}`);
+    showToast(`backend · started · ${timestamp()}`);
   } catch (e) {
     const msg = typeof e === "string" ? e : String(e);
-    showToast(`jarvis · start failed: ${msg}`, true);
+    showToast(`backend · start failed: ${msg}`, true);
   }
   setTimeout(async () => { await pollAll(); startPolling(); }, 300);
 });
 
-btnJarvisStop.addEventListener("click", async () => {
-  btnJarvisStop.disabled = true;
+btnBackendStop.addEventListener("click", async () => {
+  btnBackendStop.disabled = true;
   stopPolling();
   try {
     await invoke<string>("stop_jarvis");
-    showToast(`jarvis · stopped · ${timestamp()}`);
+    showToast(`backend · stopped · ${timestamp()}`);
   } catch (e) {
     const msg = typeof e === "string" ? e : String(e);
-    showToast(`jarvis · stop failed: ${msg}`, true);
+    showToast(`backend · stop failed: ${msg}`, true);
+  }
+  setTimeout(async () => { await pollAll(); startPolling(); }, 300);
+});
+
+btnBackendRestart.addEventListener("click", async () => {
+  btnBackendRestart.disabled = true;
+  stopPolling();
+  try {
+    await invoke<string>("restart_jarvis");
+    showToast(`backend · restarted · ${timestamp()}`);
+  } catch (e) {
+    const msg = typeof e === "string" ? e : String(e);
+    showToast(`backend · restart failed: ${msg}`, true);
+  }
+  setTimeout(async () => { await pollAll(); startPolling(); }, 300);
+});
+
+// ── Frontend button handlers ──────────────────────────────────────────────────
+btnFrontendStart.addEventListener("click", async () => {
+  btnFrontendStart.disabled = true;
+  stopPolling();
+  try {
+    await invoke<string>("start_frontend");
+    showToast(`frontend · started · ${timestamp()}`);
+  } catch (e) {
+    const msg = typeof e === "string" ? e : String(e);
+    showToast(`frontend · start failed: ${msg}`, true);
+  }
+  setTimeout(async () => { await pollAll(); startPolling(); }, 300);
+});
+
+btnFrontendStop.addEventListener("click", async () => {
+  btnFrontendStop.disabled = true;
+  stopPolling();
+  try {
+    await invoke<string>("stop_frontend");
+    showToast(`frontend · stopped · ${timestamp()}`);
+  } catch (e) {
+    const msg = typeof e === "string" ? e : String(e);
+    showToast(`frontend · stop failed: ${msg}`, true);
+  }
+  setTimeout(async () => { await pollAll(); startPolling(); }, 300);
+});
+
+btnFrontendRestart.addEventListener("click", async () => {
+  btnFrontendRestart.disabled = true;
+  stopPolling();
+  try {
+    await invoke<string>("restart_frontend");
+    showToast(`frontend · restarted · ${timestamp()}`);
+  } catch (e) {
+    const msg = typeof e === "string" ? e : String(e);
+    showToast(`frontend · restart failed: ${msg}`, true);
   }
   setTimeout(async () => { await pollAll(); startPolling(); }, 300);
 });

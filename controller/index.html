@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JARVIS Controller</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+
+      <header>
+        <h1 class="title">JARVIS CONTROLLER</h1>
+      </header>
+
+      <div class="services-grid">
+
+        <!-- ── JARVIS section ── -->
+        <div class="service-card">
+          <div class="service-label">JARVIS</div>
+
+          <section class="status-section">
+            <div class="status-pill" id="jarvis-status-pill">
+              <span class="dot" id="jarvis-dot"></span>
+              <span class="state-text" id="jarvis-state-text">checking...</span>
+            </div>
+            <div class="http-indicator" id="jarvis-http-indicator">HTTP :8766 · checking</div>
+          </section>
+
+          <section class="controls">
+            <button class="btn btn-start" id="btn-jarvis-start" disabled>START</button>
+            <button class="btn btn-stop"  id="btn-jarvis-stop"  disabled>STOP</button>
+          </section>
+        </div>
+
+        <!-- ── OpenClaw section ── -->
+        <div class="service-card">
+          <div class="service-label">OPENCLAW</div>
+
+          <section class="status-section">
+            <div class="status-pill" id="openclaw-status-pill">
+              <span class="dot" id="openclaw-dot"></span>
+              <span class="state-text" id="openclaw-state-text">checking...</span>
+            </div>
+            <div class="http-indicator" id="openclaw-http-indicator">HTTP :18789 · checking</div>
+          </section>
+
+          <section class="controls">
+            <button class="btn btn-start"   id="btn-openclaw-start"   disabled>START</button>
+            <button class="btn btn-stop"    id="btn-openclaw-stop"    disabled>STOP</button>
+            <button class="btn btn-restart" id="btn-openclaw-restart" disabled>RESTART</button>
+          </section>
+        </div>
+
+      </div>
+
+      <!-- ── Link buttons ── -->
+      <section class="links-row">
+        <button class="btn btn-link" id="btn-link-jarvis">Open JARVIS UI →</button>
+        <button class="btn btn-link" id="btn-link-openclaw">Open OpenClaw Control →</button>
+      </section>
+
+      <div class="toast" id="toast"></div>
+
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

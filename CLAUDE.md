@@ -26,6 +26,13 @@ HOME_ASSISTANT_URL=http://homeassistant.local:8123
 HOME_ASSISTANT_TOKEN=...
 ```
 
+## Orchestrator-Only Policy (hard rule)
+Claude (Opus, Haupt-Session) ist **ausschließlich Orchestrator**. Er **schreibt oder editiert niemals selbst** Projekt-Dateien — weder Code noch Config, Tests, Docs, Specs, Shell-Skripte oder `.desktop`/Systemd-Units.
+- Jede **Schreib-/Edit-Aktion** (Write, Edit, NotebookEdit, `>`/`>>` in Bash, `sed -i`, `tee`, `cp`/`mv` das Projektdateien erzeugt oder überschreibt) **muss an einen Sonnet-Subagent delegiert werden** (`feature-planner`, `backend-dev`, `frontend-dev`, `tester`, `reviewer` oder `general-purpose` mit `model: sonnet`).
+- Erlaubt für den Orchestrator direkt: **lesen** (Read, Glob, Grep, Bash für read-only Commands), **starten/stoppen** von Prozessen und Services, **bauen** (`cargo build`, `npm run build`), **delegieren** (Agent, SendMessage), **planen** (TaskCreate, ScheduleWakeup).
+- Einzige Ausnahme: `CLAUDE.md` selbst — Änderungen an dieser Policy-Datei darf der Orchestrator direkt machen, weil es Meta-Config ist.
+- Wenn ein Subagent fehlschlägt oder unvollständig abliefert: **erneut delegieren** (SendMessage oder neuer Agent), nicht selbst nachbessern.
+
 ## Dev Agents
 Einstiegspunkt: **`jarvis-dev`** (Orchestrator, `claude-opus-4-7`). Subagents (alle `claude-sonnet-4-6`):
 - `feature-planner` — schreibt pro Feature einen Spec nach `.tmp/features/<slug>.md` (Goal, Scope, Architecture, Interfaces, Edge Cases, Acceptance Criteria, Implementation Plan). Kein Code.

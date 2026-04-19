@@ -79,3 +79,18 @@ frontend/coverage/
 data/
 data/backups/
 !data/.gitkeep
+
+# Controller app
+controller/node_modules/
+controller/src-tauri/target/
+
+# Controller build artifacts (in addition to node_modules/target already ignored)
+controller/dist/
+controller/src-tauri/gen/
+
+# Claude Code runtime state
+.claude/scheduled_tasks.lock
+.claude/*.lock
+
+# Debian packages downloaded into repo root
+/*.deb

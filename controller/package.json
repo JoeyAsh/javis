@@ -1,0 +1,19 @@
+{
+  "name": "jarvis-controller",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite --port 1420",
+    "build": "tsc && vite build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "typescript": "^5",
+    "vite": "^6"
+  }
+}

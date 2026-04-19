@@ -2929,6 +2929,11 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
 # ---------------------------------------------------------------------------
 
 
+async def health_handler(request: web.Request) -> web.Response:
+    """Handle GET /health — lightweight liveness probe for controllers/monitors."""
+    return web.json_response({"status": "ok"})
+
+
 async def voices_handler(request: web.Request) -> web.Response:
     """Handle GET /voices endpoint.
 
@@ -3335,6 +3340,7 @@ async def start_ws_server(
         return response
 
     http_app = web.Application(middlewares=[cors_middleware])
+    http_app.router.add_get("/health", health_handler)
     http_app.router.add_get("/voices", voices_handler)
     http_app.router.add_get("/oauth/spotify/callback", spotify_oauth_callback_handler)
     http_app.router.add_get("/api/config/repos", config_repos_get_handler)

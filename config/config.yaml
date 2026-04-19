@@ -14,10 +14,12 @@ stt:
   model: "small"
   device: "cpu"
   compute_type: "int8"
-  # Whisper language hint. Pin to a specific ISO code (``"de"``, ``"en"``, ...)
-  # so Whisper stops drifting to exotic languages on ambiguous audio; set to
-  # ``null`` / ``"auto"`` for open-ended auto-detection.
-  language: "de"
+  # Whisper language hint. "auto" lets Whisper detect the spoken language
+  # per utterance; JARVIS' response is then wrapped with a "[respond in X]"
+  # hint so the reply mirrors the user's language. Pin to a specific ISO
+  # code (``"de"``, ``"en"``, ...) only if Whisper keeps drifting to exotic
+  # languages on ambiguous audio.
+  language: "auto"
 
 tts:
   engine: "fish"          # Fish Audio cloud TTS

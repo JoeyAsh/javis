@@ -1,0 +1,288 @@
+:root {
+  --bg:            #050508;
+  --surface:       #0d0d14;
+  --surface-raised:#12121c;
+  --border:        #1a1a2e;
+  --accent:        #4ca8e8;
+  --accent-bright: #6ec4ff;
+  --text:          #e8f4ff;
+  --text-secondary:#6b8fa8;
+  --text-muted:    #2a3d4f;
+  --glow:          0 0 8px #4ca8e8aa;
+  --glow-strong:   0 0 20px #4ca8e8cc, 0 0 40px #4ca8e844;
+  --font:          ui-monospace, "JetBrains Mono", Menlo, monospace;
+
+  /* link-accent: teal/cyan tint to distinguish nav from action buttons */
+  --link-accent:   #48d9c0;
+  --link-glow:     0 0 8px #48d9c0aa;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 18px;
+  user-select: none;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  height: 100vh;
+  padding: 56px 72px 44px;
+  gap: 32px;
+}
+
+/* ── Title ── */
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+  text-shadow: var(--glow);
+}
+
+/* ── Two-column service grid ── */
+.services-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  width: 100%;
+  flex: 1;
+  align-items: start;
+}
+
+/* ── Service card ── */
+.service-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 40px 36px 36px;
+}
+
+.service-label {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  width: 100%;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+
+/* ── Status section ── */
+.status-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  padding: 18px 40px;
+  border-radius: 6px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── Status dot ── */
+.dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.dot.active {
+  background: var(--accent-bright);
+  box-shadow: var(--glow-strong);
+}
+
+.dot.activating {
+  background: var(--accent);
+  box-shadow: var(--glow);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.dot.inactive,
+.dot.failed,
+.dot.unknown {
+  background: var(--text-muted);
+  box-shadow: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: var(--glow); }
+  50%       { opacity: 0.4; box-shadow: none; }
+}
+
+.state-text {
+  font-size: 20px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.http-indicator {
+  font-size: 15px;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+}
+
+.http-indicator.reachable {
+  color: var(--accent);
+}
+
+.http-indicator.unreachable {
+  color: var(--text-muted);
+}
+
+/* ── Buttons ── */
+.controls {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+}
+
+.btn {
+  flex: 1;
+  padding: 18px 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: border-color 0.2s, color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.btn:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  box-shadow: var(--glow);
+  background: rgba(76, 168, 232, 0.06);
+}
+
+.btn:not(:disabled):active {
+  background: rgba(76, 168, 232, 0.12);
+}
+
+.btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.btn-start:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-stop:not(:disabled) {
+  border-color: #e85c5c;
+  color: #e85c5c;
+}
+
+.btn-stop:not(:disabled):hover {
+  border-color: #ff7070;
+  color: #ff9090;
+  box-shadow: 0 0 8px #e85c5caa;
+  background: rgba(232, 92, 92, 0.06);
+}
+
+.btn-restart:not(:disabled) {
+  border-color: #e8a44c;
+  color: #e8a44c;
+}
+
+.btn-restart:not(:disabled):hover {
+  border-color: #ffbf6e;
+  color: #ffd090;
+  box-shadow: 0 0 8px #e8a44caa;
+  background: rgba(232, 164, 76, 0.06);
+}
+
+/* ── Link buttons row ── */
+.links-row {
+  display: flex;
+  gap: 24px;
+  width: 100%;
+}
+
+.btn-link {
+  flex: 1;
+  padding: 18px 0;
+  font-size: 16px;
+  border-color: var(--link-accent);
+  color: var(--link-accent);
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 6px;
+  letter-spacing: 0.1em;
+  text-transform: none;
+}
+
+.btn-link:not(:disabled):hover {
+  border-color: var(--link-accent);
+  color: #7ffff0;
+  box-shadow: var(--link-glow);
+  background: rgba(72, 217, 192, 0.06);
+}
+
+.btn-link:not(:disabled):active {
+  background: rgba(72, 217, 192, 0.12);
+}
+
+/* ── Toast ── */
+.toast {
+  min-height: 22px;
+  font-size: 15px;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  text-align: center;
+  transition: opacity 0.4s;
+  opacity: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast.visible {
+  opacity: 1;
+}
+
+.toast.error {
+  color: #e85c5c;
+}

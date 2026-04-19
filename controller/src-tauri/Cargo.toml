@@ -1,0 +1,36 @@
+[package]
+name = "jarvis-controller"
+version = "0.1.0"
+description = "JARVIS Desktop Controller"
+authors = ["JoeyAsh"]
+license = "MIT"
+repository = ""
+default-run = "jarvis-controller"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "jarvis_controller_lib"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "jarvis-controller"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["process", "rt-multi-thread", "macros", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

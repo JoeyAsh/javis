@@ -49,6 +49,14 @@ Done        → eeaaf043
 - Assign to milestones when applicable
 - Link issues to the project board immediately on creation
 
+### Feature Spec Publishing (Handoff from feature-planner)
+When `feature-planner` sends a drafted spec via `SendMessage`:
+1. Create a GitHub issue on `JoeyAsh/javis` with the spec as the issue body. Title: `feat: <slug>` (derive kebab-case slug from the feature title).
+2. Apply label `feature`.
+3. Add the issue to project `PVT_kwHOAvcf5s4BVEuO`, status **Backlog** (option id `c8f6649d`).
+4. Reply to `feature-planner` (via `SendMessage`) with the issue URL, so the planner can surface it to the orchestrator.
+5. Do **not** edit, summarize, or reformat the spec body — publish verbatim. If the planner's draft is malformed, reply with a correction request instead of creating a half-baked issue.
+
 ### User Stories
 Format:
 ```

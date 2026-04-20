@@ -167,6 +167,10 @@ class ConfigLoader:
             self._config.setdefault("logging", {})
             self._config["logging"]["level"] = log_level
 
+        # Override OpenClaw gateway URL from env
+        if gateway_url := os.environ.get("OPENCLAW_GATEWAY_URL"):
+            self._config.setdefault("openclaw", {})["gateway_url"] = gateway_url
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value by dot-notation key.
 

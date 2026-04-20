@@ -7,7 +7,7 @@ license = "MIT"
 repository = ""
 default-run = "jarvis-controller"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.80.0"
 
 [lib]
 name = "jarvis_controller_lib"
@@ -25,7 +25,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["process", "rt-multi-thread", "macros", "time"] }
+tokio = { version = "1", features = ["process", "rt-multi-thread", "macros", "time", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 [profile.release]

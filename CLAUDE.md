@@ -35,7 +35,7 @@ Claude (Opus, Haupt-Session) ist **ausschließlich Orchestrator**. Er **schreibt
 
 ## Dev Agents
 Einstiegspunkt: **`jarvis-dev`** (Orchestrator, `claude-opus-4-7`). Subagents (alle `claude-sonnet-4-6`):
-- `feature-planner` — schreibt pro Feature einen Spec nach `.tmp/features/<slug>.md` (Goal, Scope, Architecture, Interfaces, Edge Cases, Acceptance Criteria, Implementation Plan). Kein Code.
+- `feature-planner` — drafted pro Feature einen Spec als Text und übergibt ihn per `SendMessage` an `product-owner`, der ihn als GitHub-Issue im Backlog veröffentlicht. Kein Code, keine lokalen Dateien.
 - `backend-dev` — Python-Backend (audio, brain, actions, FastAPI, WS).
 - `frontend-dev` — React/TypeScript/Three.js Frontend.
 - `tester` — pytest (+asyncio) Backend, Vitest + RTL Frontend. Externes I/O immer gemockt.
@@ -44,7 +44,7 @@ Einstiegspunkt: **`jarvis-dev`** (Orchestrator, `claude-opus-4-7`). Subagents (a
 Definitionen in `.claude/agents/`.
 
 ### Workflow
-1. **Planning** — Neue Feature-Idee → `jarvis-dev` ruft `feature-planner`. Spec landet in `.tmp/features/`. **Stopp** — keine Implementation, bis der User explizit den Auftrag erteilt.
+1. **Planning** — Neue Feature-Idee → `jarvis-dev` öffnet ein Agent-Team und ruft `feature-planner` + `product-owner` darin. Planner drafted, schickt per `SendMessage` an den PO, der eine GitHub-Issue im Backlog anlegt. **Keine lokalen Spec-Dateien mehr.** **Stopp** — keine Implementation, bis der User explizit den Auftrag erteilt.
 2. **Implementation** (nur nach Freigabe) — `jarvis-dev` arbeitet den Implementation Plan Schritt für Schritt ab: `backend-dev` / `frontend-dev` → `tester` → `reviewer`. Bei `NEEDS_CHANGES` wird der jeweilige Dev-Agent mit dem Review-Report erneut angerufen (max. 3 Zyklen pro Batch).
 3. **Definition of Done** — Feature gilt nur als fertig, wenn **alle** Acceptance Criteria implementiert sind, alle neuen/geänderten Dateien Tests haben und der finale `reviewer` `PASS` zurückgibt. Keine stillschweigenden Auslassungen, keine Restarbeit für den User.
 

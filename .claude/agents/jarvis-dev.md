@@ -13,7 +13,7 @@ JARVIS is a voice-activated AI assistant: wake word → STT → Claude API → T
 ## Your Specialist Subagents
 | Agent | Model | Use For |
 |---|---|---|
-| `feature-planner` | sonnet-4-6 | Turn feature ideas into structured specs in `.tmp/features/` with full implementation plan |
+| `feature-planner` | sonnet-4-6 | Turn feature ideas into structured spec drafts; hands off to `product-owner` for GitHub-issue publication |
 | `backend-dev` | sonnet-4-6 | Python modules, FastAPI routes, async I/O, audio/brain/actions code |
 | `frontend-dev` | sonnet-4-6 | React/TypeScript components, Three.js orb integration, Tailwind layouts |
 | `tester` | sonnet-4-6 | pytest unit tests for Python, component tests for frontend |
@@ -23,32 +23,35 @@ JARVIS is a voice-activated AI assistant: wake word → STT → Claude API → T
 
 ### Phase A — Planning (no code, ever)
 When the user describes a new feature or non-trivial task:
-1. Invoke `feature-planner` with the user's description.
-2. `feature-planner` writes a spec to `.tmp/features/<feature-slug>.md` with: goal, scope, modules touched, data flow, interfaces, edge cases, acceptance criteria, and a numbered implementation plan.
-3. Return the spec path and a short summary to the user.
+1. Open an agent team containing `feature-planner` and `product-owner`. `feature-planner` drafts the spec (goal, scope, modules touched, data flow, interfaces, edge cases, acceptance criteria, numbered implementation plan) and hands the draft to `product-owner` via `SendMessage`.
+2. `product-owner` publishes the spec as a GitHub issue on `JoeyAsh/javis` (Project `PVT_kwHOAvcf5s4BVEuO`, status `Backlog`) and returns the issue URL.
+3. Return the issue URL and a short summary to the user.
 4. **STOP.** Do not invoke any dev agent until the user explicitly says "go", "start", "implement", "Auftrag erteilt", or similar clear authorization. Asking "soll ich starten?" is fine; assuming authorization is not.
 
 ### Phase B — Implementation (only after explicit authorization)
 Once authorized:
-1. Load the feature spec from `.tmp/features/<slug>.md`.
-2. Execute the numbered implementation plan step by step:
+1. Load the feature spec by reading the issue body:
+   `gh issue view <url-or-number> --repo JoeyAsh/javis --json body,title,number -q '.body'`
+2. Before starting work, request `product-owner` via `SendMessage` to move the issue to `In Progress` on the project board. Do not mutate the board yourself — `gh project` calls belong to `product-owner`.
+3. Execute the numbered implementation plan step by step, passing the issue URL (not a file path) to each agent:
    - Backend pieces → `backend-dev`
    - Frontend pieces → `frontend-dev`
    - Tests for each new/changed file → `tester`
    - After tests → `reviewer` on the full batch (code + tests)
-3. If `reviewer` returns `NEEDS_CHANGES`:
+4. If `reviewer` returns `NEEDS_CHANGES`:
    - Re-invoke the relevant dev agent with the review report appended as context.
    - After fixes, re-run `tester` for the changed files, then re-run `reviewer`.
    - Max 3 review cycles per batch. If still failing after 3, stop and surface to the user.
-4. Do not mark the feature complete until:
-   - Every item in the spec's acceptance criteria is demonstrably implemented.
+5. When the final `reviewer` returns `PASS`, request `product-owner` via `SendMessage` to transition the issue to `Done` (or `Blocked` if surfaced to the user unresolved).
+6. Do not mark the feature complete until:
+   - Every item in the issue's acceptance criteria is demonstrably implemented.
    - Every file touched has passing tests.
    - `reviewer` has returned `PASS` on the final batch.
    - Manual verification steps (if any in the spec) are listed for the user to run.
 
 ### Phase C — Reporting
 After Phase B completes, report to the user:
-- Spec file path (`.tmp/features/<slug>.md`)
+- Issue URL (`https://github.com/JoeyAsh/javis/issues/<n>`)
 - Files created / modified (grouped backend / frontend / tests)
 - Test command to run: `PYTHONPATH=src .venv/bin/pytest tests/...`
 - Anything deferred and why (should be nothing — see Rules)

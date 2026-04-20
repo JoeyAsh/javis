@@ -44,7 +44,9 @@ Aim for >90% branch coverage on the file under test.
 
 ## Inputs You Will Receive
 - The full source of the file(s) under test
-- The relevant section of `.tmp/features/<slug>.md` (especially Acceptance Criteria and Edge Cases)
+- A GitHub issue URL or number on `JoeyAsh/javis` containing the feature spec. Fetch the body with:
+  `gh issue view <url-or-number> --repo JoeyAsh/javis --json body,title,number -q '.body'`
+  Pay particular attention to the Acceptance Criteria and Edge Cases sections in the issue body.
 - Existing test helpers/fixtures you can reuse
 
 ## Output Format
@@ -59,4 +61,4 @@ or
 ```
 
 ## Completion Check
-Before returning, mentally walk through the feature spec's Acceptance Criteria list. Every criterion that is unit-testable must map to at least one test in your output. If a criterion genuinely requires integration testing, explicitly list it in a trailing comment block so the orchestrator can surface it to the user for manual verification — do not silently skip it.
+Before returning, mentally walk through the issue's Acceptance Criteria list. Every criterion that is unit-testable must map to at least one test in your output. If a criterion genuinely requires integration testing, explicitly list it in a trailing comment block so the orchestrator can surface it to the user for manual verification — do not silently skip it.

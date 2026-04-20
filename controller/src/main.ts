@@ -6,6 +6,11 @@ interface StatusInfo {
   http_ok: boolean;
 }
 
+interface OpenclawTargetInfo {
+  target: string;
+  url: string;
+}
+
 // ── DOM refs — Backend (JARVIS backend service) ───────────────────────────────
 const backendDot           = document.getElementById("backend-dot")           as HTMLSpanElement;
 const backendStateText     = document.getElementById("backend-state-text")    as HTMLSpanElement;
@@ -29,6 +34,9 @@ const openclawHttpIndicator= document.getElementById("openclaw-http-indicator")a
 const btnOpenclawStart     = document.getElementById("btn-openclaw-start")     as HTMLButtonElement;
 const btnOpenclawStop      = document.getElementById("btn-openclaw-stop")      as HTMLButtonElement;
 const btnOpenclawRestart   = document.getElementById("btn-openclaw-restart")   as HTMLButtonElement;
+const toggleLocal          = document.getElementById("toggle-local")           as HTMLButtonElement;
+const toggleRemote         = document.getElementById("toggle-remote")          as HTMLButtonElement;
+const openclawTargetUrl    = document.getElementById("openclaw-target-url")    as HTMLDivElement;
 
 // ── DOM refs — links ─────────────────────────────────────────────────────────
 const btnLinkJarvis   = document.getElementById("btn-link-jarvis")   as HTMLButtonElement;
@@ -62,9 +70,27 @@ function applyDot(dot: HTMLSpanElement, state: string): void {
     dot.classList.add("inactive");
   } else if (state === "failed") {
     dot.classList.add("failed");
+  } else if (state === "remote") {
+    dot.classList.add("active");
   } else {
     dot.classList.add("unknown");
   }
+}
+
+/**
+ * Derive button enable/disable state from a service state string.
+ * Returns [startEnabled, stopEnabled, restartEnabled].
+ * Rule:
+ *   active / activating  → Start off, Stop+Restart on
+ *   inactive / failed / unreachable → Start on, Stop+Restart off
+ *   everything else (error, unknown, …) → Start on, Stop+Restart off (let user try)
+ */
+function serviceButtonState(state: string): [boolean, boolean, boolean] {
+  if (state === "active" || state === "activating") {
+    return [false, true, true];
+  }
+  // inactive, failed, unreachable, error, unknown, or anything else
+  return [true, false, false];
 }
 
 function applyBackendStatus(info: StatusInfo): void {
@@ -75,11 +101,10 @@ function applyBackendStatus(info: StatusInfo): void {
   backendHttpIndicator.textContent = `HTTP :8766 · ${info.http_ok ? "reachable" : "unreachable"}`;
   backendHttpIndicator.className = "http-indicator " + (info.http_ok ? "reachable" : "unreachable");
 
-  const isRunning = state === "active" || state === "activating";
-  const isStopped = state === "inactive" || state === "failed";
-  btnBackendStart.disabled   = isRunning;
-  btnBackendStop.disabled    = isStopped;
-  btnBackendRestart.disabled = isStopped;
+  const [startOn, stopOn, restartOn] = serviceButtonState(state);
+  btnBackendStart.disabled   = !startOn;
+  btnBackendStop.disabled    = !stopOn;
+  btnBackendRestart.disabled = !restartOn;
 }
 
 function applyFrontendStatus(info: StatusInfo): void {
@@ -90,13 +115,12 @@ function applyFrontendStatus(info: StatusInfo): void {
   frontendHttpIndicator.textContent = `HTTP :5173 · ${info.http_ok ? "reachable" : "unreachable"}`;
   frontendHttpIndicator.className = "http-indicator " + (info.http_ok ? "reachable" : "unreachable");
 
-  const isRunning = state === "active" || state === "activating";
-  const isStopped = state === "inactive" || state === "failed";
-  btnFrontendStart.disabled   = isRunning;
-  btnFrontendStop.disabled    = isStopped;
-  btnFrontendRestart.disabled = isStopped;
+  const [startOn, stopOn, restartOn] = serviceButtonState(state);
+  btnFrontendStart.disabled   = !startOn;
+  btnFrontendStop.disabled    = !stopOn;
+  btnFrontendRestart.disabled = !restartOn;
 
-  // Gate link button on HTTP probe only — the link either works or it doesn't
+  // Gate link button on HTTP probe only
   btnLinkJarvis.disabled = !info.http_ok;
 }
 
@@ -105,19 +129,19 @@ function applyOpenclawStatus(info: StatusInfo): void {
   applyDot(openclawDot, state);
   openclawStateText.textContent = state;
 
-  openclawHttpIndicator.textContent = `HTTP :18789 · ${info.http_ok ? "reachable" : "unreachable"}`;
+  openclawHttpIndicator.textContent = `HTTP · ${info.http_ok ? "reachable" : "unreachable"}`;
   openclawHttpIndicator.className = "http-indicator " + (info.http_ok ? "reachable" : "unreachable");
 
-  const isRunning = state === "active" || state === "activating";
-  const isStopped = state === "inactive" || state === "failed";
-  btnOpenclawStart.disabled   = isRunning;
-  btnOpenclawStop.disabled    = isStopped;
-  btnOpenclawRestart.disabled = isStopped;
+  // OpenClaw is always remote — all three action buttons stay disabled.
+  // "Open…" link is enabled when reachable (state === "remote" / http_ok).
+  btnOpenclawStart.disabled   = true;
+  btnOpenclawStop.disabled    = true;
+  btnOpenclawRestart.disabled = true;
+  btnLinkOpenclaw.disabled    = !info.http_ok;
 }
 
 // ── Polling ───────────────────────────────────────────────────────────────────
 async function pollAll(): Promise<void> {
-  // Poll all three services in parallel; errors are independent
   await Promise.allSettled([
     (async () => {
       try {
@@ -126,6 +150,10 @@ async function pollAll(): Promise<void> {
       } catch (e) {
         backendStateText.textContent = "error";
         backendDot.className = "dot unknown";
+        // On error: let user attempt start; stop/restart make no sense
+        btnBackendStart.disabled   = false;
+        btnBackendStop.disabled    = true;
+        btnBackendRestart.disabled = true;
         console.error("backend status poll failed:", e);
       }
     })(),
@@ -136,6 +164,10 @@ async function pollAll(): Promise<void> {
       } catch (e) {
         frontendStateText.textContent = "error";
         frontendDot.className = "dot unknown";
+        btnFrontendStart.disabled   = false;
+        btnFrontendStop.disabled    = true;
+        btnFrontendRestart.disabled = true;
+        btnLinkJarvis.disabled      = true;
         console.error("frontend status poll failed:", e);
       }
     })(),
@@ -146,6 +178,10 @@ async function pollAll(): Promise<void> {
       } catch (e) {
         openclawStateText.textContent = "error";
         openclawDot.className = "dot unknown";
+        btnOpenclawStart.disabled   = true;
+        btnOpenclawStop.disabled    = true;
+        btnOpenclawRestart.disabled = true;
+        btnLinkOpenclaw.disabled    = true;
         console.error("openclaw status poll failed:", e);
       }
     })(),
@@ -248,42 +284,36 @@ btnFrontendRestart.addEventListener("click", async () => {
   setTimeout(async () => { await pollAll(); startPolling(); }, 300);
 });
 
-// ── OpenClaw button handlers ──────────────────────────────────────────────────
+// ── OpenClaw button handlers (remote — always show informative toast) ─────────
 btnOpenclawStart.addEventListener("click", async () => {
-  btnOpenclawStart.disabled = true;
   stopPolling();
   try {
     await invoke<string>("start_openclaw");
-    showToast(`openclaw · started · ${timestamp()}`);
   } catch (e) {
     const msg = typeof e === "string" ? e : String(e);
-    showToast(`openclaw · start failed: ${msg}`, true);
+    showToast(`openclaw · ${msg}`, true);
   }
   setTimeout(async () => { await pollAll(); startPolling(); }, 300);
 });
 
 btnOpenclawStop.addEventListener("click", async () => {
-  btnOpenclawStop.disabled = true;
   stopPolling();
   try {
     await invoke<string>("stop_openclaw");
-    showToast(`openclaw · stopped · ${timestamp()}`);
   } catch (e) {
     const msg = typeof e === "string" ? e : String(e);
-    showToast(`openclaw · stop failed: ${msg}`, true);
+    showToast(`openclaw · ${msg}`, true);
   }
   setTimeout(async () => { await pollAll(); startPolling(); }, 300);
 });
 
 btnOpenclawRestart.addEventListener("click", async () => {
-  btnOpenclawRestart.disabled = true;
   stopPolling();
   try {
     await invoke<string>("restart_openclaw");
-    showToast(`openclaw · restarted · ${timestamp()}`);
   } catch (e) {
     const msg = typeof e === "string" ? e : String(e);
-    showToast(`openclaw · restart failed: ${msg}`, true);
+    showToast(`openclaw · ${msg}`, true);
   }
   setTimeout(async () => { await pollAll(); startPolling(); }, 300);
 });
@@ -308,5 +338,43 @@ btnLinkOpenclaw.addEventListener("click", async () => {
   }
 });
 
+// ── OpenClaw target toggle ────────────────────────────────────────────────────
+function applyOpenclawTarget(info: OpenclawTargetInfo): void {
+  const isLocal = info.target === "local";
+  toggleLocal.classList.toggle("active", isLocal);
+  toggleRemote.classList.toggle("active", !isLocal);
+  openclawTargetUrl.textContent = `Target: ${info.url}`;
+}
+
+async function initOpenclawTargetToggle(): Promise<void> {
+  try {
+    const info = await invoke<OpenclawTargetInfo>("get_openclaw_target");
+    applyOpenclawTarget(info);
+  } catch (e) {
+    openclawTargetUrl.textContent = "Target: unknown";
+    console.error("get_openclaw_target failed:", e);
+  }
+}
+
+async function handleTargetSelect(target: "local" | "remote"): Promise<void> {
+  const currentlyActive = target === "local"
+    ? toggleLocal.classList.contains("active")
+    : toggleRemote.classList.contains("active");
+  if (currentlyActive) return;
+
+  try {
+    const info = await invoke<OpenclawTargetInfo>("set_openclaw_target", { target });
+    applyOpenclawTarget(info);
+    showToast(`openclaw · target = ${target} · restart backend to apply`);
+  } catch (e) {
+    const msg = typeof e === "string" ? e : String(e);
+    showToast(`openclaw · set target failed: ${msg}`, true);
+  }
+}
+
+toggleLocal.addEventListener("click", () => handleTargetSelect("local"));
+toggleRemote.addEventListener("click", () => handleTargetSelect("remote"));
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
+initOpenclawTargetToggle();
 pollAll().then(() => startPolling());

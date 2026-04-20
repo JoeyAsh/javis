@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import shutil
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
@@ -25,6 +28,68 @@ if TYPE_CHECKING:
     from integrations.openclaw.ws_client import OpenClawWSClient, StreamChunk
 
 logger = get_logger("openclaw_client")
+
+_CLI_PATH_CACHE: str | None = None
+
+
+def _resolve_cli_path() -> str | None:
+    """Return the absolute path to the OpenClaw CLI (cached).
+
+    Honors the ``OPENCLAW_CLI_PATH`` env-var override first, then falls back
+    to ``shutil.which("openclaw")`` which correctly resolves Windows
+    ``.cmd`` shims via PATHEXT.
+    """
+    global _CLI_PATH_CACHE
+    if _CLI_PATH_CACHE is not None:
+        return _CLI_PATH_CACHE
+    override = os.environ.get("OPENCLAW_CLI_PATH")
+    if override:
+        _CLI_PATH_CACHE = override
+        return override
+    resolved = shutil.which("openclaw")
+    if resolved:
+        _CLI_PATH_CACHE = resolved
+        return resolved
+    return None
+
+
+def _resolve_cli_argv() -> list[str] | None:
+    """Return the argv prefix for spawning the OpenClaw CLI.
+
+    On Windows, npm's global install ships a ``.cmd`` shim that delegates
+    to ``node openclaw.mjs``. Spawning the ``.cmd`` through
+    asyncio.create_subprocess_exec breaks on arguments containing newlines
+    because Windows' cmd.exe treats ``\\n`` as a command separator. To
+    avoid that, resolve to the underlying node script directly.
+    """
+    cli = _resolve_cli_path()
+    if cli is None:
+        return None
+    if sys.platform == "win32" and cli.lower().endswith((".cmd", ".bat")):
+        # Standard npm-global layout: <dir>\node_modules\openclaw\openclaw.mjs
+        cli_dir = os.path.dirname(cli)
+        script = os.path.join(cli_dir, "node_modules", "openclaw", "openclaw.mjs")
+        node = shutil.which("node")
+        if node and os.path.exists(script):
+            return [node, script]
+        logger.warning(
+            f"Could not locate node+script for OpenClaw CLI wrapper {cli!r}; "
+            "falling back to .cmd (may break on multiline messages)"
+        )
+    return [cli]
+
+
+def _cli_subprocess_env() -> dict[str, str]:
+    """Return an env dict for spawning the OpenClaw CLI.
+
+    Strips OPENCLAW_GATEWAY_URL/PORT so the CLI uses its own
+    ~/.openclaw/openclaw.json config and doesn't treat the env-var as a
+    URL override (which requires --token on the CLI).
+    """
+    env = dict(os.environ)
+    env.pop("OPENCLAW_GATEWAY_URL", None)
+    env.pop("OPENCLAW_GATEWAY_PORT", None)
+    return env
 
 
 @dataclass
@@ -303,12 +368,16 @@ class OpenClawClient:
         Returns:
             True if openclaw command is available.
         """
+        argv_base = _resolve_cli_argv()
+        if argv_base is None:
+            return False
         try:
             proc = await asyncio.create_subprocess_exec(
-                "openclaw",
+                *argv_base,
                 "--version",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_cli_subprocess_env(),
             )
             await proc.wait()
             return proc.returncode == 0
@@ -372,11 +441,21 @@ class OpenClawClient:
         think_level = self._normalize_thinking(thinking) if thinking else self._thinking
 
         logger.debug(f"Querying OpenClaw agent (session-id: {session})")
+        logger.debug(
+            f"query_agent raw: message_len={len(message)} message_preview={message[:60]!r} "
+            f"thinking={think_level!r} session={session!r}"
+        )
 
         # Use CLI for now; switch to REST when available. Flag name is
         # ``--session-id`` in the current OpenClaw CLI (>= 2026.4.x).
+        argv_base = _resolve_cli_argv()
+        if argv_base is None:
+            raise OpenClawNotInstalledError(
+                "OpenClaw CLI not found. Install with: npm install -g openclaw"
+            )
+
         cmd = [
-            "openclaw",
+            *argv_base,
             "agent",
             "--message",
             message,
@@ -388,10 +467,16 @@ class OpenClawClient:
         ]
 
         try:
+            sub_env = _cli_subprocess_env()
+            logger.debug(
+                f"CLI spawn: argv={cmd!r} parent_url={os.environ.get('OPENCLAW_GATEWAY_URL', '<unset>')!r} "
+                f"sub_env_has_url={'OPENCLAW_GATEWAY_URL' in sub_env} sub_env_url={sub_env.get('OPENCLAW_GATEWAY_URL', '<stripped>')!r}"
+            )
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=sub_env,
             )
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(),
@@ -508,8 +593,14 @@ class OpenClawClient:
         if not self._enabled:
             return False
 
+        argv_base = _resolve_cli_argv()
+        if argv_base is None:
+            raise OpenClawNotInstalledError(
+                "OpenClaw CLI not found. Install with: npm install -g openclaw"
+            )
+
         cmd = [
-            "openclaw",
+            *argv_base,
             "message",
             "send",
             "--channel",
@@ -525,6 +616,7 @@ class OpenClawClient:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_cli_subprocess_env(),
             )
             await asyncio.wait_for(proc.wait(), timeout=self._timeout)
             success = proc.returncode == 0
@@ -546,13 +638,18 @@ class OpenClawClient:
         if not self._enabled:
             return []
 
-        cmd = ["openclaw", "sessions", "list", "--json"]
+        argv_base = _resolve_cli_argv()
+        if argv_base is None:
+            return []
+
+        cmd = [*argv_base, "sessions", "list", "--json"]
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_cli_subprocess_env(),
             )
             stdout, _ = await asyncio.wait_for(
                 proc.communicate(),
@@ -592,9 +689,13 @@ class OpenClawClient:
         if not self._enabled:
             return []
 
+        argv_base = _resolve_cli_argv()
+        if argv_base is None:
+            return []
+
         session = session_id or self._session_id
         cmd = [
-            "openclaw",
+            *argv_base,
             "sessions",
             "history",
             "--session",
@@ -609,6 +710,7 @@ class OpenClawClient:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_cli_subprocess_env(),
             )
             stdout, _ = await asyncio.wait_for(
                 proc.communicate(),
@@ -635,14 +737,21 @@ class OpenClawClient:
         if not self._enabled:
             return False
 
+        argv_base = _resolve_cli_argv()
+        if argv_base is None:
+            raise OpenClawNotInstalledError(
+                "OpenClaw CLI not found. Install with: npm install -g openclaw"
+            )
+
         session = session_id or self._session_id
-        cmd = ["openclaw", "sessions", "reset", "--session", session]
+        cmd = [*argv_base, "sessions", "reset", "--session", session]
 
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_cli_subprocess_env(),
             )
             await asyncio.wait_for(proc.wait(), timeout=self._timeout)
             success = proc.returncode == 0

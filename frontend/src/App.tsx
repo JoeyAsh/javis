@@ -18,6 +18,7 @@ import { useMicStream } from './hooks/useMicStream';
 import { useConversationMode } from './hooks/useConversationMode';
 import { useSettings } from './hooks/useSettings';
 import { useAudioEngine } from './hooks/useAudioEngine';
+import { useTauriWindowSfx } from './hooks/useTauriWindowSfx';
 import { SfxProvider } from './hud/SfxContext';
 import { Scene } from './components/hud/Scene';
 import type { AppOrbState } from './types';
@@ -75,7 +76,11 @@ function AppInner(): ReactElement {
   } = useAudioEngine(
     orbOverride ?? (followUp.active && orbState === 'listening' ? 'follow_up' : orbState),
     connected,
+    settingsHook.settings.heartbeatEnabled,
   );
+
+  // Wire Tauri window maximize/minimize events to SFX.
+  useTauriWindowSfx({ playOneShot: sfxPlayOneShot });
 
   // Dev-override wins over live pipeline state. When override is null, the
   // orb follows the real pipeline (WebSocket → setOrbState). When a

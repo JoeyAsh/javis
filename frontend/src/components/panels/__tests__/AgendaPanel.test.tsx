@@ -126,13 +126,8 @@ describe('AgendaPanel', () => {
 
   it('does not import agendaMock (no mock dependency in module)', async () => {
     // Verify no agendaMock reference exists in AgendaPanel source.
-    const fs = await import('node:fs');
-    const path = await import('node:path');
-    const filePath = path.resolve(
-      __dirname,
-      '../AgendaPanel.tsx',
-    );
-    const source = fs.readFileSync(filePath, 'utf-8');
+    // We import the raw source text via Vite's ?raw suffix to avoid node:fs deps.
+    const source = await import('../AgendaPanel.tsx?raw').then((m) => m.default as string);
     expect(source).not.toContain('agendaMock');
   });
 });

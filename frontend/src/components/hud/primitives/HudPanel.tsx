@@ -7,7 +7,7 @@
  *
  * @example
  * ```tsx
- * <HudPanel focused icon={<IconNode />} title="TITLE" badge={<HudStatusBadge>LIVE</HudStatusBadge>}>
+ * <HudPanel focused icon={<IconNode />} title="TITLE" badge="LIVE">
  *   <p>Panel body</p>
  * </HudPanel>
  * ```
@@ -42,8 +42,22 @@ export interface HudPanelProps {
    * `icon` and `title` are both undefined.
    */
   header?: ReactNode;
-  /** Optional badge placed at the end of the header row. */
+  /**
+   * Short text label (e.g. "LIVE", "NEW") placed at the end of the header row.
+   * Rendered inside a `.badge` span with accent border + 8px font styling.
+   * For button/icon actions use the `actions` prop instead.
+   */
   badge?: ReactNode;
+  /**
+   * ReactNode for buttons or icon controls placed after the badge.
+   * Rendered as-is (no badge styling) inside `.hud-panel__header-actions`.
+   */
+  actions?: ReactNode;
+  /**
+   * When true, suppresses the decorative `.dots` element in the header.
+   * Defaults to false — dots are always rendered when the header row renders.
+   */
+  hideDots?: boolean;
   /**
    * Ref forwarded to the internal header wrapper element.
    * Used by Window to attach drag/swap-drag listeners to the header row.
@@ -68,6 +82,8 @@ export function HudPanel({
   title,
   header,
   badge,
+  actions,
+  hideDots = false,
   headerRef,
   onHeaderClick,
   className,
@@ -88,7 +104,8 @@ export function HudPanel({
     icon !== undefined ||
     title !== undefined ||
     header !== undefined ||
-    badge !== undefined;
+    badge !== undefined ||
+    actions !== undefined;
 
   return (
     <div className={panelClass} style={style}>
@@ -97,6 +114,10 @@ export function HudPanel({
       <HudLightTrace />
       <HudCornerBrackets />
 
+      {/* Side rails */}
+      <span className="hud-rail hud-rail--left" aria-hidden />
+      <span className="hud-rail hud-rail--right" aria-hidden />
+
       {/* Header row */}
       {hasHeader && (
         <div
@@ -104,7 +125,6 @@ export function HudPanel({
           onClick={onHeaderClick}
           className="hud-panel__header"
           style={{
-            position: 'relative',
             zIndex: 2,
             display: 'flex',
             alignItems: 'center',
@@ -122,18 +142,16 @@ export function HudPanel({
             fontFamily: 'var(--font)',
           }}
         >
-          {/* Icon in accent-bright .ix span, title in text-secondary .tt span */}
-          {(icon !== undefined || title !== undefined) ? (
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {icon !== undefined && <span className="ix">{icon}</span>}
-              {title !== undefined && <span className="tt" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>}
-            </div>
-          ) : header !== undefined ? (
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {header}
-            </div>
-          ) : null}
-          {badge !== undefined && <div style={{ flexShrink: 0 }}>{badge}</div>}
+          {icon !== undefined && <span className="ix">{icon}</span>}
+          {title !== undefined && <span className="tt">{title}</span>}
+          {header !== undefined && icon === undefined && title === undefined && (
+            <span className="tt">{header}</span>
+          )}
+          {!hideDots && <span className="dots"><i /><i /><i /></span>}
+          {badge !== undefined && <span className="badge">{badge}</span>}
+          {actions !== undefined && (
+            <span className="hud-panel__header-actions">{actions}</span>
+          )}
         </div>
       )}
 

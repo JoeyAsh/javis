@@ -39,7 +39,9 @@ export function useOrb(
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    orbRef.current = createOrb(canvasRef.current);
+    // Pass alpha: true so the Scene background (grid, stars) shows through
+    // the particle gaps in the classic Three.js orb.
+    orbRef.current = createOrb(canvasRef.current, { alpha: true });
 
     // Capture the GL context that the orb engine bound to the canvas.
     // `getContext` returns the already-created context (not a new one) when

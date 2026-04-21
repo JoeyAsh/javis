@@ -53,14 +53,30 @@ function createGlowTexture(): THREE.Texture {
   return tex;
 }
 
-export function createOrb(canvas: HTMLCanvasElement): Orb {
+export interface CreateOrbOptions {
+  /** When true, renderer uses a transparent canvas background (alpha channel enabled). */
+  alpha?: boolean;
+}
+
+export function createOrb(canvas: HTMLCanvasElement, options: CreateOrbOptions = {}): Orb {
+  const { alpha = false } = options;
   let destroyed = false;
   const N = 2000;
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha,
+    premultipliedAlpha: !alpha,
+  });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setClearColor(0x050508, 1);
+  // When alpha is enabled, clear to transparent so the scene shows through.
+  if (alpha) {
+    renderer.setClearColor(0x000000, 0);
+  } else {
+    renderer.setClearColor(0x050508, 1);
+  }
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);

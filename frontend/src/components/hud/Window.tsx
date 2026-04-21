@@ -393,8 +393,8 @@ export function Window({
     .filter(Boolean)
     .join(' ');
 
-  // Badge area: pin + reset + max/min buttons in the header's right slot.
-  const badgeContent = (
+  // Header actions: pin + reset + max/min buttons in the header's right slot.
+  const headerActions = (
     <span className="window-header-buttons" data-no-drag>
       {/* Pin button */}
       <HudIconButton
@@ -454,7 +454,7 @@ export function Window({
         focused={isFocused}
         icon={icon}
         title={title}
-        badge={badgeContent}
+        actions={headerActions}
         headerRef={headerRef}
         onHeaderClick={onHeaderClick}
         style={{ height: '100%', display: 'flex', flexDirection: 'column' } as CSSProperties}

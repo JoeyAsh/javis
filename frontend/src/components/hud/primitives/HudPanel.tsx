@@ -31,19 +31,12 @@ export interface HudPanelProps {
   variant?: HudPanelVariant;
   /**
    * Icon node rendered in the header's `.ix` span (accent-bright color).
-   * Mutually exclusive with the legacy `header` prop — prefer `icon` + `title`.
    */
   icon?: ReactNode;
   /**
    * Title string rendered in the header's `.tt` span (text-secondary color).
    */
   title?: ReactNode;
-  /**
-   * @deprecated Pass `icon` and `title` separately instead.
-   * Legacy catch-all header node — rendered as-is inside the header row when
-   * `icon` and `title` are both undefined.
-   */
-  header?: ReactNode;
   /**
    * Short text label (e.g. "LIVE", "NEW") placed at the end of the header row.
    * Rendered inside a `.badge` span with accent border + 8px font styling.
@@ -82,7 +75,6 @@ export function HudPanel({
   variant = 'default',
   icon,
   title,
-  header,
   badge,
   actions,
   hideDots = false,
@@ -105,7 +97,6 @@ export function HudPanel({
   const hasHeader =
     icon !== undefined ||
     title !== undefined ||
-    header !== undefined ||
     badge !== undefined ||
     actions !== undefined;
 
@@ -124,30 +115,10 @@ export function HudPanel({
         <div
           ref={headerRef}
           onClick={onHeaderClick}
-          className="hud-panel__header"
-          style={{
-            zIndex: 2,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '0 10px',
-            height: 26,
-            minHeight: 26,
-            borderBottom: '1px solid var(--border)',
-            background: 'rgba(76,168,232,.04)',
-            userSelect: 'none',
-            cursor: 'grab',
-            fontSize: 9,
-            letterSpacing: 2,
-            textTransform: 'uppercase' as const,
-            fontFamily: 'var(--font)',
-          }}
+          className="hud-panel__header hud-panel__header--bar"
         >
           {icon !== undefined && <span className="ix">{icon}</span>}
           {title !== undefined && <span className="tt">{title}</span>}
-          {header !== undefined && icon === undefined && title === undefined && (
-            <span className="tt">{header}</span>
-          )}
           {!hideDots && <span className="dots"><i /><i /><i /></span>}
           {badge !== undefined && <span className="badge">{badge}</span>}
           {actions !== undefined && (
@@ -158,7 +129,7 @@ export function HudPanel({
 
       {/* Content — above decoration */}
       {children !== undefined && (
-        <div style={{ position: 'relative', zIndex: 2 }}>{children}</div>
+        <div className="hud-panel__body">{children}</div>
       )}
     </div>
   );

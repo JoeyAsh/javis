@@ -36,16 +36,16 @@ describe('HudPanel — children (content slot)', () => {
 });
 
 describe('HudPanel — header slot', () => {
-  it('renders header content when header prop is provided', () => {
-    render(<HudPanel header={<span>Window Title</span>} />);
+  it('renders header content when title prop is provided', () => {
+    render(<HudPanel title={<span>Window Title</span>} />);
     expect(screen.getByText('Window Title')).toBeInTheDocument();
   });
 
-  it('does NOT render header row when neither header nor badge is provided', () => {
+  it('does NOT render header row when neither title nor badge nor actions is provided', () => {
     const { container } = render(<HudPanel />);
-    // The header row has style cursor:grab — look for absence of that element
-    const grabEl = container.querySelector('[style*="cursor: grab"], [style*="cursor:grab"]');
-    expect(grabEl).toBeNull();
+    // The header bar row carries the .hud-panel__header--bar class when rendered.
+    const headerEl = container.querySelector('.hud-panel__header--bar');
+    expect(headerEl).toBeNull();
   });
 });
 
@@ -55,10 +55,10 @@ describe('HudPanel — badge slot', () => {
     expect(screen.getByText('LIVE')).toBeInTheDocument();
   });
 
-  it('renders both header and badge when both are provided', () => {
+  it('renders both title and badge when both are provided', () => {
     render(
       <HudPanel
-        header={<span>Title</span>}
+        title={<span>Title</span>}
         badge={<span>Status</span>}
       />,
     );

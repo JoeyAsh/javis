@@ -2,8 +2,8 @@
  * JARVIS Web Audio Engine.
  *
  * Graph topology:
- *   one-shots   ──→ sfxGain ──→ masterGain ──→ destination
- *   duckable loops → loopGain ──↗
+ *   one-shots      → sfxGain → masterGain → destination
+ *   duckable loops → loopGain → sfxGain ──↗
  *
  * Construction suspends the AudioContext (browser autoplay policy). It is
  * resumed on the first user gesture via `resumeContext()`.
@@ -50,9 +50,10 @@ export class AudioEngine {
     this.loopGain = this.ctx.createGain();
     this.loopGain.gain.value = 1;
 
-    // Signal chain
+    // Signal chain: loopGain → sfxGain → masterGain → destination
+    // This ensures setMuted (which zeros sfxGain) silences duckable loops too.
     this.sfxGain.connect(this.masterGain);
-    this.loopGain.connect(this.masterGain);
+    this.loopGain.connect(this.sfxGain);
     this.masterGain.connect(this.ctx.destination);
 
     this.reducedMotion =

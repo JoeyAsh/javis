@@ -26,6 +26,31 @@
 
 .hud-panel__header { position: relative; }
 
+/* Static bar styles — extracted from HudPanel.tsx inline style (B3) */
+.hud-panel__header--bar {
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  height: 26px;
+  min-height: 26px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(76, 168, 232, 0.04);
+  user-select: none;
+  cursor: grab;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-family: var(--font);
+}
+
+/* Content wrapper above decoration layers */
+.hud-panel__body {
+  position: relative;
+  z-index: 2;
+}
+
 .hud-panel__header .ix { color: var(--accent-bright); font-weight: 500; opacity: .8; }
 
 .hud-panel__header .tt {

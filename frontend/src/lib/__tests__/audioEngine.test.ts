@@ -4,8 +4,8 @@
  * All Web Audio API calls are mocked; no real audio hardware is used.
  *
  * Topology under test:
- *   one-shots   → sfxGain → masterGain → destination
- *   duckable loops → loopGain → masterGain → destination
+ *   one-shots      → sfxGain → masterGain → destination
+ *   duckable loops → loopGain → sfxGain → masterGain → destination
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -203,10 +203,12 @@ describe('AudioEngine — constructor', () => {
     expect(ctxRecord.masterGainNode).toBeDefined();
   });
 
-  it('wires sfxGain and loopGain into masterGain → destination', async () => {
+  it('wires loopGain → sfxGain → masterGain → destination', async () => {
     await freshEngine('suspended');
     expect(ctxRecord.sfxGainNode.connect).toHaveBeenCalledWith(ctxRecord.masterGainNode);
-    expect(ctxRecord.loopGainNode.connect).toHaveBeenCalledWith(ctxRecord.masterGainNode);
+    // Bug fix (Phase B): loopGain must connect to sfxGain (not masterGain) so
+    // setMuted() silences duckable loops via the sfxGain zero.
+    expect(ctxRecord.loopGainNode.connect).toHaveBeenCalledWith(ctxRecord.sfxGainNode);
     expect(ctxRecord.masterGainNode.connect).toHaveBeenCalledWith(expect.objectContaining({}));
   });
 });

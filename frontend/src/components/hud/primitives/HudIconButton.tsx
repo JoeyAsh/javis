@@ -5,7 +5,7 @@
  * Accepts any ReactNode as icon child. No text label — use `aria-label`.
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactElement, ReactNode } from 'react';
 import { useSfx } from '../../../hud/SfxContext';
 import '../hud.css';
@@ -38,6 +38,15 @@ export function HudIconButton({
 }: HudIconButtonProps): ReactElement {
   const { playOneShot } = useSfx();
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup: cancel any pending hover timer on unmount to prevent stale fires.
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current !== null) {
+        clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleClick = useCallback(
     (e: ReactMouseEvent<HTMLButtonElement>) => {

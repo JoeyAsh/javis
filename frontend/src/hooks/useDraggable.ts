@@ -14,6 +14,18 @@ export interface UseDraggableArgs {
   onPointerMove?: (clientX: number, clientY: number) => void;
   /** Optional callback fired once when the drag ends (pointerup / cancel). */
   onDragEnd?: () => void;
+  /**
+   * Optional callback fired once when a drag starts (pointer-down and drag
+   * begins). Used by callers to trigger SFX without coupling the hook to any
+   * audio subsystem directly.
+   */
+  onDragStart?: () => void;
+  /**
+   * Optional callback fired on pointerup AND pointercancel (drag end of any
+   * kind). Distinct from `onDragEnd` which fires after position commit only.
+   * Used by callers to trigger SFX for both committed and cancelled drags.
+   */
+  onDragStop?: () => void;
   /** Disable drag handling entirely. */
   disabled?: boolean;
   /** Getter for the current top-left position of the draggable element. */
@@ -39,6 +51,8 @@ export function useDraggable<T extends HTMLElement>({
   onDrag,
   onPointerMove,
   onDragEnd,
+  onDragStart,
+  onDragStop,
   disabled = false,
   getPosition,
 }: UseDraggableArgs): UseDraggableResult<T> {
@@ -80,6 +94,7 @@ export function useDraggable<T extends HTMLElement>({
         // older engines may throw; safe to ignore
       }
       e.preventDefault();
+      if (onDragStart) onDragStart();
     };
 
     const handlePointerMove = (e: PointerEvent): void => {
@@ -120,8 +135,18 @@ export function useDraggable<T extends HTMLElement>({
       if (onDragEnd) onDragEnd();
     };
 
-    const onPointerUp = (e: PointerEvent): void => endDrag(e, true);
-    const onPointerCancel = (e: PointerEvent): void => endDrag(e, false);
+    const onPointerUp = (e: PointerEvent): void => {
+      if (draggingRef.current) {
+        if (onDragStop) onDragStop();
+      }
+      endDrag(e, true);
+    };
+    const onPointerCancel = (e: PointerEvent): void => {
+      if (draggingRef.current) {
+        if (onDragStop) onDragStop();
+      }
+      endDrag(e, false);
+    };
 
     el.addEventListener('pointerdown', onPointerDown);
     el.addEventListener('pointermove', handlePointerMove);
@@ -138,7 +163,7 @@ export function useDraggable<T extends HTMLElement>({
         rafRef.current = null;
       }
     };
-  }, [disabled, flushDrag, getPosition, onMove, onPointerMove, onDragEnd]);
+  }, [disabled, flushDrag, getPosition, onMove, onPointerMove, onDragEnd, onDragStart, onDragStop]);
 
   return {
     handleRef,

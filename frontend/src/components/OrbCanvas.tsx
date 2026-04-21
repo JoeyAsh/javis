@@ -40,6 +40,16 @@ function toEngineState(s: AppOrbState): OrbState {
  * a translucent amber overlay (`--orb-working`) is composited on top via
  * `mix-blend-mode: color` so the particle cloud picks up a warm tint that
  * visually distinguishes tool execution from pure cognitive thinking (blue).
+ *
+ * ## Canvas transparency
+ *
+ * The Three.js WebGL context inside `lib/orb.ts` is created without
+ * `alpha: true`, which means the canvas backing store is opaque regardless
+ * of what clear colour is set. The `glRef` exposed by `useOrb` is captured
+ * here for future use once `lib/orb.ts` is updated to pass `alpha: true` to
+ * `WebGLRenderer`. At that point, calling `gl.clearColor(0, 0, 0, 0)` after
+ * engine init will make the inter-particle space fully transparent so the
+ * Scene background shows through.
  */
 export function OrbCanvas({
   orbState,
@@ -48,7 +58,23 @@ export function OrbCanvas({
   followUp,
 }: OrbCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const orbRef = useOrb(canvasRef);
+  const { orbRef, glRef } = useOrb(canvasRef);
+
+  // Post-init: attempt to configure the clear colour to transparent so the
+  // Hypermodern Scene background is visible between particles.
+  // NOTE: This has no visual effect while `lib/orb.ts` creates the WebGL
+  // context with `alpha: false` (the current default). The Three.js renderer
+  // re-applies its own clear colour (0x050508 @ 1.0) on every frame, so the
+  // `gl.clearColor` call below is overridden immediately. True transparency
+  // requires updating the `WebGLRenderer` constructor call in `lib/orb.ts`
+  // to pass `{ alpha: true, premultipliedAlpha: false }`. This effect is
+  // intentionally left in place so that it activates automatically once that
+  // upstream change lands — without requiring another touch to OrbCanvas.
+  useEffect(() => {
+    const gl = glRef.current;
+    if (!gl) return;
+    gl.clearColor(0, 0, 0, 0);
+  }, [glRef]);
 
   useEffect(() => {
     orbRef.current?.setState(toEngineState(orbState));
@@ -74,7 +100,7 @@ export function OrbCanvas({
   const isWorking = orbState === 'working';
 
   return (
-    <div className="fixed inset-0 w-screen h-screen" style={{ zIndex: 0 }}>
+    <div className="fixed inset-0 w-screen h-screen" style={{ zIndex: 1 }}>
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       {/* Amber tint overlay — visible only in `working` state. Uses
           mix-blend-mode: color to tint the canvas particles without

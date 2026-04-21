@@ -7,6 +7,7 @@ import { OrbDevMenu } from './components/OrbDevMenu';
 import { HudWindows } from './components/hud/HudWindows';
 import { SettingsOverlay } from './components/SettingsOverlay';
 import { PushToTalkButton } from './components/PushToTalkButton';
+import { AudioMuteToggle } from './components/AudioMuteToggle';
 import {
   WindowManagerProvider,
   useWindowManager,
@@ -16,6 +17,10 @@ import { useAudioAnalyser } from './hooks/useAudioAnalyser';
 import { useMicStream } from './hooks/useMicStream';
 import { useConversationMode } from './hooks/useConversationMode';
 import { useSettings } from './hooks/useSettings';
+import { useAudioEngine } from './hooks/useAudioEngine';
+import { useTauriWindowSfx } from './hooks/useTauriWindowSfx';
+import { SfxProvider } from './hud/SfxContext';
+import { Scene } from './components/hud/Scene';
 import type { AppOrbState } from './types';
 
 /**
@@ -45,6 +50,7 @@ function AppInner(): ReactElement {
     registerStopAudio,
     notifyAudioPlaying,
     currentToolSummary,
+    connected,
   } = useWebSocket();
   const { analyser, isSpeaking, enqueue, stopAll } = useAudioAnalyser();
 
@@ -61,6 +67,20 @@ function AppInner(): ReactElement {
   }, [isSpeaking, notifyAudioPlaying]);
   const { resetAll } = useWindowManager();
   const followUp = useConversationMode();
+
+  // SFX engine — manages Web Audio lifecycle and loop state.
+  const {
+    isMuted: sfxMuted,
+    toggleMute: toggleSfxMute,
+    playOneShot: sfxPlayOneShot,
+  } = useAudioEngine(
+    orbOverride ?? (followUp.active && orbState === 'listening' ? 'follow_up' : orbState),
+    connected,
+    settingsHook.settings.heartbeatEnabled,
+  );
+
+  // Wire Tauri window maximize/minimize events to SFX.
+  useTauriWindowSfx({ playOneShot: sfxPlayOneShot });
 
   // Dev-override wins over live pipeline state. When override is null, the
   // orb follows the real pipeline (WebSocket → setOrbState). When a
@@ -125,159 +145,176 @@ function AppInner(): ReactElement {
   const panelOpacityCssVar = { '--panel-opacity': settingsHook.settings.panelOpacity } as React.CSSProperties;
 
   return (
-    <div
-      className="fixed inset-0 w-screen h-screen overflow-hidden"
-      style={{ background: 'var(--bg)', ...panelOpacityCssVar }}
-    >
-      {/* Orb canvas — backdrop, z-index 0 */}
-      <OrbErrorBoundary>
-        <OrbCanvas
-          orbState={effectiveOrbState}
-          analyser={analyser}
-          mockMode={orbOverride}
-          followUp={followUp}
-        />
-      </OrbErrorBoundary>
-
-      {/* Floating window HUD — z-index 10 */}
-      <HudWindows idle={idle} />
-
-      {/* Top bar — z-index 30 */}
-      <HudTopBar
-        idle={idle}
-        onToggleIdle={() => setIdle((v) => !v)}
-        onResetLayout={handleResetLayout}
-        onOpenSettings={handleOpenSettings}
-      />
-
-      {/* Orb dev menu — forced state override for testing + STOP button */}
+    <SfxProvider playOneShot={sfxPlayOneShot}>
       <div
-        style={{
-          position: 'fixed',
-          top: 4,
-          right: 240,
-          zIndex: 40,
-        }}
+        className="fixed inset-0 w-screen h-screen overflow-hidden"
+        style={{ background: 'var(--bg)', ...panelOpacityCssVar }}
       >
-        <OrbDevMenu
-          override={orbOverride}
-          onSet={setOrbOverride}
-          onStop={sendCancelTurn}
+        {/* Animated scene background — z-index 0 (--z-orb) */}
+        <Scene grid scan stars />
+
+        {/* Orb canvas — backdrop, z-index 0 */}
+        <OrbErrorBoundary>
+          <OrbCanvas
+            orbState={effectiveOrbState}
+            analyser={analyser}
+            mockMode={orbOverride}
+            followUp={followUp}
+          />
+        </OrbErrorBoundary>
+
+        {/* Floating window HUD — z-index 10 */}
+        <HudWindows idle={idle} />
+
+        {/* Top bar — z-index 30 */}
+        <HudTopBar
+          idle={idle}
+          onToggleIdle={() => setIdle((v) => !v)}
+          onResetLayout={handleResetLayout}
+          onOpenSettings={handleOpenSettings}
         />
-      </div>
 
-      {/* Mute button — top right, nudged left of the top-bar controls */}
-      <button
-        onClick={() => setMuted((m) => !m)}
-        aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
-        style={{
-          position: 'fixed',
-          top: 4,
-          right: 180,
-          width: 28,
-          height: 28,
-          zIndex: 40,
-          background: 'rgba(13,13,20,0.6)',
-          border: '1px solid var(--border)',
-          borderRadius: 4,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: muted ? 'var(--text-muted)' : 'var(--accent)',
-          transition: 'color 200ms, border-color 200ms',
-        }}
-      >
-        {muted ? (
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="1" y1="1" x2="23" y2="23" />
-            <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-            <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-        ) : (
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-        )}
-      </button>
-
-      {/* Settings overlay — z-index 50, above everything */}
-      <SettingsOverlay
-        open={settingsOpen}
-        onClose={() => { setSettingsOpen(false); }}
-        settingsHook={settingsHook}
-      />
-
-      {/* Push-to-Talk button — rendered only when enabled in settings */}
-      <PushToTalkButton
-        enabled={settingsHook.settings.pushToTalk}
-        wsRef={wsRef}
-      />
-
-      {/* Bottom center: status text + JARVIS label */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 16,
-          left: 0,
-          right: 0,
-          zIndex: 20,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 4,
-          pointerEvents: 'none',
-        }}
-      >
-        <span
+        {/* Orb dev menu — forced state override for testing + STOP button */}
+        <div
           style={{
-            fontSize: 11,
-            color: 'var(--text-secondary)',
-            fontFamily: 'var(--font)',
-            letterSpacing: '0.1em',
-            minHeight: '1.4em',
-            transition: 'opacity 200ms',
-            opacity: statusLabel ? 1 : 0,
+            position: 'fixed',
+            top: 4,
+            right: 240,
+            zIndex: 40,
           }}
         >
-          {statusLabel}
-        </span>
-        <span
+          <OrbDevMenu
+            override={orbOverride}
+            onSet={setOrbOverride}
+            onStop={sendCancelTurn}
+          />
+        </div>
+
+        {/* Mic mute button — top right, nudged left of the top-bar controls */}
+        <button
+          onClick={() => setMuted((m) => !m)}
+          aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
           style={{
-            fontSize: 9,
-            color: 'var(--text-muted)',
-            fontFamily: 'var(--font)',
-            textTransform: 'uppercase',
-            letterSpacing: '6px',
+            position: 'fixed',
+            top: 4,
+            right: 180,
+            width: 28,
+            height: 28,
+            zIndex: 40,
+            background: 'rgba(13,13,20,0.6)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--r-2)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: muted ? 'var(--text-muted)' : 'var(--accent)',
+            transition: 'color 200ms, border-color 200ms',
           }}
         >
-          JARVIS
-        </span>
+          {muted ? (
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="1" y1="1" x2="23" y2="23" />
+              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          ) : (
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          )}
+        </button>
+
+        {/* SFX mute toggle — placed left of the mic mute button */}
+        <div
+          style={{
+            position: 'fixed',
+            top: 4,
+            right: 212,
+            zIndex: 40,
+          }}
+        >
+          <AudioMuteToggle isMuted={sfxMuted} onToggle={toggleSfxMute} />
+        </div>
+
+        {/* Settings overlay — z-index 50, above everything */}
+        <SettingsOverlay
+          open={settingsOpen}
+          onClose={() => { setSettingsOpen(false); }}
+          settingsHook={settingsHook}
+        />
+
+        {/* Push-to-Talk button — rendered only when enabled in settings */}
+        <PushToTalkButton
+          enabled={settingsHook.settings.pushToTalk}
+          wsRef={wsRef}
+        />
+
+        {/* Bottom center: status text + JARVIS label */}
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 16,
+            left: 0,
+            right: 0,
+            zIndex: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 4,
+            pointerEvents: 'none',
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              color: 'var(--text-secondary)',
+              fontFamily: 'var(--font)',
+              letterSpacing: '0.1em',
+              minHeight: '1.4em',
+              transition: 'opacity 200ms',
+              opacity: statusLabel ? 1 : 0,
+            }}
+          >
+            {statusLabel}
+          </span>
+          <span
+            style={{
+              fontSize: 9,
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font)',
+              textTransform: 'uppercase',
+              letterSpacing: '6px',
+            }}
+          >
+            JARVIS
+          </span>
+        </div>
       </div>
-    </div>
+    </SfxProvider>
   );
 }
 

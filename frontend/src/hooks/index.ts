@@ -11,8 +11,13 @@ export type { SystemMetricsLive, MetricKey, MetricHistories } from './useSystemM
 export { useConversationMode } from './useConversationMode';
 export type { ConversationModeState } from './useConversationMode';
 export { useSettings } from './useSettings';
-export type { JarvisSettings, UseSettingsReturn } from './useSettings';
+export type { JarvisSettings, UseSettingsReturn, OrbVariant } from './useSettings';
+export { useLocation } from './useLocation';
+export type { LocationCoords } from './useLocation';
+export { useTauriWindowSfx } from './useTauriWindowSfx';
 export { useLogStream } from './useLogStream';
 export type { UseLogStreamReturn } from './useLogStream';
 export { useTurnTimings } from './useTurnTimings';
 export type { UseTurnTimingsReturn } from './useTurnTimings';
+export { useAudioEngine } from './useAudioEngine';
+export type { UseAudioEngineReturn } from './useAudioEngine';

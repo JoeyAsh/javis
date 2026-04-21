@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   CSSProperties,
   MouseEvent as ReactMouseEvent,
@@ -14,6 +14,11 @@ import { slotAtPoint } from './SlotGrid';
 import { useDraggable } from '../../hooks/useDraggable';
 import { useResizable } from '../../hooks/useResizable';
 import { useSwapDrag } from '../../hooks/useSwapDrag';
+import { HudPanel } from './primitives/HudPanel';
+import { HudIconButton } from './primitives/HudIconButton';
+import { useSfx } from '../../hud/SfxContext';
+import './hud.css';
+import './Window.css';
 
 export interface WindowProps {
   id: PanelId;
@@ -37,6 +42,27 @@ export interface WindowProps {
 }
 
 const DOUBLE_CLICK_MS = 300;
+
+/** Pin icon SVG — toggle between pinned (filled) and unpinned (stroke only). */
+function PinIcon({ active }: { active: boolean }): ReactElement {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill={active ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+    </svg>
+  );
+}
 
 export function Window({
   id,
@@ -65,6 +91,10 @@ export function Window({
     snapWindow,
   } = useWindowManager();
   const state = windows[id];
+  const { playOneShot } = useSfx();
+
+  // Pinned state: when pinned the window stays visible regardless of idle mode.
+  const [pinned, setPinned] = useState(false);
 
   // Live-drag position / size (only used while maximized & actively dragging).
   const [livePos, setLivePos] = useState<{ x: number; y: number } | null>(null);
@@ -72,6 +102,26 @@ export function Window({
   // True while a swap-drag has entered its "above everything" state, so we can
   // dim the in-place window representation to avoid the illusion of two copies.
   const [swapLifting, setSwapLifting] = useState(false);
+
+  // Track whether the window is expanded (maximized) for SFX purposes.
+  const prevMaximizedRef = useRef(state.maximized);
+
+  // Fire expand/collapse SFX when maximized state changes (pointer-initiated).
+  const lastPointerEventRef = useRef<number>(0);
+  const SFX_GUARD_MS = 100; // Only fire if a pointer event happened recently.
+
+  useEffect(() => {
+    const wasMaximized = prevMaximizedRef.current;
+    const isMaximized = state.maximized;
+    prevMaximizedRef.current = isMaximized;
+
+    if (wasMaximized === isMaximized) return;
+
+    const now = performance.now();
+    if (now - lastPointerEventRef.current < SFX_GUARD_MS) {
+      playOneShot(isMaximized ? 'expand' : 'collapse');
+    }
+  }, [state.maximized, playOneShot]);
 
   // Resolve current rendered rect from state (without live overrides).
   const rect = useMemo(() => {
@@ -132,11 +182,21 @@ export function Window({
     setActiveSnap(null);
   }, [setActiveSnap]);
 
+  const handleDragStartSfx = useCallback(() => {
+    playOneShot('drag_start');
+  }, [playOneShot]);
+
+  const handleDragStopSfx = useCallback(() => {
+    playOneShot('drag_end');
+  }, [playOneShot]);
+
   const { handleRef: dragRef } = useDraggable<HTMLDivElement>({
     onMove: handleDragMove,
     onDrag: handleLiveDrag,
     onPointerMove: handlePointerMoveDuringDrag,
     onDragEnd: handleDragEnd,
+    onDragStart: handleDragStartSfx,
+    onDragStop: handleDragStopSfx,
     getPosition,
     // Free drag is only valid when floating.
     disabled: disabled || !state.maximized,
@@ -155,9 +215,14 @@ export function Window({
     setLiveSize({ w, h });
   }, []);
 
+  const handleResizeEndSfx = useCallback(() => {
+    playOneShot('resize');
+  }, [playOneShot]);
+
   const { handleRef: resizeRef } = useResizable<HTMLDivElement>({
     onResize: handleResize,
     onResizing: handleLiveResize,
+    onResizeEnd: handleResizeEndSfx,
     getSize,
     disabled: disabled || !state.maximized,
     minW: 180,
@@ -221,6 +286,7 @@ export function Window({
   const onPointerDownCapture = useCallback(
     (_e: ReactPointerEvent<HTMLDivElement>): void => {
       if (disabled) return;
+      lastPointerEventRef.current = performance.now();
       if (focusedId !== id) focus(id);
     },
     [disabled, focus, focusedId, id],
@@ -232,6 +298,7 @@ export function Window({
     if (disabled) return;
     const now = performance.now();
     if (now - lastClickRef.current < DOUBLE_CLICK_MS) {
+      lastPointerEventRef.current = performance.now();
       toggleMaximize(id);
       lastClickRef.current = 0;
     } else {
@@ -240,11 +307,16 @@ export function Window({
   }, [disabled, id, toggleMaximize]);
 
   // ===== Header buttons =====
-  const onMaxMinBtn = useCallback(() => {
-    if (disabled) return;
-    if (state.maximized) minimize(id);
-    else maximize(id);
-  }, [disabled, id, maximize, minimize, state.maximized]);
+  const onMaxMinBtn = useCallback(
+    (e: ReactMouseEvent<HTMLButtonElement>) => {
+      if (disabled) return;
+      e.stopPropagation();
+      lastPointerEventRef.current = performance.now();
+      if (state.maximized) minimize(id);
+      else maximize(id);
+    },
+    [disabled, id, maximize, minimize, state.maximized],
+  );
 
   const onResetBtn = useCallback(
     (e: ReactMouseEvent<HTMLButtonElement>): void => {
@@ -252,6 +324,22 @@ export function Window({
       resetWindow(id);
     },
     [id, resetWindow],
+  );
+
+  // ===== Pin button =====
+  const onPinBtn = useCallback(
+    (e: ReactMouseEvent<HTMLButtonElement>) => {
+      if (disabled) return;
+      e.stopPropagation();
+      lastPointerEventRef.current = performance.now();
+      setPinned((prev) => {
+        const next = !prev;
+        // SFX guard: pointer event was recent (button click itself counts).
+        playOneShot(next ? 'pin' : 'unpin');
+        return next;
+      });
+    },
+    [disabled, playOneShot],
   );
 
   const isFocused = focusedId === id;
@@ -289,16 +377,70 @@ export function Window({
   if (!state.visible) return <></>;
 
   const isSettling = settlingIds.has(id);
+
+  // Apply idle only when not pinned.
+  const isIdle = disabled && !pinned;
+
   const rootClasses = [
     'window',
     `window--${mode}`,
     state.maximized ? 'window--floating' : 'window--docked',
     isFocused ? 'window--focused' : 'window--unfocused',
-    disabled ? 'window--idle' : '',
+    isIdle ? 'window--idle' : '',
     isSettling ? 'window--settling' : '',
+    'hud-win-in',
   ]
     .filter(Boolean)
     .join(' ');
+
+  // Header actions: pin + reset + max/min buttons in the header's right slot.
+  const headerActions = (
+    <span className="window-header-buttons" data-no-drag>
+      {/* Pin button */}
+      <HudIconButton
+        aria-label={pinned ? 'Unpin window' : 'Pin window'}
+        active={pinned}
+        onClick={onPinBtn}
+        disabled={disabled && !pinned}
+      >
+        <PinIcon active={pinned} />
+      </HudIconButton>
+      {/* Reset position */}
+      <button
+        type="button"
+        className="window-header-btn window-header-btn--reset"
+        onClick={onResetBtn}
+        aria-label="Reset window position"
+        title="Reset position"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          focusable="false"
+        >
+          <path d="M3 12a9 9 0 1 0 3-6.7" />
+          <polyline points="3 3 3 8 8 8" />
+        </svg>
+      </button>
+      {/* Maximize / minimize */}
+      <button
+        type="button"
+        className="window-header-btn"
+        onClick={onMaxMinBtn}
+        aria-label={state.maximized ? 'Minimize window' : 'Maximize window'}
+        title={state.maximized ? 'Minimize' : 'Maximize'}
+      >
+        {state.maximized ? '⬓' : '⛶'}
+      </button>
+    </span>
+  );
 
   return (
     <div
@@ -308,53 +450,17 @@ export function Window({
       aria-label={title}
       onPointerDownCapture={onPointerDownCapture}
     >
-      <div
-        ref={headerRef}
-        className="window-header"
-        onClick={onHeaderClick}
+      <HudPanel
+        focused={isFocused}
+        icon={icon}
+        title={title}
+        actions={headerActions}
+        headerRef={headerRef}
+        onHeaderClick={onHeaderClick}
+        style={{ height: '100%', display: 'flex', flexDirection: 'column' } as CSSProperties}
       >
-        {icon !== undefined && <span className="window-header-icon">{icon}</span>}
-        <span className="window-header-title" title={title}>
-          {title}
-        </span>
-        <span className="window-header-spacer" />
-        <span className="window-header-buttons" data-no-drag>
-          <button
-            type="button"
-            className="window-header-btn window-header-btn--reset"
-            onClick={onResetBtn}
-            aria-label="Reset window position"
-            title="Reset position"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-              focusable="false"
-            >
-              <path d="M3 12a9 9 0 1 0 3-6.7" />
-              <polyline points="3 3 3 8 8 8" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="window-header-btn"
-            onClick={onMaxMinBtn}
-            aria-label={state.maximized ? 'Minimize window' : 'Maximize window'}
-            title={state.maximized ? 'Minimize' : 'Maximize'}
-          >
-            {state.maximized ? '\u2B13' : '\u26F6'}
-          </button>
-        </span>
-      </div>
-
-      <div className="window-body">{children(mode)}</div>
+        <div className="window-body">{children(mode)}</div>
+      </HudPanel>
 
       <div
         ref={resizeRef}

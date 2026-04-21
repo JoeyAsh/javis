@@ -5,6 +5,12 @@ export interface UseResizableArgs {
   onResize: (w: number, h: number) => void;
   /** Optional live callback during resize (throttled via rAF). */
   onResizing?: (w: number, h: number) => void;
+  /**
+   * Optional callback fired once on pointerup (resize committed). NOT fired
+   * during live resizing. Used by callers to trigger SFX without coupling the
+   * hook to any audio subsystem directly.
+   */
+  onResizeEnd?: () => void;
   /** Getter for the current width/height of the resizable element. */
   getSize: () => { w: number; h: number };
   /** Disable resize handling entirely. */
@@ -32,6 +38,7 @@ const DEFAULT_MIN_H = 80;
 export function useResizable<T extends HTMLElement>({
   onResize,
   onResizing,
+  onResizeEnd,
   getSize,
   disabled = false,
   minW = DEFAULT_MIN_W,
@@ -113,6 +120,7 @@ export function useResizable<T extends HTMLElement>({
         // ignore
       }
       onResize(latestRef.current.w, latestRef.current.h);
+      if (onResizeEnd) onResizeEnd();
     };
 
     el.addEventListener('pointerdown', onPointerDown);
@@ -130,7 +138,7 @@ export function useResizable<T extends HTMLElement>({
         rafRef.current = null;
       }
     };
-  }, [disabled, flush, getSize, maxH, maxW, minH, minW, onResize]);
+  }, [disabled, flush, getSize, maxH, maxW, minH, minW, onResize, onResizeEnd]);
 
   return {
     handleRef,

@@ -90,18 +90,7 @@ body {
   overflow: hidden;
 }
 
-.panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--panel-header-height);
-  min-height: var(--panel-header-height);
-  padding: 0 var(--panel-padding);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  user-select: none;
-  background: rgba(0, 0, 0, 0.2);
-}
+/* .panel-header deleted — no tsx renders className="panel-header" (Phase C) */
 
 .panel-title {
   font-size: 10px;
@@ -194,9 +183,9 @@ body {
   align-items: center;
   gap: 4px;
   padding: 3px 6px;
-  background: rgba(13, 13, 20, 0.6);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--r-2, 4px);
   font-family: var(--font);
 }
 .orb-devmenu__label {
@@ -255,9 +244,9 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(13, 13, 20, 0.6);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--r-2, 4px);
   color: var(--text-secondary);
   cursor: pointer;
   transition: color 150ms, border-color 150ms, box-shadow 150ms;
@@ -278,251 +267,7 @@ body {
   box-shadow: var(--glow-strong);
 }
 
-/* ======================== Window system ======================== */
-
-.hud-window-root {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.hud-window-root > .window {
-  pointer-events: auto;
-}
-
-.window {
-  position: absolute;
-  background: rgba(13, 13, 20, calc(0.72 * var(--panel-opacity)));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  color: var(--text);
-  font-family: var(--font);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transform-origin: center center;
-  transform-style: preserve-3d;
-  will-change: transform, opacity;
-  transition:
-    transform 180ms ease-out,
-    opacity 180ms ease-out,
-    filter 180ms ease-out,
-    box-shadow 180ms ease-out,
-    border-color 180ms ease-out;
-}
-
-.window--focused {
-  opacity: 1;
-  transform: none;
-}
-
-/*
- * Shared "lit" state: a focused window, OR an unfocused window that is
- * currently being hovered. The hover variant only affects visuals — it does
- * NOT change z-index or focusedId in the window manager.
- */
-.window--focused,
-.window--unfocused:hover {
-  background: rgba(18, 18, 28, 0.78);
-  border: 1px solid var(--accent);
-  box-shadow:
-    0 0 0 1px var(--accent),
-    0 0 24px 2px color-mix(in srgb, var(--accent) 35%, transparent),
-    0 6px 28px rgba(0, 0, 0, 0.55);
-}
-
-.window--unfocused {
-  transform: perspective(1800px) rotateX(3deg) scale(0.96);
-  opacity: 0.55;
-  filter: blur(0.3px);
-}
-
-/* Hovered unfocused windows render like focused ones (no 3D / no dim). */
-.window--unfocused:hover {
-  transform: none;
-  opacity: 1;
-  filter: none;
-}
-
-.window--idle {
-  opacity: 0.15 !important;
-  pointer-events: none !important;
-  transition: opacity var(--panel-fade-duration) ease-in-out;
-}
-
-/* Idle state always wins — hover must not pierce it. */
-.window--idle:hover {
-  opacity: 0.15 !important;
-  transform: perspective(1800px) rotateX(3deg) scale(0.96) !important;
-  filter: blur(0.3px) !important;
-  background: rgba(13, 13, 20, 0.72) !important;
-  border: 1px solid var(--border) !important;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4) !important;
-}
-
-.window--hidden {
-  display: none;
-}
-
-.window-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  min-height: 30px;
-  padding: 0 8px 0 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  cursor: grab;
-  user-select: none;
-  background: rgba(0, 0, 0, 0.22);
-}
-
-.window-header:active {
-  cursor: grabbing;
-}
-
-.window-header-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.window-header-title {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.window--focused .window-header-title,
-.window--focused .window-header-icon {
-  color: var(--text-secondary);
-}
-
-.window-header-spacer {
-  flex: 1;
-}
-
-.window-header-buttons {
-  display: inline-flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.window-header-btn {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-family: var(--font);
-  font-size: 11px;
-  line-height: 1;
-  padding: 0;
-  transition: color 120ms, border-color 120ms, box-shadow 120ms;
-}
-
-.window-header-btn:hover {
-  color: var(--accent-bright);
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
-
-.window-header-btn:focus-visible {
-  outline: none;
-  color: var(--accent-bright);
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
-
-.window-header-btn--reset svg {
-  stroke: var(--text-secondary);
-  transition: stroke 120ms;
-}
-
-.window-header-btn--reset:hover svg,
-.window-header-btn--reset:focus-visible svg {
-  stroke: var(--accent);
-}
-
-.window-body {
-  flex: 1;
-  overflow: auto;
-  padding: 10px;
-  font-size: 12px;
-  color: var(--text);
-}
-
-.window-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.window-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.window-body::-webkit-scrollbar-thumb {
-  background: var(--border);
-}
-
-.window-resize {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
-  background: repeating-linear-gradient(
-    135deg,
-    transparent 0,
-    transparent 2px,
-    var(--text-muted) 2px,
-    var(--text-muted) 3px
-  );
-  opacity: 0.35;
-  transition: opacity 150ms;
-}
-
-.window:hover .window-resize,
-.window--focused .window-resize {
-  opacity: 0.75;
-}
-
-/* Compact body */
-.window--compact .window-body {
-  padding: 6px 8px;
-  font-size: 12px;
-}
-
-.window-compact-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  line-height: 1.35;
-}
-
-.window-compact-row + .window-compact-row {
-  margin-top: 4px;
-}
+/* Window structural rules → Window.css (co-located with Window.tsx) */
 
 .truncate {
   overflow: hidden;
@@ -636,58 +381,13 @@ body {
   to   { opacity: 1; transform: scale(1); }
 }
 
-/* ======================== Settling animation ======================== */
-
-/*
- * Applied for ~320 ms around a geometry change (minimize, swap, resize-
- * after-viewport-resize). NOT present during active user drag / resize.
- */
-.window--settling {
-  transition:
-    left 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    top 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 180ms ease-out,
-    opacity 180ms ease-out,
-    filter 180ms ease-out,
-    box-shadow 180ms ease-out,
-    border-color 180ms ease-out;
-}
-
-/* ======================== Docked vs. floating ======================== */
-
-/*
- * Docked (minimized) windows cannot be resized. Hide the corner handle and
- * show a `grab` cursor on the header to signal the swap-drag affordance.
- */
-.window--docked .window-resize {
-  display: none;
-}
-
-.window--docked .window-header {
-  cursor: grab;
-}
-
-.window--docked .window-header:active {
-  cursor: grabbing;
-}
-
-.window--floating .window-header {
-  cursor: grab;
-}
-
-.window--floating .window-header:active {
-  cursor: grabbing;
-}
-
 /* ======================== Home-slot ghost (floating marker) ======================== */
 
 .slot-ghost {
   pointer-events: auto;
   background: transparent;
   border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent);
-  border-radius: 4px;
+  border-radius: var(--r-2, 4px);
   color: var(--text-muted);
   font-family: var(--font);
   cursor: pointer;
@@ -732,7 +432,7 @@ body {
   position: absolute;
   border: 1px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 4%, transparent);
-  border-radius: 4px;
+  border-radius: var(--r-2, 4px);
   opacity: 0.55;
   display: flex;
   align-items: center;
@@ -762,11 +462,11 @@ body {
 
 .swap-drag-preview {
   /* positional styles set inline; this class only handles visuals */
-  background: rgba(18, 18, 28, 0.88);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--surface-raised);
+  backdrop-filter: var(--panel-blur, blur(10px));
+  -webkit-backdrop-filter: var(--panel-blur, blur(10px));
   border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-radius: var(--r-2, 4px);
   box-shadow:
     0 0 0 1px var(--accent),
     0 0 36px 4px color-mix(in srgb, var(--accent) 45%, transparent),

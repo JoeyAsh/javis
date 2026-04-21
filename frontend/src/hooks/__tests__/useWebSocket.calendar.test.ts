@@ -254,7 +254,7 @@ describe('subscribeCalendarStateStream — standalone', () => {
     const listener: CalendarStateListener = (p) => received.push(p);
     const unsub = subscribeCalendarStateStream(listener);
 
-    const { result } = renderHook(() => useWebSocket());
+    renderHook(() => useWebSocket());
     act(() => {
       openMockWs();
     });
@@ -301,7 +301,7 @@ describe('subscribeCalendarOpDoneStream — standalone', () => {
     const listener: CalendarOpDoneListener = (p) => received.push(p);
     const unsub = subscribeCalendarOpDoneStream(listener);
 
-    const { result } = renderHook(() => useWebSocket());
+    renderHook(() => useWebSocket());
     act(() => {
       openMockWs();
     });
@@ -326,7 +326,7 @@ describe('subscribeCalendarOpPreviewStream — standalone', () => {
     const listener: CalendarOpPreviewListener = (p) => received.push(p);
     const unsub = subscribeCalendarOpPreviewStream(listener);
 
-    const { result } = renderHook(() => useWebSocket());
+    renderHook(() => useWebSocket());
     act(() => {
       openMockWs();
     });

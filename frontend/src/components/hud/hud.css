@@ -1,0 +1,123 @@
+/**
+ * JARVIS HUD — shared keyframes and entry animation utility class.
+ *
+ * This file contains ONLY:
+ *   - @keyframes shared across multiple primitives
+ *   - .hud-win-in entry animation class (used by Window via hud-win-in class)
+ *   - TopBar corner-breath overrides (cross-primitive contextual rules)
+ *   - Top-level @media (prefers-reduced-motion) aggregator for win-in
+ *
+ * Per-primitive visual rules live in the co-located .css file next to each
+ * primitive's .tsx (HudPanel.css, HudCornerBrackets.css, etc.).
+ */
+
+/* ====================== Entry animation ====================== */
+
+@keyframes winIn {
+  0%   { opacity: 0; transform: translateY(8px) scale(.985); clip-path: inset(46% 0 46% 0); }
+  60%  { opacity: 1; clip-path: inset(0 0 0 0); }
+  100% { transform: none; }
+}
+
+.hud-win-in {
+  animation: winIn .5s var(--ease, cubic-bezier(.4,0,.2,1)) both;
+}
+
+/* ====================== Corner bracket breath ====================== */
+
+@keyframes cornerBreath {
+  0%, 100% { width: 18px; height: 18px; border-color: var(--accent); }
+  50%      { width: 22px; height: 22px; border-color: var(--accent-bright); }
+}
+
+/* TopBar corner breath — 3.4 s with staggered start delays per corner */
+@keyframes tbCornerBreath {
+  0%, 100% {
+    width: 8px;
+    height: 8px;
+    opacity: 0.45;
+  }
+  50% {
+    width: 10px;
+    height: 10px;
+    opacity: 0.75;
+  }
+}
+
+/* TopBar-specific trace timings (applied via .hud-topbar class overrides) */
+.hud-topbar .hud-trace--top    { animation-duration: 5.2s; animation-delay: 0s; }
+.hud-topbar .hud-trace--bottom { animation-duration: 5.2s; animation-delay: -2.6s; }
+.hud-topbar .hud-trace--left   { animation-duration: 5.2s; animation-delay: -3.9s; }
+.hud-topbar .hud-trace--right  { animation-duration: 5.2s; animation-delay: -1.3s; }
+
+/* TopBar corner breath staggered delays: tl/tr/bl/br at 0/.85/1.7/2.55 s */
+.hud-topbar .hud-corner-bracket.tl { animation: tbCornerBreath 3.4s ease infinite 0s; }
+.hud-topbar .hud-corner-bracket.tr { animation: tbCornerBreath 3.4s ease infinite 0.85s; }
+.hud-topbar .hud-corner-bracket.bl { animation: tbCornerBreath 3.4s ease infinite 1.7s; }
+.hud-topbar .hud-corner-bracket.br { animation: tbCornerBreath 3.4s ease infinite 2.55s; }
+
+/* ====================== Light trace keyframes ====================== */
+
+@keyframes trace-ltr {
+  0%   { left: -40%; opacity: 0; }
+  8%   { opacity: .6; }
+  92%  { opacity: .6; }
+  100% { left: 100%; opacity: 0; }
+}
+
+@keyframes trace-rtl {
+  0%   { right: -40%; opacity: 0; }
+  8%   { opacity: .6; }
+  92%  { opacity: .6; }
+  100% { right: 100%; opacity: 0; }
+}
+
+@keyframes trace-ttb {
+  0%   { top: -40%; opacity: 0; }
+  8%   { opacity: .6; }
+  92%  { opacity: .6; }
+  100% { top: 100%; opacity: 0; }
+}
+
+@keyframes trace-btt {
+  0%   { bottom: -40%; opacity: 0; }
+  8%   { opacity: .6; }
+  92%  { opacity: .6; }
+  100% { bottom: 100%; opacity: 0; }
+}
+
+/* ====================== Shimmer ====================== */
+
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+/* ====================== Panel bloom ====================== */
+
+@keyframes panelBloom {
+  0%, 100% { filter: brightness(.85); }
+  50%      { filter: brightness(1.25); }
+}
+
+/* ====================== Scene keyframes ====================== */
+
+@keyframes gridDrift {
+  0%   { background-position: 0 0; }
+  100% { background-position: 44px 44px; }
+}
+
+@keyframes starTwinkle {
+  0%, 100% { opacity: var(--star-base, 0.4); transform: scale(1); }
+  50%       { opacity: var(--star-peak, 0.9); transform: scale(1.4); }
+}
+
+/* ====================== @media (prefers-reduced-motion) aggregator ====================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-win-in {
+    animation: none;
+  }
+
+  .hud-topbar .hud-corner-bracket { animation: none; }
+}

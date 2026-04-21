@@ -6,6 +6,8 @@
  *   jarvis.autoSpeakClaude   boolean         (default true)
  *   jarvis.pushToTalk        boolean         (default false)
  *   jarvis.micDeviceId       string          (default '')
+ *   jarvis.orbVariant        'classic' | 'hypermodern'  (default 'classic')
+ *   jarvis.heartbeatEnabled  boolean         (default false)
  *
  * All writes are wrapped in a try/catch to handle Safari private-mode and
  * other storage-denied environments gracefully.
@@ -13,11 +15,15 @@
 
 import { useCallback, useState } from 'react';
 
+export type OrbVariant = 'classic' | 'hypermodern';
+
 export interface JarvisSettings {
   panelOpacity: number;
   autoSpeakClaude: boolean;
   pushToTalk: boolean;
   micDeviceId: string;
+  orbVariant: OrbVariant;
+  heartbeatEnabled: boolean;
 }
 
 const DEFAULTS: JarvisSettings = {
@@ -25,6 +31,8 @@ const DEFAULTS: JarvisSettings = {
   autoSpeakClaude: true,
   pushToTalk: false,
   micDeviceId: '',
+  orbVariant: 'classic',
+  heartbeatEnabled: false,
 };
 
 function safeGet(key: string): string | null {
@@ -48,14 +56,24 @@ function loadSettings(): JarvisSettings {
   const autoSpeakRaw = safeGet('jarvis.autoSpeakClaude');
   const pttRaw = safeGet('jarvis.pushToTalk');
   const micRaw = safeGet('jarvis.micDeviceId');
+  const orbVariantRaw = safeGet('jarvis.orbVariant');
+  const heartbeatRaw = safeGet('jarvis.heartbeatEnabled');
 
   const panelOpacity =
-    opacityRaw !== null ? Math.max(0.5, Math.min(1.0, parseFloat(opacityRaw))) : DEFAULTS.panelOpacity;
-  const autoSpeakClaude = autoSpeakRaw !== null ? autoSpeakRaw === 'true' : DEFAULTS.autoSpeakClaude;
+    opacityRaw !== null
+      ? Math.max(0.5, Math.min(1.0, parseFloat(opacityRaw)))
+      : DEFAULTS.panelOpacity;
+  const autoSpeakClaude =
+    autoSpeakRaw !== null ? autoSpeakRaw === 'true' : DEFAULTS.autoSpeakClaude;
   const pushToTalk = pttRaw !== null ? pttRaw === 'true' : DEFAULTS.pushToTalk;
   const micDeviceId = micRaw ?? DEFAULTS.micDeviceId;
 
-  return { panelOpacity, autoSpeakClaude, pushToTalk, micDeviceId };
+  const orbVariant: OrbVariant =
+    orbVariantRaw === 'hypermodern' ? 'hypermodern' : DEFAULTS.orbVariant;
+  const heartbeatEnabled =
+    heartbeatRaw !== null ? heartbeatRaw === 'true' : DEFAULTS.heartbeatEnabled;
+
+  return { panelOpacity, autoSpeakClaude, pushToTalk, micDeviceId, orbVariant, heartbeatEnabled };
 }
 
 export interface UseSettingsReturn {
@@ -64,6 +82,8 @@ export interface UseSettingsReturn {
   setAutoSpeakClaude: (v: boolean) => void;
   setPushToTalk: (v: boolean) => void;
   setMicDeviceId: (v: string) => void;
+  setOrbVariant: (v: OrbVariant) => void;
+  setHeartbeatEnabled: (v: boolean) => void;
 }
 
 /**
@@ -94,7 +114,25 @@ export function useSettings(): UseSettingsReturn {
     setSettings((prev) => ({ ...prev, micDeviceId: v }));
   }, []);
 
-  return { settings, setPanelOpacity, setAutoSpeakClaude, setPushToTalk, setMicDeviceId };
+  const setOrbVariant = useCallback((v: OrbVariant) => {
+    safeSet('jarvis.orbVariant', v);
+    setSettings((prev) => ({ ...prev, orbVariant: v }));
+  }, []);
+
+  const setHeartbeatEnabled = useCallback((v: boolean) => {
+    safeSet('jarvis.heartbeatEnabled', String(v));
+    setSettings((prev) => ({ ...prev, heartbeatEnabled: v }));
+  }, []);
+
+  return {
+    settings,
+    setPanelOpacity,
+    setAutoSpeakClaude,
+    setPushToTalk,
+    setMicDeviceId,
+    setOrbVariant,
+    setHeartbeatEnabled,
+  };
 }
 
 export default useSettings;

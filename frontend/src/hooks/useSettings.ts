@@ -29,9 +29,9 @@ export interface JarvisSettings {
 const DEFAULTS: JarvisSettings = {
   panelOpacity: 1.0,
   autoSpeakClaude: true,
-  pushToTalk: false,
+  pushToTalk: true,
   micDeviceId: '',
-  orbVariant: 'classic',
+  orbVariant: 'hypermodern',
   heartbeatEnabled: false,
 };
 

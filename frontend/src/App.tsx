@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { OrbCanvas } from './components/OrbCanvas';
 import { OrbErrorBoundary } from './components/OrbErrorBoundary';
+import { Orb } from './components/hud/Orb';
 import { HudTopBar } from './components/HudTopBar';
 import { OrbDevMenu } from './components/OrbDevMenu';
 import { HudWindows } from './components/hud/HudWindows';
@@ -153,15 +154,28 @@ function AppInner(): ReactElement {
         {/* Animated scene background — z-index 0 (--z-orb) */}
         <Scene grid scan stars />
 
-        {/* Orb canvas — backdrop, z-index 0 */}
-        <OrbErrorBoundary>
-          <OrbCanvas
-            orbState={effectiveOrbState}
-            analyser={analyser}
-            mockMode={orbOverride}
-            followUp={followUp}
-          />
-        </OrbErrorBoundary>
+        {/* Orb — swappable between Classic (Three.js) and Hypermodern (CSS) */}
+        {settingsHook.settings.orbVariant === 'hypermodern' ? (
+          <div
+            className="fixed inset-0 w-screen h-screen"
+            style={{ zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}
+          >
+            <Orb
+              state={effectiveOrbState === 'follow_up' ? 'listening' : effectiveOrbState === 'working' ? 'working' : effectiveOrbState}
+              rings
+              particles
+            />
+          </div>
+        ) : (
+          <OrbErrorBoundary>
+            <OrbCanvas
+              orbState={effectiveOrbState}
+              analyser={analyser}
+              mockMode={orbOverride}
+              followUp={followUp}
+            />
+          </OrbErrorBoundary>
+        )}
 
         {/* Floating window HUD — z-index 10 */}
         <HudWindows idle={idle} />
@@ -174,12 +188,12 @@ function AppInner(): ReactElement {
           onOpenSettings={handleOpenSettings}
         />
 
-        {/* Orb dev menu — forced state override for testing + STOP button */}
+        {/* Orb dev menu — fixed bottom-left corner, dev-only overlay */}
         <div
           style={{
             position: 'fixed',
-            top: 4,
-            right: 240,
+            bottom: 10,
+            left: 10,
             zIndex: 40,
           }}
         >
@@ -190,26 +204,16 @@ function AppInner(): ReactElement {
           />
         </div>
 
-        {/* Mic mute button — top right, nudged left of the top-bar controls */}
+        {/* Mic mute button — inside TopBar right cluster (fixed, sits just left of TopBar controls) */}
         <button
           onClick={() => setMuted((m) => !m)}
           aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
+          className="hud-iconbtn"
           style={{
             position: 'fixed',
             top: 4,
-            right: 180,
-            width: 28,
-            height: 28,
-            zIndex: 40,
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-2)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: muted ? 'var(--text-muted)' : 'var(--accent)',
-            transition: 'color 200ms, border-color 200ms',
+            right: 100,
+            zIndex: 30,
           }}
         >
           {muted ? (
@@ -248,13 +252,13 @@ function AppInner(): ReactElement {
           )}
         </button>
 
-        {/* SFX mute toggle — placed left of the mic mute button */}
+        {/* SFX mute toggle — right of mic mute, inside TopBar right cluster */}
         <div
           style={{
             position: 'fixed',
             top: 4,
-            right: 212,
-            zIndex: 40,
+            right: 132,
+            zIndex: 30,
           }}
         >
           <AudioMuteToggle isMuted={sfxMuted} onToggle={toggleSfxMute} />

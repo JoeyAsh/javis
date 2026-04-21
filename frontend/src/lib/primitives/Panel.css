@@ -293,6 +293,13 @@
     border-radius: 2px;
 }
 
+.lib-panel__hdr-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+}
+
 /* focused shimmer line under header */
 .lib-panel.focused .lib-panel__hdr::after {
     content: '';

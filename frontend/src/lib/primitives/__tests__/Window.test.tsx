@@ -241,6 +241,56 @@ describe('Window — action buttons', () => {
         expect(screen.queryByRole('button', { name: /maximize/i })).toBeNull();
         expect(screen.queryByRole('button', { name: /close/i })).toBeNull();
     });
+
+    it('renders reset button when onReset is provided', () => {
+        render(
+            <Window id="w1" position={BASE_POS} onReset={vi.fn()}>
+                body
+            </Window>,
+        );
+        expect(screen.getByRole('button', { name: /reset window/i })).toBeDefined();
+    });
+
+    it('fires onReset with window id when reset button is clicked', () => {
+        const onReset = vi.fn();
+        render(
+            <Window id="w1" position={BASE_POS} onReset={onReset}>
+                body
+            </Window>,
+        );
+        fireEvent.click(screen.getByRole('button', { name: /reset window/i }));
+        expect(onReset).toHaveBeenCalledWith('w1');
+    });
+
+    it('action buttons render inside the Panel header actions slot', () => {
+        const { container } = render(
+            <Window id="w1" position={BASE_POS} onReset={vi.fn()} onMaximize={vi.fn()}>
+                body
+            </Window>,
+        );
+        const actionsSpan = container.querySelector('.lib-panel__hdr-actions');
+        expect(actionsSpan).not.toBeNull();
+        const buttons = actionsSpan?.querySelectorAll('button');
+        expect(buttons?.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('maximize button shows Restore label when state is maximized', () => {
+        render(
+            <Window id="w1" position={BASE_POS} state="maximized" onMaximize={vi.fn()}>
+                body
+            </Window>,
+        );
+        expect(screen.getByRole('button', { name: /restore window/i })).toBeDefined();
+    });
+
+    it('maximize button shows Maximize label when state is idle', () => {
+        render(
+            <Window id="w1" position={BASE_POS} state="idle" onMaximize={vi.fn()}>
+                body
+            </Window>,
+        );
+        expect(screen.getByRole('button', { name: /maximize window/i })).toBeDefined();
+    });
 });
 
 describe('Window — className', () => {

@@ -36,6 +36,8 @@ export interface WindowProps {
     onDragEnd?: (id: string, e: PointerEvent) => void;
     onMinimize?: (id: string) => void;
     onMaximize?: (id: string) => void;
+    /** Restore the window to its original position/slot. */
+    onReset?: (id: string) => void;
     /** If not provided the close button is omitted. */
     onClose?: (id: string) => void;
     /** Default true. */
@@ -44,16 +46,37 @@ export interface WindowProps {
     children?: ReactNode;
 }
 
-/** Minus icon at 12 px — minimize. */
-function MinusIcon(): ReactElement {
+/** RotateCcw icon at 11 px — reset/restore to home slot. */
+function RotateCcwIcon(): ReactElement {
     return (
         <svg
-            width="12"
-            height="12"
+            width="11"
+            height="11"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            focusable="false"
+        >
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+        </svg>
+    );
+}
+
+/** Minus icon at 11 px — minimize. */
+function MinusIcon(): ReactElement {
+    return (
+        <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden
@@ -64,16 +87,16 @@ function MinusIcon(): ReactElement {
     );
 }
 
-/** Square icon at 12 px — maximize. */
+/** Square icon at 11 px — maximize. */
 function SquareIcon(): ReactElement {
     return (
         <svg
-            width="12"
-            height="12"
+            width="11"
+            height="11"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="1.75"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden
@@ -84,16 +107,39 @@ function SquareIcon(): ReactElement {
     );
 }
 
-/** X icon at 12 px — close. */
-function XIcon(): ReactElement {
+/** Minimize2 icon at 11 px — restore from maximized. */
+function Minimize2Icon(): ReactElement {
     return (
         <svg
-            width="12"
-            height="12"
+            width="11"
+            height="11"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            focusable="false"
+        >
+            <polyline points="4 14 10 14 10 20" />
+            <polyline points="20 10 14 10 14 4" />
+            <line x1="10" y1="14" x2="3" y2="21" />
+            <line x1="21" y1="3" x2="14" y2="10" />
+        </svg>
+    );
+}
+
+/** X icon at 11 px — close. */
+function XIcon(): ReactElement {
+    return (
+        <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden
@@ -119,6 +165,7 @@ export function Window({
     onDragEnd,
     onMinimize,
     onMaximize,
+    onReset,
     onClose,
     draggable = true,
     className,
@@ -163,6 +210,14 @@ export function Window({
     const handlePointerDownCapture = useCallback((): void => {
         if (onFocus) onFocus(id);
     }, [id, onFocus]);
+
+    const handleReset = useCallback(
+        (e: React.MouseEvent<HTMLButtonElement>): void => {
+            e.stopPropagation();
+            if (onReset) onReset(id);
+        },
+        [id, onReset],
+    );
 
     const handleMinimize = useCallback(
         (e: React.MouseEvent<HTMLButtonElement>): void => {
@@ -228,13 +283,31 @@ export function Window({
         </span>
     );
 
-    // Header right: action buttons.
-    const headerRight = (
-        <span className="lib-window__hdr-actions" data-no-drag>
+    // Header action cluster — order: Reset · Minimize · Maximize · Close.
+    const hasActions =
+        onReset !== undefined ||
+        onMinimize !== undefined ||
+        onMaximize !== undefined ||
+        onClose !== undefined;
+
+    const headerActions = hasActions ? (
+        <>
+            {onReset !== undefined && (
+                <button
+                    className="lib-window__btn"
+                    aria-label="Reset window"
+                    title="Reset"
+                    onClick={handleReset}
+                    type="button"
+                >
+                    <RotateCcwIcon />
+                </button>
+            )}
             {onMinimize !== undefined && (
                 <button
-                    className="lib-window__hdr-btn"
+                    className="lib-window__btn"
                     aria-label="Minimize window"
+                    title="Minimize"
                     onClick={handleMinimize}
                     type="button"
                 >
@@ -243,33 +316,30 @@ export function Window({
             )}
             {onMaximize !== undefined && (
                 <button
-                    className="lib-window__hdr-btn"
-                    aria-label="Maximize window"
+                    className="lib-window__btn"
+                    aria-label={
+                        effectiveState === 'maximized' ? 'Restore window' : 'Maximize window'
+                    }
+                    title={effectiveState === 'maximized' ? 'Restore' : 'Maximize'}
                     onClick={handleMaximize}
                     type="button"
                 >
-                    <SquareIcon />
+                    {effectiveState === 'maximized' ? <Minimize2Icon /> : <SquareIcon />}
                 </button>
             )}
             {onClose !== undefined && (
                 <button
-                    className="lib-window__hdr-btn lib-window__hdr-btn--close"
+                    className="lib-window__btn lib-window__btn--close"
                     aria-label="Close window"
+                    title="Close"
                     onClick={handleClose}
                     type="button"
                 >
                     <XIcon />
                 </button>
             )}
-        </span>
-    );
-
-    // The Panel's badge slot is repurposed to hold the header actions when any
-    // action callback is provided; otherwise badge flows through normally.
-    const panelBadge =
-        onMinimize !== undefined || onMaximize !== undefined || onClose !== undefined
-            ? headerRight
-            : badge;
+        </>
+    ) : undefined;
 
     return (
         <div
@@ -284,7 +354,8 @@ export function Window({
             <Panel
                 ix={headerLeft}
                 title={undefined}
-                badge={panelBadge}
+                badge={badge}
+                actions={headerActions}
                 focused={focused}
                 onFocus={handleFocus}
                 style={{ height: '100%', display: 'flex', flexDirection: 'column' }}

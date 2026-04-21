@@ -109,6 +109,18 @@ describe('Panel', () => {
         expect(container.querySelector('.lib-panel__hdr .badge')).toBeNull();
     });
 
+    it('renders actions slot in header when actions prop is provided', () => {
+        const { container } = render(<Panel actions={<button type="button">Act</button>}>x</Panel>);
+        const actionsSpan = container.querySelector('.lib-panel__hdr-actions');
+        expect(actionsSpan).not.toBeNull();
+        expect(actionsSpan?.querySelector('button')).not.toBeNull();
+    });
+
+    it('does not render actions span when actions prop is not provided', () => {
+        const { container } = render(<Panel title="T">x</Panel>);
+        expect(container.querySelector('.lib-panel__hdr-actions')).toBeNull();
+    });
+
     it('applies inline style to root', () => {
         const { container } = render(<Panel style={{ width: 316, height: 300 }}>x</Panel>);
         const root = container.querySelector<HTMLDivElement>('.lib-panel');

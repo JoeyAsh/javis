@@ -101,6 +101,19 @@ export function WindowsSection(): ReactElement {
                 </p>
             </div>
 
+            {/* Action button info */}
+            <div
+                style={{
+                    fontSize: 10,
+                    color: 'var(--text-secondary)',
+                    fontFamily: 'var(--font)',
+                    letterSpacing: '0.5px',
+                }}
+            >
+                Try the Reset (&#8635;) and Maximize (&#9634;) buttons in each panel header. Reset
+                snaps the window back to its original slot; Maximize expands it to the stage.
+            </div>
+
             {/* Assignment readout */}
             <div
                 style={{

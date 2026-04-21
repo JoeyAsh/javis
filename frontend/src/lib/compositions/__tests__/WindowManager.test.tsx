@@ -280,6 +280,111 @@ describe('WindowManager — drag-drop: outside any slot', () => {
     });
 });
 
+describe('WindowManager — maximize / reset', () => {
+    it('clicking Maximize sets window state to maximized', () => {
+        const { container } = render(
+            <WindowManager
+                windows={[WIN_A]}
+                assignments={{ 'win-a': 'L1' }}
+                onAssignmentsChange={vi.fn()}
+            />,
+        );
+        const btn = container.querySelector(
+            '[data-window-id="win-a"] button[aria-label="Maximize window"]',
+        ) as HTMLElement;
+        expect(btn).not.toBeNull();
+        act(() => {
+            fireEvent.click(btn);
+        });
+        const win = container.querySelector('[data-window-id="win-a"]');
+        expect(win?.getAttribute('data-state')).toBe('maximized');
+    });
+
+    it('clicking Maximize twice toggles back to idle', () => {
+        const { container } = render(
+            <WindowManager
+                windows={[WIN_A]}
+                assignments={{ 'win-a': 'L1' }}
+                onAssignmentsChange={vi.fn()}
+            />,
+        );
+        const getBtn = (): HTMLElement =>
+            container.querySelector(
+                '[data-window-id="win-a"] button[aria-label="Maximize window"], [data-window-id="win-a"] button[aria-label="Restore window"]',
+            ) as HTMLElement;
+
+        act(() => {
+            fireEvent.click(getBtn());
+        });
+        expect(
+            container.querySelector('[data-window-id="win-a"]')?.getAttribute('data-state'),
+        ).toBe('maximized');
+
+        act(() => {
+            fireEvent.click(getBtn());
+        });
+        expect(
+            container.querySelector('[data-window-id="win-a"]')?.getAttribute('data-state'),
+        ).toBe('idle');
+    });
+
+    it('clicking Reset snaps window back to home slot', () => {
+        const onAssignmentsChange = vi.fn();
+        const { container } = render(
+            <WindowManager
+                windows={[WIN_A]}
+                assignments={{ 'win-a': 'R1' }}
+                homeAssignments={{ 'win-a': 'L1' }}
+                onAssignmentsChange={onAssignmentsChange}
+            />,
+        );
+        const btn = container.querySelector(
+            '[data-window-id="win-a"] button[aria-label="Reset window"]',
+        ) as HTMLElement;
+        expect(btn).not.toBeNull();
+        act(() => {
+            fireEvent.click(btn);
+        });
+        expect(onAssignmentsChange).toHaveBeenCalledOnce();
+        const [next] = onAssignmentsChange.mock.calls[0] as [Record<string, SlotId>];
+        expect(next['win-a']).toBe('L1');
+    });
+
+    it('clicking Reset after Maximize restores idle state', () => {
+        const { container } = render(
+            <WindowManager
+                windows={[WIN_A]}
+                assignments={{ 'win-a': 'L1' }}
+                onAssignmentsChange={vi.fn()}
+            />,
+        );
+
+        // Maximize first
+        act(() => {
+            fireEvent.click(
+                container.querySelector(
+                    '[data-window-id="win-a"] button[aria-label="Maximize window"]',
+                ) as HTMLElement,
+            );
+        });
+        expect(
+            container.querySelector('[data-window-id="win-a"]')?.getAttribute('data-state'),
+        ).toBe('maximized');
+
+        // Now reset
+        act(() => {
+            fireEvent.click(
+                container.querySelector(
+                    '[data-window-id="win-a"] button[aria-label="Reset window"]',
+                ) as HTMLElement,
+            );
+        });
+        expect(
+            container.querySelector('[data-window-id="win-a"]')?.getAttribute('data-state'),
+        ).toBe('idle');
+    });
+});
+
 describe('WindowManager — resize updates slot positions', () => {
     it('re-renders windows at new slot positions after viewport resize', () => {
         const { container } = render(

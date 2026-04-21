@@ -96,7 +96,50 @@
     cursor: grabbing;
 }
 
-/* ── header action buttons ── */
+/* ── header action buttons (new slot-based cluster) ── */
+.lib-window__btn {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    border-radius: var(--r-1, 2px);
+    cursor: pointer;
+    transition:
+        color 120ms var(--ease, cubic-bezier(0.4, 0, 0.2, 1)),
+        border-color 120ms,
+        box-shadow 120ms,
+        background 120ms;
+    padding: 0;
+}
+
+.lib-window__btn:hover {
+    color: var(--accent-bright);
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.lib-window__btn:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.lib-window__btn svg {
+    width: 11px;
+    height: 11px;
+    stroke-width: 1.75;
+}
+
+.lib-window__btn--close:hover {
+    color: var(--error, #e85555);
+    border-color: var(--error, #e85555);
+    box-shadow: 0 0 8px var(--error, #e85555);
+}
+
+/* Legacy header action container — kept for backward compat */
 .lib-window__hdr-actions {
     display: flex;
     align-items: center;
@@ -136,9 +179,9 @@
 }
 
 .lib-window__hdr-btn--close:hover {
-    color: var(--error);
-    border-color: var(--error);
-    box-shadow: 0 0 8px var(--error);
+    color: var(--error, #e85555);
+    border-color: var(--error, #e85555);
+    box-shadow: 0 0 8px var(--error, #e85555);
 }
 
 /* ── body ── */

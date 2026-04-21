@@ -5,6 +5,8 @@ export interface PanelProps {
     ix?: ReactNode;
     title?: ReactNode;
     badge?: ReactNode;
+    /** Optional action button cluster rendered at the right edge of the header. */
+    actions?: ReactNode;
     focused?: boolean;
     onFocus?: () => void;
     className?: string;
@@ -20,6 +22,7 @@ export function Panel({
     ix,
     title,
     badge,
+    actions,
     focused = false,
     onFocus,
     className,
@@ -61,6 +64,7 @@ export function Panel({
                     <i />
                     <i />
                 </span>
+                {actions !== undefined && <span className="lib-panel__hdr-actions">{actions}</span>}
                 {badge !== undefined && <span className="badge">{badge}</span>}
             </div>
 

@@ -22,6 +22,11 @@ export interface WindowManagerProps {
     assignments: Record<string, SlotId>;
     /** Called when assignments should change (drop → move or swap). */
     onAssignmentsChange: (next: Record<string, SlotId>) => void;
+    /**
+     * Original "home" slot assignments used by Reset. Defaults to the value of
+     * `assignments` on first render if not provided.
+     */
+    homeAssignments?: Record<string, SlotId>;
     /** Focused window id (controlled). */
     focusedId?: string | null;
     /** Called when a window is focused / blur (null = no focus). */
@@ -49,23 +54,31 @@ function getViewport(): ViewportSize {
     };
 }
 
+/** Per-window maximize/minimize state tracked internally by WindowManager. */
+type WindowLocalState = 'idle' | 'maximized';
+
 /**
  * WindowManager — controlled composition that renders N windows at slot-derived
  * positions, handles drag-to-snap and drag-to-swap, and fires
  * `onAssignmentsChange` on drop.
  *
  * All assignment state lives in the parent. Internal state covers only
- * the current drag (which window is dragging, snap target, swap target).
+ * the current drag (which window is dragging, snap target, swap target) and
+ * per-window maximize state.
  */
 export function WindowManager({
     windows,
     assignments,
     onAssignmentsChange,
+    homeAssignments,
     focusedId = null,
     onFocusChange,
     className,
 }: WindowManagerProps): ReactElement {
     const [viewport, setViewport] = useState<ViewportSize>(getViewport);
+
+    // Per-window local state (maximize/idle). Dragging states are separate.
+    const [windowStates, setWindowStates] = useState<Record<string, WindowLocalState>>({});
 
     // Recompute on resize.
     useEffect(() => {
@@ -89,6 +102,9 @@ export function WindowManager({
     const assignmentsRef = useRef(assignments);
     assignmentsRef.current = assignments;
 
+    // Home assignments — captured once on mount (or taken from prop).
+    const homeRef = useRef<Record<string, SlotId>>(homeAssignments ?? assignments);
+
     /** Find which window (if any) occupies a slot, excluding the dragged window. */
     const windowAtSlot = useCallback((slotId: SlotId, excludeId: string): string | null => {
         for (const [wId, sId] of Object.entries(assignmentsRef.current)) {
@@ -102,6 +118,24 @@ export function WindowManager({
             if (onFocusChange) onFocusChange(id);
         },
         [onFocusChange],
+    );
+
+    const handleMaximize = useCallback((id: string): void => {
+        setWindowStates((prev) => ({
+            ...prev,
+            [id]: prev[id] === 'maximized' ? 'idle' : 'maximized',
+        }));
+    }, []);
+
+    const handleReset = useCallback(
+        (id: string): void => {
+            const homeSlot = homeRef.current[id] as SlotId | undefined;
+            if (homeSlot !== undefined) {
+                onAssignmentsChange({ ...assignmentsRef.current, [id]: homeSlot });
+            }
+            setWindowStates((prev) => ({ ...prev, [id]: 'idle' }));
+        },
+        [onAssignmentsChange],
     );
 
     const handleDragStart = useCallback((id: string): void => {
@@ -217,9 +251,13 @@ export function WindowManager({
                 const rect = slotRects[slotId];
                 const isDragging = activeDrag !== null && activeDrag.windowId === win.id;
                 const isFocused = focusedId === win.id;
+                const localState = windowStates[win.id] ?? 'idle';
+                const isMaximized = localState === 'maximized';
 
                 let winState: WindowState = 'idle';
-                if (isDragging) {
+                if (isMaximized) {
+                    winState = 'maximized';
+                } else if (isDragging) {
                     if (swapTarget !== null) {
                         winState = 'swap-preview';
                     } else if (snapTarget !== null) {
@@ -231,6 +269,16 @@ export function WindowManager({
                     winState = 'focused';
                 }
 
+                // Maximized windows fill the stage with a small margin.
+                const position = isMaximized
+                    ? {
+                          x: 16,
+                          y: 16,
+                          w: viewport.w - 32,
+                          h: viewport.h - 32,
+                      }
+                    : rect;
+
                 return (
                     <Window
                         key={win.id}
@@ -238,14 +286,16 @@ export function WindowManager({
                         title={win.title}
                         ix={win.ix}
                         badge={win.badge}
-                        position={rect}
+                        position={position}
                         state={winState}
                         focused={isFocused}
                         onFocus={handleFocus}
                         onDragStart={handleDragStart}
                         onDragMove={handleDragMove}
                         onDragEnd={handleDragEnd}
-                        draggable={true}
+                        onMaximize={handleMaximize}
+                        onReset={handleReset}
+                        draggable={!isMaximized}
                     >
                         {win.content}
                     </Window>

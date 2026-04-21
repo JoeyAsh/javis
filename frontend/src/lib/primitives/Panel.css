@@ -306,7 +306,7 @@
     position: absolute;
     left: 0;
     right: 0;
-    bottom: -1px;
+    bottom: 0;
     height: 1px;
     background: linear-gradient(90deg, transparent, var(--accent-bright), transparent);
     animation: shimmer 2s linear infinite;

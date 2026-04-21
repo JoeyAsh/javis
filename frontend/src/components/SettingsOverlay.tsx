@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { UseSettingsReturn, OrbVariant } from '../hooks/useSettings';
+import { useSfx } from '../hud/SfxContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -669,9 +670,19 @@ const SECTIONS: Array<{ id: SectionId; label: string }> = [
 export function SettingsOverlay({ open, onClose, settingsHook }: SettingsOverlayProps): ReactElement | null {
   const [activeSection, setActiveSection] = useState<SectionId>('audio');
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const { playOneShot } = useSfx();
 
   const { settings, setPanelOpacity, setAutoSpeakClaude, setPushToTalk, setMicDeviceId, setOrbVariant, setHeartbeatEnabled } =
     settingsHook;
+
+  // Play menu_open on mount (when open becomes true) and menu_close on unmount.
+  useEffect(() => {
+    if (!open) return;
+    playOneShot('menu_open');
+    return () => {
+      playOneShot('menu_close');
+    };
+  }, [open, playOneShot]);
 
   // Close on Escape
   useEffect(() => {

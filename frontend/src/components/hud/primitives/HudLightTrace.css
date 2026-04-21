@@ -1,0 +1,87 @@
+/* ====================== Light traces ====================== */
+
+.hud-light-trace {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+.hud-trace {
+  position: absolute;
+  opacity: 0.55;
+  transition: opacity var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1));
+}
+
+.hud-trace--top, .hud-trace--bottom {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--accent, #4ca8e8) 40%,
+    var(--accent-bright, #6ec4ff) 50%,
+    var(--accent, #4ca8e8) 60%,
+    transparent 100%);
+  box-shadow: 0 0 8px var(--accent-bright, #6ec4ff);
+}
+
+.hud-trace--left, .hud-trace--right {
+  background: linear-gradient(180deg,
+    transparent 0%,
+    var(--accent, #4ca8e8) 40%,
+    var(--accent-bright, #6ec4ff) 50%,
+    var(--accent, #4ca8e8) 60%,
+    transparent 100%);
+  box-shadow: 0 0 8px var(--accent-bright, #6ec4ff);
+}
+
+.hud-trace--top {
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 1px;
+  animation: trace-ltr 6s linear infinite;
+}
+
+.hud-trace--bottom {
+  bottom: 0;
+  right: -40%;
+  width: 40%;
+  height: 1px;
+  animation: trace-rtl 6s linear -3s infinite;
+}
+
+.hud-trace--left {
+  left: 0;
+  top: -40%;
+  height: 40%;
+  width: 1px;
+  animation: trace-ttb 6s linear -4.5s infinite;
+}
+
+.hud-trace--right {
+  right: 0;
+  bottom: -40%;
+  height: 40%;
+  width: 1px;
+  animation: trace-btt 6s linear -1.5s infinite;
+}
+
+.hud-panel:hover .hud-trace {
+  opacity: 0.9;
+}
+
+.hud-panel--focused .hud-trace {
+  opacity: 1;
+}
+
+/* ====================== Reduced-motion ====================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-trace--top,
+  .hud-trace--bottom,
+  .hud-trace--left,
+  .hud-trace--right {
+    animation: none;
+  }
+}

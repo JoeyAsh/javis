@@ -5,7 +5,7 @@
  */
 
 import type { ReactElement } from 'react';
-import '../hud.css';
+import './HudDivider.css';
 
 export interface HudDividerProps {
   orientation?: 'horizontal' | 'vertical';

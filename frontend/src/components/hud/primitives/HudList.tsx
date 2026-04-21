@@ -6,7 +6,7 @@
  */
 
 import type { ReactElement, ReactNode } from 'react';
-import '../hud.css';
+import './HudList.css';
 
 export interface HudListProps {
   children: ReactNode;

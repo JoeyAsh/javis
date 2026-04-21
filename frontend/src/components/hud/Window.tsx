@@ -18,6 +18,7 @@ import { HudPanel } from './primitives/HudPanel';
 import { HudIconButton } from './primitives/HudIconButton';
 import { useSfx } from '../../hud/SfxContext';
 import './hud.css';
+import './Window.css';
 
 export interface WindowProps {
   id: PanelId;

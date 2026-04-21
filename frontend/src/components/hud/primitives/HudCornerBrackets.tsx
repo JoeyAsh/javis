@@ -7,6 +7,7 @@
 
 import type { ReactElement } from 'react';
 import '../hud.css';
+import './HudCornerBrackets.css';
 
 export interface HudCornerBracketsProps {
   /** No props required — styling driven by parent .hud-panel state classes. */

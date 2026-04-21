@@ -1,0 +1,112 @@
+/* ====================== HudPanel shell ====================== */
+
+.hud-panel {
+  position: relative;
+  background: rgba(13, 13, 20, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border, #1a1a2e);
+  border-radius: var(--r-1, 2px);
+  overflow: visible;
+  transition:
+    border-color var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
+    box-shadow var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1));
+}
+
+.hud-panel--focused {
+  border-color: var(--accent-dim, #2d6aa1);
+  box-shadow: var(--glow, 0 0 8px #4ca8e8aa);
+}
+
+.hud-panel--dev {
+  border-color: var(--warning, #e8b24c);
+}
+
+/* ====================== Panel header classes ====================== */
+
+.hud-panel__header { position: relative; }
+
+.hud-panel__header .ix { color: var(--accent-bright); font-weight: 500; opacity: .8; }
+
+.hud-panel__header .tt {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.hud-panel--focused .hud-panel__header .tt { color: var(--text); }
+
+.hud-panel__header .dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+.hud-panel__header .dots i {
+  width: 4px;
+  height: 4px;
+  background: var(--text-muted);
+  display: inline-block;
+}
+.hud-panel__header .dots i:nth-child(1) {
+  background: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.hud-panel__header .badge {
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  padding: 1px 4px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.hud-panel__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+
+.hud-panel--focused .hud-panel__header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-bright), transparent);
+  animation: shimmer 2s linear infinite;
+  pointer-events: none;
+}
+
+/* ====================== Side rails ====================== */
+
+.hud-panel .hud-rail {
+  position: absolute;
+  top: 26px;
+  bottom: 4px;
+  width: 2px;
+  pointer-events: none;
+  background-image: linear-gradient(to bottom, var(--accent) 0 2px, transparent 2px 10px);
+  background-size: 2px 10px;
+  opacity: 0;
+  transition: opacity .3s var(--ease);
+  z-index: 2;
+}
+.hud-panel .hud-rail--left  { left:  -4px; }
+.hud-panel .hud-rail--right { right: -4px; }
+.hud-panel:hover .hud-rail,
+.hud-panel--focused .hud-rail { opacity: .7; }
+
+/* ====================== Reduced-motion ====================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-panel--focused .hud-panel__header::after { animation: none; }
+}

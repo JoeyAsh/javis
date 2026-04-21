@@ -11,6 +11,7 @@ import { useCallback, useRef } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactElement, ReactNode } from 'react';
 import { useSfx } from '../../../hud/SfxContext';
 import '../hud.css';
+import './HudButton.css';
 
 export type HudButtonVariant = 'default' | 'ghost' | 'primary';
 

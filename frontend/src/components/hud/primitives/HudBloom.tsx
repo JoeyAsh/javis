@@ -7,6 +7,7 @@
 
 import type { ReactElement } from 'react';
 import '../hud.css';
+import './HudBloom.css';
 
 export interface HudBloomProps {
   className?: string;

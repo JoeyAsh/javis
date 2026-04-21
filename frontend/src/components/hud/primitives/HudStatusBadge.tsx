@@ -3,7 +3,7 @@
  */
 
 import type { ReactElement, ReactNode } from 'react';
-import '../hud.css';
+import './HudStatusBadge.css';
 
 export type BadgeStatus = 'ok' | 'warn' | 'error' | 'info' | 'default';
 

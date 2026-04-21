@@ -40,19 +40,19 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Scene — root element', () => {
-  it('renders a root element with pointer-events: none', () => {
+  it('renders an aria-hidden root element with hud-scene class', () => {
     const { container } = render(<Scene />);
-    // Root is the aria-hidden div (second child after the <style>)
-    // The fragment renders <style> then <div aria-hidden>
+    // Root is the aria-hidden div (second child after the <style>).
+    // Position/pointer-events are applied via the .hud-scene CSS class.
     const root = container.querySelector('[aria-hidden="true"]') as HTMLElement;
     expect(root).not.toBeNull();
-    expect(root.style.pointerEvents).toBe('none');
+    expect(root.classList.contains('hud-scene')).toBe(true);
   });
 
-  it('root element has position: fixed', () => {
+  it('root element carries hud-scene class (position: fixed applied via CSS)', () => {
     const { container } = render(<Scene />);
     const root = container.querySelector('[aria-hidden="true"]') as HTMLElement;
-    expect(root.style.position).toBe('fixed');
+    expect(root.classList.contains('hud-scene')).toBe(true);
   });
 });
 
@@ -71,25 +71,15 @@ describe('Scene — grid layer', () => {
 describe('Scene — scanlines layer', () => {
   it('renders scanlines when scan=true (default)', () => {
     const { container } = render(<Scene />);
-    // Scanlines have repeating-linear-gradient and mix-blend-mode: screen
-    const allDivs = container.querySelectorAll('div');
-    const scanEl = Array.from(allDivs).find(
-      (d) =>
-        d.style.mixBlendMode === 'screen' &&
-        d.style.background.includes('repeating-linear-gradient'),
-    );
-    expect(scanEl).toBeDefined();
+    // Scanlines are applied via the .hud-scene__layer--scanlines CSS class.
+    const scanEl = container.querySelector('.hud-scene__layer--scanlines');
+    expect(scanEl).not.toBeNull();
   });
 
   it('hides scanlines when scan=false', () => {
     const { container } = render(<Scene scan={false} />);
-    const allDivs = container.querySelectorAll('div');
-    const scanEl = Array.from(allDivs).find(
-      (d) =>
-        d.style.mixBlendMode === 'screen' &&
-        d.style.background.includes('repeating-linear-gradient'),
-    );
-    expect(scanEl).toBeUndefined();
+    const scanEl = container.querySelector('.hud-scene__layer--scanlines');
+    expect(scanEl).toBeNull();
   });
 });
 

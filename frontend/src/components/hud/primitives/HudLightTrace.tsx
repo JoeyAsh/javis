@@ -8,6 +8,7 @@
 
 import type { ReactElement } from 'react';
 import '../hud.css';
+import './HudLightTrace.css';
 
 export interface HudLightTraceProps {
   className?: string;

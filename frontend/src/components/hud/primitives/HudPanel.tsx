@@ -18,7 +18,9 @@ import type { ReactElement, ReactNode } from 'react';
 import { HudCornerBrackets } from './HudCornerBrackets';
 import { HudLightTrace } from './HudLightTrace';
 import { HudBloom } from './HudBloom';
+import { HudSideRails } from './HudSideRails';
 import '../hud.css';
+import './HudPanel.css';
 
 export type HudPanelVariant = 'default' | 'dev';
 
@@ -115,8 +117,7 @@ export function HudPanel({
       <HudCornerBrackets />
 
       {/* Side rails */}
-      <span className="hud-rail hud-rail--left" aria-hidden />
-      <span className="hud-rail hud-rail--right" aria-hidden />
+      <HudSideRails />
 
       {/* Header row */}
       {hasHeader && (

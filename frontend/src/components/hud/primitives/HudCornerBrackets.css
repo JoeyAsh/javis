@@ -1,0 +1,71 @@
+/* ====================== Corner brackets ====================== */
+
+.hud-corner-brackets {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.hud-corner-bracket {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--accent, #4ca8e8);
+  border-style: solid;
+  opacity: 0.7;
+  transition:
+    width .3s var(--ease, cubic-bezier(.4,0,.2,1)),
+    height .3s var(--ease, cubic-bezier(.4,0,.2,1)),
+    opacity .25s,
+    border-color .25s;
+}
+
+.hud-corner-bracket.tl {
+  top: -2px;
+  left: -2px;
+  border-width: 1px 0 0 1px;
+}
+
+.hud-corner-bracket.tr {
+  top: -2px;
+  right: -2px;
+  border-width: 1px 1px 0 0;
+}
+
+.hud-corner-bracket.bl {
+  bottom: -2px;
+  left: -2px;
+  border-width: 0 0 1px 1px;
+}
+
+.hud-corner-bracket.br {
+  bottom: -2px;
+  right: -2px;
+  border-width: 0 1px 1px 0;
+}
+
+/* Focused state: grow + animate */
+.hud-panel--focused .hud-corner-bracket {
+  width: 20px;
+  height: 20px;
+  opacity: 1;
+  border-color: var(--accent-bright, #6ec4ff);
+  animation: cornerBreath 2.6s ease-in-out infinite;
+}
+
+/* Hover state (non-focused): medium size, accent-bright, reduced opacity */
+.hud-panel:hover:not(.hud-panel--focused) .hud-corner-bracket {
+  width: 14px;
+  height: 14px;
+  opacity: .85;
+  border-color: var(--accent-bright, #6ec4ff);
+}
+
+/* ====================== Reduced-motion ====================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-panel--focused .hud-corner-bracket {
+    animation: none;
+  }
+}

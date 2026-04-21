@@ -17,18 +17,14 @@
 
 import { useMemo } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
-
-export interface SceneProps {
-  /** Show the animated grid underlay. */
-  grid?: boolean;
-  /** Show the repeating scanline overlay. */
-  scan?: boolean;
-  /** Show 60 random twinkling stars. */
-  stars?: boolean;
-}
+import './hud.css';
+import './Scene.css';
 
 // ---------------------------------------------------------------------------
 // Keyframes injected once as a <style> block.
+// Scene.css imports the keyframes from hud.css for the production build.
+// The <style> block is retained so RTL tests (JSDOM) can assert on keyframe
+// presence — JSDOM does not process imported CSS files.
 // ---------------------------------------------------------------------------
 
 const SCENE_STYLE = `
@@ -43,10 +39,19 @@ const SCENE_STYLE = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scene-grid     { animation: none !important; }
-  .scene-star     { animation: none !important; }
+  .hud-scene__layer--grid { animation: none !important; }
+  .scene-star             { animation: none !important; }
 }
 `;
+
+export interface SceneProps {
+  /** Show the animated grid underlay. */
+  grid?: boolean;
+  /** Show the repeating scanline overlay. */
+  scan?: boolean;
+  /** Show 60 random twinkling stars. */
+  stars?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Star data — stable across renders via useMemo with fixed seed.
@@ -88,6 +93,9 @@ function generateStars(count: number): StarDatum[] {
   return stars;
 }
 
+// Minimal SVG turbulence noise for organic grain texture (data-URI, static).
+const NOISE_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='0.04'/></svg>`;
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -96,140 +104,67 @@ function generateStars(count: number): StarDatum[] {
 export function Scene({ grid = true, scan = true, stars = true }: SceneProps): ReactElement {
   const starData = useMemo(() => generateStars(60), []);
 
-  const rootStyle: CSSProperties = {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 0,
-    pointerEvents: 'none',
-    overflow: 'hidden',
-  };
-
-  // 1. Radial background
-  const radialBgStyle: CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    background:
-      'radial-gradient(ellipse 120% 80% at 50% 40%, rgba(13,13,24,0.0) 0%, rgba(5,5,8,0.85) 70%, rgba(5,5,8,1) 100%)',
-  };
-
-  // 2. Grid
-  const gridStyle: CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    backgroundImage: [
-      'linear-gradient(rgba(76,168,232,0.045) 1px, transparent 1px)',
-      'linear-gradient(90deg, rgba(76,168,232,0.045) 1px, transparent 1px)',
-    ].join(', '),
-    backgroundSize: '44px 44px',
-    maskImage: 'radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%)',
-    WebkitMaskImage: 'radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%)',
-    animation: 'gridDrift 28s linear infinite',
-    willChange: 'background-position',
-  };
-
-  // 3. Scanlines
-  const scanlinesStyle: CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    background:
-      'repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(76,168,232,0.028) 2px, rgba(76,168,232,0.028) 3px)',
-    mixBlendMode: 'screen',
-    opacity: 0.7,
-  };
-
-  // 4. SVG turbulence noise (data-URI, inline base64 — small enough to inline)
-  // A minimal 100×100 SVG with a feTurbulence filter for organic grain texture.
-  const noiseSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='0.04'/></svg>`;
-  const noiseStyle: CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    backgroundImage: `url("data:image/svg+xml,${noiseSvg}")`,
-    backgroundSize: '200px 200px',
-    opacity: 0.06,
-    mixBlendMode: 'overlay',
-  };
-
-  // 5. Horizon glow — horizontal strip at ~60 % from top.
-  const horizonStyle: CSSProperties = {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '60%',
-    height: 1,
-    background:
-      'linear-gradient(90deg, transparent 0%, rgba(76,168,232,0.18) 20%, rgba(76,168,232,0.35) 50%, rgba(76,168,232,0.18) 80%, transparent 100%)',
-    boxShadow: '0 0 20px 4px rgba(76,168,232,0.12)',
-  };
-
-  // 7. Vignette
-  const vignetteStyle: CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    background:
-      'radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(5,5,8,0.65) 100%)',
-  };
-
-  // 8. Reactor glow (900×900 px centred)
-  const reactorStyle: CSSProperties = {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    width: 900,
-    height: 900,
-    background:
-      'radial-gradient(ellipse at 50% 50%, rgba(76,168,232,0.06) 0%, rgba(76,168,232,0.02) 35%, transparent 70%)',
-    borderRadius: '50%',
-  };
-
   return (
     <>
-      {/* Inject keyframes once */}
+      {/* Inject keyframes once — retained for JSDOM test assertions */}
       <style dangerouslySetInnerHTML={{ __html: SCENE_STYLE }} />
 
-      <div style={rootStyle} aria-hidden>
-        {/* 1. Radial bg */}
-        <div style={radialBgStyle} />
+      <div className="hud-scene" aria-hidden>
+      {/* 1. Radial bg */}
+      <div className="hud-scene__layer hud-scene__layer--radial-bg" />
 
-        {/* 2. Grid */}
-        {grid && <div className="scene-grid" style={gridStyle} />}
+      {/* 2. Grid */}
+      {grid && <div className="hud-scene__layer hud-scene__layer--grid scene-grid" />}
 
-        {/* 3. Scanlines */}
-        {scan && <div style={scanlinesStyle} />}
+      {/* 3. Scanlines */}
+      {scan && <div className="hud-scene__layer hud-scene__layer--scanlines" />}
 
-        {/* 4. Noise */}
-        <div style={noiseStyle} />
+      {/* 4. Noise — background-image set inline because it contains a data-URI */}
+      <div
+        className="hud-scene__layer hud-scene__layer--noise"
+        style={{ backgroundImage: `url("data:image/svg+xml,${NOISE_SVG}")` }}
+      />
 
-        {/* 5. Horizon glow */}
-        <div style={horizonStyle} />
+      {/* 5. Horizon glow */}
+      <div className="hud-scene__layer hud-scene__layer--horizon" />
 
-        {/* 6. Stars */}
-        {stars &&
-          starData.map((s) => {
-            const starStyle: CSSProperties = {
-              position: 'absolute',
-              top: s.top,
-              left: s.left,
-              width: s.size,
-              height: s.size,
-              borderRadius: '50%',
-              background: 'rgba(232,244,255,1)',
-              // CSS custom properties for the twinkle keyframe opacity values.
-              ['--star-base' as string]: s.baseOpacity,
-              ['--star-peak' as string]: s.peakOpacity,
-              opacity: s.baseOpacity,
-              animation: `starTwinkle ${s.duration.toFixed(2)}s ease-in-out ${s.delay.toFixed(2)}s infinite`,
-              willChange: 'opacity, transform',
-            };
-            return <span key={s.id} className="scene-star" style={starStyle} />;
-          })}
+      {/* 6. Stars — position/size/timing are dynamic per star datum */}
+      {stars &&
+        starData.map((s) => {
+          const starStyle: CSSProperties = {
+            position: 'absolute',
+            top: s.top,
+            left: s.left,
+            width: s.size,
+            height: s.size,
+            borderRadius: '50%',
+            background: 'rgba(232,244,255,1)',
+            // CSS custom properties for the twinkle keyframe opacity values.
+            ['--star-base' as string]: s.baseOpacity,
+            ['--star-peak' as string]: s.peakOpacity,
+            opacity: s.baseOpacity,
+            animation: `starTwinkle ${s.duration.toFixed(2)}s ease-in-out ${s.delay.toFixed(2)}s infinite`,
+            willChange: 'opacity, transform',
+          };
+          return <span key={s.id} className="scene-star" style={starStyle} />;
+        })}
 
-        {/* 7. Vignette */}
-        <div style={vignetteStyle} />
+      {/* 7. Vignette */}
+      <div className="hud-scene__layer hud-scene__layer--vignette" />
 
-        {/* 8. Reactor glow */}
-        <div style={reactorStyle} />
-      </div>
+      {/* 8. Reactor glow — width/height/translate kept inline (absolute px values) */}
+      <div
+        className="hud-scene__layer--reactor"
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: 900,
+          height: 900,
+        }}
+      />
+    </div>
     </>
   );
 }

@@ -1,0 +1,81 @@
+/* ====================== Scene layer classes ====================== */
+
+/*
+ * Static layout/visual rules for Scene layers.
+ * Dynamic values (star positions, transform per-frame, animation durations)
+ * remain inline in Scene.tsx.
+ */
+
+.hud-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.hud-scene__layer {
+  position: absolute;
+  inset: 0;
+}
+
+.hud-scene__layer--radial-bg {
+  background:
+    radial-gradient(ellipse 120% 80% at 50% 40%, rgba(13,13,24,0.0) 0%, rgba(5,5,8,0.85) 70%, rgba(5,5,8,1) 100%);
+}
+
+.hud-scene__layer--grid {
+  background-image:
+    linear-gradient(rgba(76,168,232,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76,168,232,0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
+  animation: gridDrift 28s linear infinite;
+  will-change: background-position;
+}
+
+.hud-scene__layer--scanlines {
+  background:
+    repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(76,168,232,0.028) 2px, rgba(76,168,232,0.028) 3px);
+  mix-blend-mode: screen;
+  opacity: 0.7;
+}
+
+.hud-scene__layer--noise {
+  /* background-image set inline (data-URI) */
+  background-size: 200px 200px;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+}
+
+.hud-scene__layer--horizon {
+  /* positional overrides needed: left/right/height/top are structural */
+  inset: unset;
+  left: 0;
+  right: 0;
+  top: 60%;
+  height: 1px;
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(76,168,232,0.18) 20%, rgba(76,168,232,0.35) 50%, rgba(76,168,232,0.18) 80%, transparent 100%);
+  box-shadow: 0 0 20px 4px rgba(76,168,232,0.12);
+}
+
+.hud-scene__layer--vignette {
+  background:
+    radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(5,5,8,0.65) 100%);
+}
+
+.hud-scene__layer--reactor {
+  /* width/height/transform set inline (dynamic sizing) */
+  inset: unset;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(76,168,232,0.06) 0%, rgba(76,168,232,0.02) 35%, transparent 70%);
+  border-radius: 50%;
+}
+
+/* Reduced-motion: pause animated layers */
+@media (prefers-reduced-motion: reduce) {
+  .hud-scene__layer--grid  { animation: none !important; }
+  .scene-star              { animation: none !important; }
+}

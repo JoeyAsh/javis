@@ -166,7 +166,7 @@ export function PushToTalkButton({ enabled, wsRef }: PushToTalkButtonProps): Rea
     <div
       style={{
         position: 'fixed',
-        bottom: 72,
+        bottom: 20,
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 20,
@@ -186,8 +186,8 @@ export function PushToTalkButton({ enabled, wsRef }: PushToTalkButtonProps): Rea
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 64,
-            height: 64,
+            width: 80,
+            height: 80,
             borderRadius: '50%',
             border: '1px solid var(--accent)',
             animation: 'ptt-ring 900ms ease-out infinite',
@@ -212,9 +212,9 @@ export function PushToTalkButton({ enabled, wsRef }: PushToTalkButtonProps): Rea
           handlePressEnd();
         }}
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 2,
+          width: 60,
+          height: 60,
+          borderRadius: '50%',
           border: `1px solid ${isHolding ? 'var(--accent)' : isFlash ? 'var(--accent-bright)' : 'var(--border)'}`,
           background: isHolding
             ? 'rgba(76,168,232,0.2)'
@@ -225,16 +225,16 @@ export function PushToTalkButton({ enabled, wsRef }: PushToTalkButtonProps): Rea
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: isHolding ? 'var(--accent)' : isFlash ? 'var(--accent-bright)' : 'var(--text-muted)',
-          boxShadow: isHolding ? 'var(--glow-strong)' : isFlash ? 'var(--glow)' : 'none',
+          color: isHolding ? 'var(--accent)' : isFlash ? 'var(--accent-bright)' : 'var(--text-secondary)',
+          boxShadow: isHolding ? 'var(--glow-strong)' : isFlash ? 'var(--glow)' : 'var(--glow)',
           transition: 'background 150ms, border-color 150ms, color 150ms, box-shadow 150ms',
           userSelect: 'none',
           WebkitUserSelect: 'none',
         }}
       >
         <svg
-          width="16"
-          height="16"
+          width="22"
+          height="22"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"

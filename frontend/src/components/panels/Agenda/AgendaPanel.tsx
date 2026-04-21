@@ -15,11 +15,6 @@ function minutesUntil(iso: string): number {
   return Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60_000));
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
 // ---- Compact mode ----
 
 function AgendaCompact({ events }: { events: AgendaEvent[] }): ReactElement {

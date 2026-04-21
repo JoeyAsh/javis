@@ -21,3 +21,5 @@ export { useTurnTimings } from './useTurnTimings';
 export type { UseTurnTimingsReturn } from './useTurnTimings';
 export { useAudioEngine } from './useAudioEngine';
 export type { UseAudioEngineReturn } from './useAudioEngine';
+export { usePushToTalk } from './usePushToTalk';
+export type { UsePushToTalkOptions, UsePushToTalkReturn, PttState } from './usePushToTalk';

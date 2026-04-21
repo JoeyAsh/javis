@@ -9,7 +9,8 @@
  *   5. Horizon glow strip at 60 % from top
  *   6. Optional stars (60 random dots with individual twinkle delays)
  *   7. Vignette (radial dark edge)
- *   8. Reactor radial-gradient (900×900 px centred glow)
+ *
+ * Note: Reactor halo is a separate <Reactor /> component mounted in App.tsx.
  *
  * `prefers-reduced-motion` pauses ALL animations.
  * `will-change: transform` is applied to animated layers only.
@@ -152,20 +153,6 @@ export function Scene({ grid = true, scan = true, stars = true }: SceneProps): R
 
       {/* 7. Vignette */}
       <div className="hud-scene__layer hud-scene__layer--vignette" />
-
-      {/* 8. Reactor glow — per spec: centred at bottom-of-screen minus 90px.
-           900px tall, so top places the centre 360px below the viewport. */}
-      <div
-        className="hud-scene__layer--reactor"
-        style={{
-          position: 'absolute',
-          top: 'calc(100vh - 90px)',
-          left: '50%',
-          transform: 'translate(-50%, 0)',
-          width: 900,
-          height: 900,
-        }}
-      />
     </div>
     </>
   );

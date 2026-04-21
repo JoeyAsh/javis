@@ -7,8 +7,11 @@ import { HudTopBar } from './components/HudTopBar';
 import { OrbDevMenu } from './components/OrbDevMenu';
 import { HudWindows } from './components/hud/HudWindows';
 import { SettingsOverlay } from './components/SettingsOverlay';
-import { PushToTalkButton } from './components/PushToTalkButton';
 import { AudioMuteToggle } from './components/AudioMuteToggle';
+import { Dock } from './components/Dock';
+import { HudHint } from './components/HudHint';
+import { HudViewportCorners } from './components/hud/primitives/HudViewportCorners';
+import { Reactor } from './components/hud/Reactor';
 import {
   WindowManagerProvider,
   useWindowManager,
@@ -51,7 +54,6 @@ function AppInner(): ReactElement {
     sendCancelTurn,
     registerStopAudio,
     notifyAudioPlaying,
-    currentToolSummary,
     connected,
   } = useWebSocket();
   const { analyser, isSpeaking, enqueue, stopAll } = useAudioAnalyser();
@@ -133,19 +135,6 @@ function AppInner(): ReactElement {
     setTweaksOpen((v) => !v);
   }, []);
 
-  const statusLabel =
-    effectiveOrbState === 'listening'
-      ? 'listening...'
-      : effectiveOrbState === 'thinking'
-        ? 'thinking...'
-        : effectiveOrbState === 'speaking'
-          ? 'speaking...'
-          : effectiveOrbState === 'follow_up'
-            ? 'follow-up...'
-            : effectiveOrbState === 'working'
-              ? (currentToolSummary ?? 'working...')
-              : '';
-
   // Apply --panel-opacity from settings so all .window elements pick it up
   // without touching individual panel styles.
   const panelOpacityCssVar = { '--panel-opacity': settingsHook.settings.panelOpacity } as React.CSSProperties;
@@ -153,11 +142,17 @@ function AppInner(): ReactElement {
   return (
     <SfxProvider playOneShot={sfxPlayOneShot}>
       <div
-        className="fixed inset-0 w-screen h-screen overflow-hidden"
+        className={`app fixed inset-0 w-screen h-screen overflow-hidden${effectiveOrbState === 'working' ? ' is-working' : ''}`}
         style={{ background: 'var(--bg)', ...panelOpacityCssVar }}
       >
-        {/* Animated scene background — z-index 0 (--z-orb) */}
+        {/* Viewport corner brackets — fixed to browser window edges, z-index 4 */}
+        <HudViewportCorners />
+
+        {/* Animated scene background — z-index 2 */}
         <Scene grid scan stars />
+
+        {/* Reactor halo — standalone 900×900 glow under the orb, z-index 0 */}
+        <Reactor />
 
         {/* Orb — swappable between Classic (Three.js) and Hypermodern (CSS) */}
         {settingsHook.settings.orbVariant === 'hypermodern' ? (
@@ -278,52 +273,15 @@ function AppInner(): ReactElement {
           settingsHook={settingsHook}
         />
 
-        {/* Push-to-Talk button — rendered only when enabled in settings */}
-        <PushToTalkButton
-          enabled={settingsHook.settings.pushToTalk}
+        {/* Bottom-center dock — PTT button, audio meters, state label + brand */}
+        <Dock
+          orbState={effectiveOrbState}
           wsRef={wsRef}
+          pttEnabled={settingsHook.settings.pushToTalk}
         />
 
-        {/* Bottom center: status text + JARVIS label */}
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 16,
-            left: 0,
-            right: 0,
-            zIndex: 20,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 4,
-            pointerEvents: 'none',
-          }}
-        >
-          <span
-            style={{
-              fontSize: 11,
-              color: 'var(--text-secondary)',
-              fontFamily: 'var(--font)',
-              letterSpacing: '0.1em',
-              minHeight: '1.4em',
-              transition: 'opacity 200ms',
-              opacity: statusLabel ? 1 : 0,
-            }}
-          >
-            {statusLabel}
-          </span>
-          <span
-            style={{
-              fontSize: 9,
-              color: 'var(--text-muted)',
-              fontFamily: 'var(--font)',
-              textTransform: 'uppercase',
-              letterSpacing: '6px',
-            }}
-          >
-            JARVIS
-          </span>
-        </div>
+        {/* Bottom-right keyboard hint */}
+        <HudHint />
       </div>
     </SfxProvider>
   );

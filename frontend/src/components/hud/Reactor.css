@@ -1,0 +1,38 @@
+/* ====================== Reactor halo ====================== */
+
+/*
+ * Full-screen reactor glow positioned under the orb.
+ * 900×900 px circle, centred horizontally, bottom edge 360 px below viewport.
+ * z-index: 0 — sits behind orb canvas and all UI.
+ */
+
+.reactor {
+  position: fixed;
+  left: 50%;
+  bottom: -360px;
+  width: 900px;
+  height: 900px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 0%,
+    rgba(76, 168, 232, 0.14) 0%,
+    rgba(76, 168, 232, 0.03) 35%,
+    transparent 62%
+  );
+}
+
+/* Thin arc at the top of the reactor circle */
+.reactor::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 540px;
+  height: 540px;
+  transform: translateX(-50%);
+  border-top: 1px solid rgba(76, 168, 232, 0.3);
+  border-radius: 50%;
+}

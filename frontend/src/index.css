@@ -90,18 +90,7 @@ body {
   overflow: hidden;
 }
 
-.panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--panel-header-height);
-  min-height: var(--panel-header-height);
-  padding: 0 var(--panel-padding);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  user-select: none;
-  background: rgba(0, 0, 0, 0.2);
-}
+/* .panel-header deleted — no tsx renders className="panel-header" (Phase C) */
 
 .panel-title {
   font-size: 10px;
@@ -194,9 +183,9 @@ body {
   align-items: center;
   gap: 4px;
   padding: 3px 6px;
-  background: rgba(13, 13, 20, 0.6);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--r-2, 4px);
   font-family: var(--font);
 }
 .orb-devmenu__label {
@@ -255,9 +244,9 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(13, 13, 20, 0.6);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--r-2, 4px);
   color: var(--text-secondary);
   cursor: pointer;
   transition: color 150ms, border-color 150ms, box-shadow 150ms;
@@ -473,11 +462,11 @@ body {
 
 .swap-drag-preview {
   /* positional styles set inline; this class only handles visuals */
-  background: rgba(18, 18, 28, 0.88);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--surface-raised);
+  backdrop-filter: var(--panel-blur, blur(10px));
+  -webkit-backdrop-filter: var(--panel-blur, blur(10px));
   border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-radius: var(--r-2, 4px);
   box-shadow:
     0 0 0 1px var(--accent),
     0 0 36px 4px color-mix(in srgb, var(--accent) 45%, transparent),

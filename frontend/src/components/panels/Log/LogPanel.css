@@ -1,0 +1,123 @@
+/* ====================== LogPanel ====================== */
+
+.log-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--font);
+}
+
+/* ---- Tab bar ---- */
+
+.log-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.log-tab {
+  font-family: var(--font);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 3px var(--s-2) 4px;
+  cursor: pointer;
+  transition: color var(--dur-base) var(--ease);
+}
+
+.log-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.log-tab--inactive {
+  color: var(--text-muted);
+}
+
+.log-tab:hover {
+  color: var(--text-secondary);
+}
+
+/* ---- Content area ---- */
+
+.log-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ---- Stream view ---- */
+
+.log-stream {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.log-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px var(--s-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.log-toolbar__count {
+  font-family: var(--font);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.log-toolbar__clear {
+  font-family: var(--font);
+  font-size: 9px;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  padding: 1px var(--s-2);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+}
+
+.log-toolbar__clear:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.log-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  contain: strict;
+}
+
+.log-empty {
+  padding: var(--s-3) var(--s-2);
+  font-family: var(--font);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ---- Timeline view ---- */
+
+.log-timeline {
+  overflow-y: auto;
+  height: 100%;
+  contain: strict;
+}
+
+.log-timeline-empty {
+  padding: var(--s-4) var(--s-2);
+  font-family: var(--font);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}

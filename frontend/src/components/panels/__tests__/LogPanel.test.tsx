@@ -42,7 +42,7 @@ vi.mock('../../../hooks/useTurnTimings', () => ({
 
 import { useLogStream } from '../../../hooks/useLogStream';
 import { useTurnTimings } from '../../../hooks/useTurnTimings';
-import { LogPanel } from '../LogPanel';
+import { LogPanel } from '../Log';
 
 const mockUseLogStream = vi.mocked(useLogStream);
 const mockUseTurnTimings = vi.mocked(useTurnTimings);

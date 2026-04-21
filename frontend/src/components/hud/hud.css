@@ -1,0 +1,462 @@
+/**
+ * JARVIS HUD Primitives — shared keyframes and utility classes.
+ *
+ * Import this file from any primitive component that needs these animations.
+ * Variables are provided by tokens.css (imported via main.tsx).
+ */
+
+/* ====================== Entry animation ====================== */
+
+@keyframes winIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.hud-win-in {
+  animation: winIn 220ms var(--ease, cubic-bezier(.4,0,.2,1)) both;
+}
+
+/* ====================== Corner bracket breath ====================== */
+
+@keyframes cornerBreath {
+  0%, 100% {
+    width: 10px;
+    height: 10px;
+    opacity: 0.65;
+  }
+  50% {
+    width: 12px;
+    height: 12px;
+    opacity: 0.9;
+  }
+}
+
+/* ====================== Light traces ====================== */
+
+@keyframes trace-ltr {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(110%); }
+}
+
+@keyframes trace-rtl {
+  0%   { transform: translateX(110%); }
+  100% { transform: translateX(-110%); }
+}
+
+@keyframes trace-ttb {
+  0%   { transform: translateY(-110%); }
+  100% { transform: translateY(110%); }
+}
+
+@keyframes trace-btt {
+  0%   { transform: translateY(110%); }
+  100% { transform: translateY(-110%); }
+}
+
+/* ====================== Panel bloom ====================== */
+
+@keyframes panelBloom {
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 0.35; }
+}
+
+/* ====================== HudPanel shell ====================== */
+
+.hud-panel {
+  position: relative;
+  background: rgba(13, 13, 20, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border, #1a1a2e);
+  border-radius: var(--r-1, 2px);
+  overflow: visible;
+  transition:
+    border-color var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
+    box-shadow var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1));
+}
+
+.hud-panel--focused {
+  border-color: var(--accent-dim, #2d6aa1);
+  box-shadow: var(--glow, 0 0 8px #4ca8e8aa);
+}
+
+.hud-panel--dev {
+  border-color: var(--warning, #e8b24c);
+}
+
+/* ====================== Corner brackets ====================== */
+
+.hud-corner-brackets {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.hud-corner-bracket {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--accent, #4ca8e8);
+  border-style: solid;
+  opacity: 0.65;
+  transition:
+    width var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
+    height var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
+    opacity var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
+    border-color var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1));
+}
+
+.hud-corner-bracket.tl {
+  top: -2px;
+  left: -2px;
+  border-width: 1px 0 0 1px;
+}
+
+.hud-corner-bracket.tr {
+  top: -2px;
+  right: -2px;
+  border-width: 1px 1px 0 0;
+}
+
+.hud-corner-bracket.bl {
+  bottom: -2px;
+  left: -2px;
+  border-width: 0 0 1px 1px;
+}
+
+.hud-corner-bracket.br {
+  bottom: -2px;
+  right: -2px;
+  border-width: 0 1px 1px 0;
+}
+
+/* Focused state: grow + brighten */
+.hud-panel--focused .hud-corner-bracket {
+  width: 20px;
+  height: 20px;
+  opacity: 1;
+  border-color: var(--accent-bright, #6ec4ff);
+  animation: cornerBreath 2.6s var(--ease, cubic-bezier(.4,0,.2,1)) infinite;
+}
+
+/* Hover state (non-focused): medium size */
+.hud-panel:hover:not(.hud-panel--focused) .hud-corner-bracket {
+  width: 14px;
+  height: 14px;
+  opacity: 1;
+  border-color: var(--accent, #4ca8e8);
+}
+
+/* ====================== Light traces ====================== */
+
+.hud-light-trace {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+.hud-trace {
+  position: absolute;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent, #4ca8e8) 50%,
+    transparent 100%
+  );
+  opacity: 0.55;
+  transition: opacity var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1));
+}
+
+.hud-trace--top {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent, #4ca8e8) 50%,
+    transparent 100%
+  );
+  animation: trace-ltr 6s linear infinite;
+}
+
+.hud-trace--bottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent, #4ca8e8) 50%,
+    transparent 100%
+  );
+  animation: trace-rtl 6s linear -3s infinite;
+}
+
+.hud-trace--left {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    var(--accent, #4ca8e8) 50%,
+    transparent 100%
+  );
+  animation: trace-ttb 6s linear -4.5s infinite;
+}
+
+.hud-trace--right {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    var(--accent, #4ca8e8) 50%,
+    transparent 100%
+  );
+  animation: trace-btt 6s linear -1.5s infinite;
+}
+
+.hud-panel:hover .hud-trace {
+  opacity: 0.9;
+}
+
+.hud-panel--focused .hud-trace {
+  opacity: 1;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .hud-trace--top,
+  .hud-trace--bottom,
+  .hud-trace--left,
+  .hud-trace--right {
+    animation: none;
+  }
+
+  .hud-panel--focused .hud-corner-bracket {
+    animation: none;
+  }
+
+  .hud-win-in {
+    animation: none;
+  }
+}
+
+/* ====================== HudBloom ====================== */
+
+.hud-bloom {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    color-mix(in srgb, var(--accent, #4ca8e8) 20%, transparent) 0%,
+    transparent 70%
+  );
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity var(--dur-slow, 300ms) var(--ease, cubic-bezier(.4,0,.2,1));
+  z-index: 0;
+  animation: panelBloom 2.8s var(--ease, cubic-bezier(.4,0,.2,1)) infinite;
+}
+
+.hud-panel:hover .hud-bloom {
+  opacity: 0.55;
+}
+
+.hud-panel--focused .hud-bloom {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-bloom {
+    animation: none;
+  }
+}
+
+/* ====================== HudButton ====================== */
+
+.hud-btn {
+  font-family: var(--font, 'JetBrains Mono', monospace);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--accent, #4ca8e8);
+  border: 1px solid var(--accent, #4ca8e8);
+  border-radius: var(--r-1, 2px);
+  cursor: pointer;
+  transition: all var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1));
+  user-select: none;
+}
+
+.hud-btn:hover:not(:disabled) {
+  color: var(--accent-bright, #6ec4ff);
+  border-color: var(--accent-bright, #6ec4ff);
+  box-shadow: var(--glow, 0 0 8px #4ca8e8aa);
+}
+
+.hud-btn:active:not(:disabled) {
+  color: var(--bg, #050508);
+  background: var(--accent-bright, #6ec4ff);
+}
+
+.hud-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.hud-btn--ghost {
+  border-color: var(--border, #1a1a2e);
+  color: var(--text-secondary, #6b8fa8);
+}
+
+.hud-btn--ghost:hover:not(:disabled) {
+  border-color: var(--accent, #4ca8e8);
+  color: var(--accent, #4ca8e8);
+}
+
+.hud-btn--primary {
+  background: var(--accent, #4ca8e8);
+  color: var(--bg, #050508);
+}
+
+.hud-btn--primary:hover:not(:disabled) {
+  background: var(--accent-bright, #6ec4ff);
+  box-shadow: var(--glow-strong, 0 0 20px #4ca8e8cc, 0 0 40px #4ca8e844);
+}
+
+/* ====================== HudIconButton ====================== */
+
+.hud-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid var(--border, #1a1a2e);
+  border-radius: var(--r-1, 2px);
+  color: var(--text-secondary, #6b8fa8);
+  cursor: pointer;
+  transition: color var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
+              border-color var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
+              box-shadow var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1));
+  user-select: none;
+  font-family: var(--font, 'JetBrains Mono', monospace);
+}
+
+.hud-icon-btn:hover:not(:disabled) {
+  color: var(--accent-bright, #6ec4ff);
+  border-color: var(--accent, #4ca8e8);
+  box-shadow: var(--glow, 0 0 8px #4ca8e8aa);
+}
+
+.hud-icon-btn:active:not(:disabled) {
+  color: var(--accent-bright, #6ec4ff);
+  background: rgba(76, 168, 232, 0.1);
+}
+
+.hud-icon-btn--active {
+  color: var(--accent, #4ca8e8);
+  border-color: var(--accent-dim, #2d6aa1);
+}
+
+.hud-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ====================== HudDivider ====================== */
+
+.hud-divider {
+  height: 1px;
+  background: var(--border, #1a1a2e);
+  margin: var(--s-2, 8px) 0;
+  border: none;
+}
+
+.hud-divider--vertical {
+  width: 1px;
+  height: auto;
+  margin: 0 var(--s-2, 8px);
+  align-self: stretch;
+}
+
+/* ====================== HudStatusBadge ====================== */
+
+.hud-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-family: var(--font, 'JetBrains Mono', monospace);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border: 1px solid var(--border, #1a1a2e);
+  border-radius: var(--r-1, 2px);
+  color: var(--text-secondary, #6b8fa8);
+}
+
+.hud-status-badge--ok {
+  color: var(--success, #4ce8a8);
+  border-color: color-mix(in srgb, var(--success, #4ce8a8) 40%, transparent);
+}
+
+.hud-status-badge--warn {
+  color: var(--warning, #e8b24c);
+  border-color: color-mix(in srgb, var(--warning, #e8b24c) 40%, transparent);
+}
+
+.hud-status-badge--error {
+  color: var(--error, #e85a5a);
+  border-color: color-mix(in srgb, var(--error, #e85a5a) 40%, transparent);
+}
+
+.hud-status-badge--info {
+  color: var(--accent-bright, #6ec4ff);
+  border-color: color-mix(in srgb, var(--accent-bright, #6ec4ff) 40%, transparent);
+}
+
+/* ====================== HudList ====================== */
+
+.hud-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font, 'JetBrains Mono', monospace);
+  font-size: 12px;
+  color: var(--text, #e8f4ff);
+}
+
+.hud-list-item {
+  padding: var(--s-2, 8px) 0;
+  border-bottom: 1px solid var(--border, #1a1a2e);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2, 8px);
+}
+
+.hud-list-item:last-child {
+  border-bottom: none;
+}

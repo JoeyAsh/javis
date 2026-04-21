@@ -10,7 +10,7 @@
 
 import { render, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useRef, type ReactElement } from 'react';
+import { type ReactElement } from 'react';
 import { useDraggable } from '../useDraggable';
 
 // ---------------------------------------------------------------------------

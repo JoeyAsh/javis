@@ -4,6 +4,15 @@
  * All paths are relative to `public/sounds/`. The audio engine resolves
  * them at runtime. If a file is missing the engine logs a warning and
  * silently skips the event — no throws.
+ *
+ * Batch 1 events: boot, wakeWord, scan, confirm, error, transition,
+ *   ambient, drag_start, drag_end, resize, pin, unpin, expand, collapse,
+ *   click, hover.
+ *
+ * Batch 2 events (SFX #34): boot_complete, shutdown, wake, state_change,
+ *   mic_open, mic_close, speech_start, speech_end, barge_in, offline,
+ *   disconnect, thinking, working, idle_pulse, heartbeat, menu_open,
+ *   menu_close, transition_1, transition_2.
  */
 
 export interface SfxEntry {
@@ -15,9 +24,16 @@ export interface SfxEntry {
   volume: number;
   /** Whether this sound is ducked when `setDucking(true)` is called. */
   duckable: boolean;
+  /**
+   * Optional gain override when ducking is active (overrides the global
+   * DUCK_VOLUME constant). Used for the ambient loop which should duck to
+   * near-silence rather than the standard 12 %.
+   */
+  duckedVolume?: number;
 }
 
 export type SfxEvent =
+  // ── Batch 1 ────────────────────────────────────────────────────────────────
   | 'boot'
   | 'wakeWord'
   | 'scan'
@@ -33,7 +49,27 @@ export type SfxEvent =
   | 'expand'
   | 'collapse'
   | 'click'
-  | 'hover';
+  | 'hover'
+  // ── Batch 2 ────────────────────────────────────────────────────────────────
+  | 'boot_complete'
+  | 'shutdown'
+  | 'wake'
+  | 'state_change'
+  | 'mic_open'
+  | 'mic_close'
+  | 'speech_start'
+  | 'speech_end'
+  | 'barge_in'
+  | 'offline'
+  | 'disconnect'
+  | 'thinking'
+  | 'working'
+  | 'idle_pulse'
+  | 'heartbeat'
+  | 'menu_open'
+  | 'menu_close'
+  | 'transition_1'
+  | 'transition_2';
 
 /** Gain applied to duckable loops when ducking is active. */
 export const DUCK_VOLUME = 0.12;
@@ -50,15 +86,17 @@ export const DUCK_RAMP_MS = 200;
  *   - drag_start / drag_end: 60 %, not duckable
  *   - resize: 55 %, not duckable
  *   - pin / unpin / expand / collapse: 65 %, not duckable
- *   - ambient: 40 %, duckable (background loop)
+ *   - ambient: 25 %, duckable (background loop), duckedVolume: 5 %
  *   - scan: 70 %, duckable (scanning loop during thinking)
+ *   - thinking / working: looping ambient cognition layers, duckable
  *   - boot / confirm / error / transition / wakeWord: full or near-full, not duckable
  */
 export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
+  // ── Batch 1 ──────────────────────────────────────────────────────────────
   boot: {
-    file: 'boot/boot_1.mp3',
+    file: 'boot/boot_3.mp3',
     loop: false,
-    volume: 0.85,
+    volume: 1.0,
     duckable: false,
   },
   wakeWord: {
@@ -92,10 +130,11 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
     duckable: false,
   },
   ambient: {
-    file: 'ambient/ambient_1.mp3',
+    file: 'ambient/ambient_2.mp3',
     loop: true,
-    volume: 0.40,
+    volume: 0.25,
     duckable: true,
+    duckedVolume: 0.05,
   },
   drag_start: {
     file: 'drag_start/drag_start_1.mp3',
@@ -149,6 +188,121 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
     file: 'hover/hover_1.mp3',
     loop: false,
     volume: 0.30,
+    duckable: false,
+  },
+  // ── Batch 2 ──────────────────────────────────────────────────────────────
+  boot_complete: {
+    file: 'boot/boot_complete_1.mp3',
+    loop: false,
+    volume: 0.85,
+    duckable: false,
+  },
+  shutdown: {
+    file: 'shutdown/shutdown_1.mp3',
+    loop: false,
+    volume: 0.80,
+    duckable: false,
+  },
+  wake: {
+    file: 'wake/wake_2.mp3',
+    loop: false,
+    volume: 0.85,
+    duckable: false,
+  },
+  state_change: {
+    file: 'state/state_change_1.mp3',
+    loop: false,
+    volume: 0.60,
+    duckable: false,
+  },
+  mic_open: {
+    file: 'mic/mic_open_1.mp3',
+    loop: false,
+    volume: 0.70,
+    duckable: false,
+  },
+  mic_close: {
+    file: 'mic/mic_close_1.mp3',
+    loop: false,
+    volume: 0.70,
+    duckable: false,
+  },
+  speech_start: {
+    file: 'speech/speech_start_1.mp3',
+    loop: false,
+    volume: 0.65,
+    duckable: false,
+  },
+  speech_end: {
+    file: 'speech/speech_end_1.mp3',
+    loop: false,
+    volume: 0.65,
+    duckable: false,
+  },
+  barge_in: {
+    file: 'speech/barge_in_1.mp3',
+    loop: false,
+    volume: 0.75,
+    duckable: false,
+  },
+  offline: {
+    file: 'offline/offline_1.mp3',
+    loop: false,
+    volume: 0.80,
+    duckable: false,
+  },
+  disconnect: {
+    file: 'offline/disconnect_1.mp3',
+    loop: false,
+    volume: 0.75,
+    duckable: false,
+  },
+  thinking: {
+    file: 'thinking/thinking_1.mp3',
+    loop: true,
+    volume: 0.55,
+    duckable: true,
+  },
+  working: {
+    file: 'working/working_1.mp3',
+    loop: true,
+    volume: 0.55,
+    duckable: true,
+  },
+  idle_pulse: {
+    file: 'idle/idle_pulse_1.mp3',
+    loop: true,
+    volume: 0.20,
+    duckable: true,
+  },
+  heartbeat: {
+    file: 'idle/heartbeat_1.mp3',
+    loop: true,
+    volume: 0.15,
+    duckable: true,
+  },
+  menu_open: {
+    file: 'menu/menu_open_1.mp3',
+    loop: false,
+    volume: 0.60,
+    duckable: false,
+  },
+  menu_close: {
+    file: 'menu/menu_close_1.mp3',
+    loop: false,
+    volume: 0.60,
+    duckable: false,
+  },
+  transition_1: {
+    file: 'transition/transition_1.mp3',
+    loop: false,
+    volume: 0.70,
+    duckable: false,
+  },
+  transition_2: {
+    file: 'transition/transition_2.mp3',
+    loop: false,
+    volume: 0.70,
     duckable: false,
   },
 };

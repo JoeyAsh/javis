@@ -163,7 +163,7 @@ describe('useAudioEngine — orbState loop management (actual impl)', () => {
       // Start at idle, then transition to thinking via rerender
       const { rerender } = renderHook(
         ({ orb }: { orb: 'idle' | 'thinking' }) => useAudioEngine(orb, true),
-        { initialProps: { orb: 'idle' as const } },
+        { initialProps: { orb: 'idle' as 'idle' | 'thinking' } },
       );
       rerender({ orb: 'thinking' });
     });
@@ -176,7 +176,7 @@ describe('useAudioEngine — orbState loop management (actual impl)', () => {
     await act(async () => {
       const { rerender } = renderHook(
         ({ orb }: { orb: 'idle' | 'thinking' }) => useAudioEngine(orb, true),
-        { initialProps: { orb: 'idle' as const } },
+        { initialProps: { orb: 'idle' as 'idle' | 'thinking' } },
       );
       rerender({ orb: 'thinking' });
     });
@@ -189,7 +189,7 @@ describe('useAudioEngine — orbState loop management (actual impl)', () => {
     await act(async () => {
       const { rerender } = renderHook(
         ({ orb }: { orb: 'idle' | 'working' }) => useAudioEngine(orb, true),
-        { initialProps: { orb: 'idle' as const } },
+        { initialProps: { orb: 'idle' as 'idle' | 'working' } },
       );
       rerender({ orb: 'working' });
     });
@@ -203,7 +203,7 @@ describe('useAudioEngine — orbState loop management (actual impl)', () => {
     // Start at idle, go to thinking, then back to idle
     const { rerender } = renderHook(
       ({ orb }: { orb: 'idle' | 'thinking' }) => useAudioEngine(orb, true),
-      { initialProps: { orb: 'idle' as const } },
+      { initialProps: { orb: 'idle' as 'idle' | 'thinking' } },
     );
 
     await act(async () => {
@@ -223,7 +223,7 @@ describe('useAudioEngine — orbState loop management (actual impl)', () => {
     await act(async () => {
       const { rerender } = renderHook(
         ({ orb }: { orb: 'idle' | 'listening' }) => useAudioEngine(orb, true),
-        { initialProps: { orb: 'idle' as const } },
+        { initialProps: { orb: 'idle' as 'idle' | 'listening' } },
       );
       rerender({ orb: 'listening' });
     });
@@ -236,7 +236,7 @@ describe('useAudioEngine — orbState loop management (actual impl)', () => {
     await act(async () => {
       const { rerender } = renderHook(
         ({ orb }: { orb: 'idle' | 'speaking' }) => useAudioEngine(orb, true),
-        { initialProps: { orb: 'idle' as const } },
+        { initialProps: { orb: 'idle' as 'idle' | 'speaking' } },
       );
       rerender({ orb: 'speaking' });
     });
@@ -248,7 +248,7 @@ describe('useAudioEngine — orbState loop management (actual impl)', () => {
   it('transition from idle to thinking triggers scan start', async () => {
     const { rerender } = renderHook(
       ({ orb }: { orb: 'idle' | 'thinking' }) => useAudioEngine(orb, true),
-      { initialProps: { orb: 'idle' as const } },
+      { initialProps: { orb: 'idle' as 'idle' | 'thinking' } },
     );
 
     const playCallsBefore = spies.play.mock.calls.length;
@@ -267,7 +267,7 @@ describe('useAudioEngine — duck toggling', () => {
     await act(async () => {
       const { rerender } = renderHook(
         ({ orb }: { orb: 'idle' | 'listening' }) => useAudioEngine(orb, true),
-        { initialProps: { orb: 'idle' as const } },
+        { initialProps: { orb: 'idle' as 'idle' | 'listening' } },
       );
       rerender({ orb: 'listening' });
     });
@@ -279,7 +279,7 @@ describe('useAudioEngine — duck toggling', () => {
     // prevOrbStateRef starts at 'idle', so we must first go to listening then to idle
     const { rerender } = renderHook(
       ({ orb }: { orb: 'idle' | 'listening' }) => useAudioEngine(orb, true),
-      { initialProps: { orb: 'idle' as const } },
+      { initialProps: { orb: 'idle' as 'idle' | 'listening' } },
     );
 
     await act(async () => {

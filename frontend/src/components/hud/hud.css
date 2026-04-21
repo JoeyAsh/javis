@@ -8,62 +8,87 @@
 /* ====================== Entry animation ====================== */
 
 @keyframes winIn {
-  from {
-    opacity: 0;
-    transform: scale(0.97) translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+  0%   { opacity: 0; transform: translateY(8px) scale(.985); clip-path: inset(46% 0 46% 0); }
+  60%  { opacity: 1; clip-path: inset(0 0 0 0); }
+  100% { transform: none; }
 }
 
 .hud-win-in {
-  animation: winIn 220ms var(--ease, cubic-bezier(.4,0,.2,1)) both;
+  animation: winIn .5s var(--ease, cubic-bezier(.4,0,.2,1)) both;
 }
 
 /* ====================== Corner bracket breath ====================== */
 
 @keyframes cornerBreath {
+  0%, 100% { width: 18px; height: 18px; border-color: var(--accent); }
+  50%      { width: 22px; height: 22px; border-color: var(--accent-bright); }
+}
+
+/* TopBar corner breath — 3.4 s with staggered start delays per corner */
+@keyframes tbCornerBreath {
   0%, 100% {
-    width: 10px;
-    height: 10px;
-    opacity: 0.65;
+    width: 8px;
+    height: 8px;
+    opacity: 0.45;
   }
   50% {
-    width: 12px;
-    height: 12px;
-    opacity: 0.9;
+    width: 10px;
+    height: 10px;
+    opacity: 0.75;
   }
+}
+
+/* TopBar-specific trace timings (applied via .hud-topbar class overrides) */
+.hud-topbar .hud-trace--top    { animation-duration: 5.2s; animation-delay: 0s; }
+.hud-topbar .hud-trace--bottom { animation-duration: 5.2s; animation-delay: -2.6s; }
+.hud-topbar .hud-trace--left   { animation-duration: 5.2s; animation-delay: -3.9s; }
+.hud-topbar .hud-trace--right  { animation-duration: 5.2s; animation-delay: -1.3s; }
+
+/* TopBar corner breath staggered delays: tl/tr/bl/br at 0/.85/1.7/2.55 s */
+.hud-topbar .hud-corner-bracket.tl { animation: tbCornerBreath 3.4s ease infinite 0s; }
+.hud-topbar .hud-corner-bracket.tr { animation: tbCornerBreath 3.4s ease infinite 0.85s; }
+.hud-topbar .hud-corner-bracket.bl { animation: tbCornerBreath 3.4s ease infinite 1.7s; }
+.hud-topbar .hud-corner-bracket.br { animation: tbCornerBreath 3.4s ease infinite 2.55s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-topbar .hud-corner-bracket { animation: none; }
 }
 
 /* ====================== Light traces ====================== */
 
 @keyframes trace-ltr {
-  0%   { transform: translateX(-110%); }
-  100% { transform: translateX(110%); }
+  0%   { left: -40%; opacity: 0; }
+  8%   { opacity: .6; }
+  92%  { opacity: .6; }
+  100% { left: 100%; opacity: 0; }
 }
 
 @keyframes trace-rtl {
-  0%   { transform: translateX(110%); }
-  100% { transform: translateX(-110%); }
+  0%   { right: -40%; opacity: 0; }
+  8%   { opacity: .6; }
+  92%  { opacity: .6; }
+  100% { right: 100%; opacity: 0; }
 }
 
 @keyframes trace-ttb {
-  0%   { transform: translateY(-110%); }
-  100% { transform: translateY(110%); }
+  0%   { top: -40%; opacity: 0; }
+  8%   { opacity: .6; }
+  92%  { opacity: .6; }
+  100% { top: 100%; opacity: 0; }
 }
 
 @keyframes trace-btt {
-  0%   { transform: translateY(110%); }
-  100% { transform: translateY(-110%); }
+  0%   { bottom: -40%; opacity: 0; }
+  8%   { opacity: .6; }
+  92%  { opacity: .6; }
+  100% { bottom: 100%; opacity: 0; }
 }
 
 /* ====================== Panel bloom ====================== */
 
 @keyframes panelBloom {
-  0%, 100% { opacity: 0; }
-  50%      { opacity: 0.35; }
+  0%, 100% { filter: brightness(.85); }
+  50%      { filter: brightness(1.25); }
 }
 
 /* ====================== HudPanel shell ====================== */
@@ -90,6 +115,11 @@
   border-color: var(--warning, #e8b24c);
 }
 
+/* ====================== Panel header classes ====================== */
+
+.hud-panel__header .ix { color: var(--accent-bright); font-weight: 500; opacity: .8; }
+.hud-panel__header .tt { color: var(--text-secondary); }
+
 /* ====================== Corner brackets ====================== */
 
 .hud-corner-brackets {
@@ -105,12 +135,12 @@
   height: 10px;
   border-color: var(--accent, #4ca8e8);
   border-style: solid;
-  opacity: 0.65;
+  opacity: 0.7;
   transition:
-    width var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
-    height var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
-    opacity var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1)),
-    border-color var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1));
+    width .3s var(--ease, cubic-bezier(.4,0,.2,1)),
+    height .3s var(--ease, cubic-bezier(.4,0,.2,1)),
+    opacity .25s,
+    border-color .25s;
 }
 
 .hud-corner-bracket.tl {
@@ -137,21 +167,21 @@
   border-width: 0 1px 1px 0;
 }
 
-/* Focused state: grow + brighten */
+/* Focused state: grow + animate */
 .hud-panel--focused .hud-corner-bracket {
   width: 20px;
   height: 20px;
   opacity: 1;
   border-color: var(--accent-bright, #6ec4ff);
-  animation: cornerBreath 2.6s var(--ease, cubic-bezier(.4,0,.2,1)) infinite;
+  animation: cornerBreath 2.6s ease-in-out infinite;
 }
 
-/* Hover state (non-focused): medium size */
+/* Hover state (non-focused): medium size, accent-bright, reduced opacity */
 .hud-panel:hover:not(.hud-panel--focused) .hud-corner-bracket {
   width: 14px;
   height: 14px;
-  opacity: 1;
-  border-color: var(--accent, #4ca8e8);
+  opacity: .85;
+  border-color: var(--accent-bright, #6ec4ff);
 }
 
 /* ====================== Light traces ====================== */
@@ -167,69 +197,59 @@
 
 .hud-trace {
   position: absolute;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--accent, #4ca8e8) 50%,
-    transparent 100%
-  );
   opacity: 0.55;
   transition: opacity var(--dur-base, 200ms) var(--ease, cubic-bezier(.4,0,.2,1));
 }
 
+.hud-trace--top, .hud-trace--bottom {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--accent, #4ca8e8) 40%,
+    var(--accent-bright, #6ec4ff) 50%,
+    var(--accent, #4ca8e8) 60%,
+    transparent 100%);
+  box-shadow: 0 0 8px var(--accent-bright, #6ec4ff);
+}
+
+.hud-trace--left, .hud-trace--right {
+  background: linear-gradient(180deg,
+    transparent 0%,
+    var(--accent, #4ca8e8) 40%,
+    var(--accent-bright, #6ec4ff) 50%,
+    var(--accent, #4ca8e8) 60%,
+    transparent 100%);
+  box-shadow: 0 0 8px var(--accent-bright, #6ec4ff);
+}
+
 .hud-trace--top {
   top: 0;
-  left: 0;
-  right: 0;
+  left: -40%;
+  width: 40%;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--accent, #4ca8e8) 50%,
-    transparent 100%
-  );
   animation: trace-ltr 6s linear infinite;
 }
 
 .hud-trace--bottom {
   bottom: 0;
-  left: 0;
-  right: 0;
+  right: -40%;
+  width: 40%;
   height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--accent, #4ca8e8) 50%,
-    transparent 100%
-  );
   animation: trace-rtl 6s linear -3s infinite;
 }
 
 .hud-trace--left {
-  top: 0;
   left: 0;
-  bottom: 0;
+  top: -40%;
+  height: 40%;
   width: 1px;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    var(--accent, #4ca8e8) 50%,
-    transparent 100%
-  );
   animation: trace-ttb 6s linear -4.5s infinite;
 }
 
 .hud-trace--right {
-  top: 0;
   right: 0;
-  bottom: 0;
+  bottom: -40%;
+  height: 40%;
   width: 1px;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    var(--accent, #4ca8e8) 50%,
-    transparent 100%
-  );
   animation: trace-btt 6s linear -1.5s infinite;
 }
 
@@ -266,24 +286,23 @@
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: radial-gradient(
-    ellipse at 50% 50%,
-    color-mix(in srgb, var(--accent, #4ca8e8) 20%, transparent) 0%,
-    transparent 70%
-  );
+  background:
+    radial-gradient(120% 70% at 50% 0%,   color-mix(in srgb, var(--accent, #4ca8e8) 16%, transparent) 0%, transparent 55%),
+    radial-gradient(120% 70% at 50% 100%, color-mix(in srgb, var(--accent, #4ca8e8) 10%, transparent) 0%, transparent 55%);
   mix-blend-mode: screen;
   opacity: 0;
-  transition: opacity var(--dur-slow, 300ms) var(--ease, cubic-bezier(.4,0,.2,1));
+  transition: opacity .3s ease;
   z-index: 0;
-  animation: panelBloom 2.8s var(--ease, cubic-bezier(.4,0,.2,1)) infinite;
 }
 
 .hud-panel:hover .hud-bloom {
-  opacity: 0.55;
+  opacity: .55;
+  animation: panelBloom 3s ease-in-out infinite;
 }
 
 .hud-panel--focused .hud-bloom {
   opacity: 1;
+  animation: panelBloom 2.6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -351,8 +370,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: 1px solid var(--border, #1a1a2e);
   border-radius: var(--r-1, 2px);

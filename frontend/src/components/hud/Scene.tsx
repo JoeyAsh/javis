@@ -121,6 +121,8 @@ export function Scene({ grid = true, scan = true, stars = true }: SceneProps): R
       'linear-gradient(90deg, rgba(76,168,232,0.045) 1px, transparent 1px)',
     ].join(', '),
     backgroundSize: '44px 44px',
+    maskImage: 'radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%)',
+    WebkitMaskImage: 'radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%)',
     animation: 'gridDrift 28s linear infinite',
     willChange: 'background-position',
   };
@@ -132,6 +134,7 @@ export function Scene({ grid = true, scan = true, stars = true }: SceneProps): R
     background:
       'repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(76,168,232,0.028) 2px, rgba(76,168,232,0.028) 3px)',
     mixBlendMode: 'screen',
+    opacity: 0.7,
   };
 
   // 4. SVG turbulence noise (data-URI, inline base64 — small enough to inline)
@@ -142,7 +145,7 @@ export function Scene({ grid = true, scan = true, stars = true }: SceneProps): R
     inset: 0,
     backgroundImage: `url("data:image/svg+xml,${noiseSvg}")`,
     backgroundSize: '200px 200px',
-    opacity: 0.6,
+    opacity: 0.06,
     mixBlendMode: 'overlay',
   };
 

@@ -7,7 +7,7 @@
  *
  * @example
  * ```tsx
- * <HudPanel focused header={<span>Title</span>} badge={<HudStatusBadge>LIVE</HudStatusBadge>}>
+ * <HudPanel focused icon={<IconNode />} title="TITLE" badge={<HudStatusBadge>LIVE</HudStatusBadge>}>
  *   <p>Panel body</p>
  * </HudPanel>
  * ```
@@ -27,7 +27,20 @@ export interface HudPanelProps {
   focused?: boolean;
   /** Visual variant — 'dev' uses warning border color. */
   variant?: HudPanelVariant;
-  /** Optional header node rendered inside the panel chrome. */
+  /**
+   * Icon node rendered in the header's `.ix` span (accent-bright color).
+   * Mutually exclusive with the legacy `header` prop — prefer `icon` + `title`.
+   */
+  icon?: ReactNode;
+  /**
+   * Title string rendered in the header's `.tt` span (text-secondary color).
+   */
+  title?: ReactNode;
+  /**
+   * @deprecated Pass `icon` and `title` separately instead.
+   * Legacy catch-all header node — rendered as-is inside the header row when
+   * `icon` and `title` are both undefined.
+   */
   header?: ReactNode;
   /** Optional badge placed at the end of the header row. */
   badge?: ReactNode;
@@ -51,6 +64,8 @@ export interface HudPanelProps {
 export function HudPanel({
   focused = false,
   variant = 'default',
+  icon,
+  title,
   header,
   badge,
   headerRef,
@@ -68,6 +83,13 @@ export function HudPanel({
     .filter(Boolean)
     .join(' ');
 
+  // Determine whether a header row should render.
+  const hasHeader =
+    icon !== undefined ||
+    title !== undefined ||
+    header !== undefined ||
+    badge !== undefined;
+
   return (
     <div className={panelClass} style={style}>
       {/* Decoration layers — below content */}
@@ -76,30 +98,41 @@ export function HudPanel({
       <HudCornerBrackets />
 
       {/* Header row */}
-      {(header !== undefined || badge !== undefined) && (
+      {hasHeader && (
         <div
           ref={headerRef}
           onClick={onHeaderClick}
+          className="hud-panel__header"
           style={{
             position: 'relative',
             zIndex: 2,
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
-            padding: '0 8px 0 10px',
-            height: 30,
-            minHeight: 30,
+            gap: 8,
+            padding: '0 10px',
+            height: 26,
+            minHeight: 26,
             borderBottom: '1px solid var(--border)',
-            background: 'rgba(0,0,0,0.15)',
+            background: 'rgba(76,168,232,.04)',
             userSelect: 'none',
             cursor: 'grab',
+            fontSize: 9,
+            letterSpacing: 2,
+            textTransform: 'uppercase' as const,
+            fontFamily: 'var(--font)',
           }}
         >
-          {header !== undefined && (
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Icon in accent-bright .ix span, title in text-secondary .tt span */}
+          {(icon !== undefined || title !== undefined) ? (
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {icon !== undefined && <span className="ix">{icon}</span>}
+              {title !== undefined && <span className="tt" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>}
+            </div>
+          ) : header !== undefined ? (
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
               {header}
             </div>
-          )}
+          ) : null}
           {badge !== undefined && <div style={{ flexShrink: 0 }}>{badge}</div>}
         </div>
       )}

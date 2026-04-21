@@ -392,18 +392,6 @@ export function Window({
     .filter(Boolean)
     .join(' ');
 
-  // Header content (icon + title) — HudPanel owns the header row wrapper.
-  // The headerRef and onHeaderClick are passed directly to HudPanel so the
-  // header row div is the actual drag/swap handle element.
-  const headerContent = (
-    <>
-      {icon !== undefined && <span className="window-header-icon">{icon}</span>}
-      <span className="window-header-title" title={title}>
-        {title}
-      </span>
-    </>
-  );
-
   // Badge area: pin + reset + max/min buttons in the header's right slot.
   const badgeContent = (
     <span className="window-header-buttons" data-no-drag>
@@ -463,7 +451,8 @@ export function Window({
     >
       <HudPanel
         focused={isFocused}
-        header={headerContent}
+        icon={icon}
+        title={title}
         badge={badgeContent}
         headerRef={headerRef}
         onHeaderClick={onHeaderClick}

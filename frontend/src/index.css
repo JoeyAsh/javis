@@ -131,30 +131,8 @@ body {
 }
 
 /* ======================== HUD top bar ======================== */
-
-.hud-topbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 36px;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  gap: 8px;
-  background: transparent;
-  pointer-events: none;
-}
-
-.hud-topbar__left,
-.hud-topbar__right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  pointer-events: auto;
-}
+/* Shell, content, and chrome styles live in HudTopBar.css (co-located). */
+/* HudInfoBar.tsx is deprecated; clock/weather/coords are now inline in HudTopBar. */
 
 .hud-infobar {
   display: flex;
@@ -232,6 +210,15 @@ body {
   color: var(--bg);
   background: var(--danger);
   border-color: var(--danger);
+}
+.orb-devmenu__sep {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  margin: 0 4px;
+  vertical-align: middle;
+  opacity: 0.6;
 }
 
 .hud-infobar__weather-icon {

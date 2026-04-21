@@ -19,6 +19,7 @@ import { useConversationMode } from './hooks/useConversationMode';
 import { useSettings } from './hooks/useSettings';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { SfxProvider } from './hud/SfxContext';
+import { Scene } from './components/hud/Scene';
 import type { AppOrbState } from './types';
 
 /**
@@ -144,6 +145,9 @@ function AppInner(): ReactElement {
         className="fixed inset-0 w-screen h-screen overflow-hidden"
         style={{ background: 'var(--bg)', ...panelOpacityCssVar }}
       >
+        {/* Animated scene background — z-index 0 (--z-orb) */}
+        <Scene grid scan stars />
+
         {/* Orb canvas — backdrop, z-index 0 */}
         <OrbErrorBoundary>
           <OrbCanvas

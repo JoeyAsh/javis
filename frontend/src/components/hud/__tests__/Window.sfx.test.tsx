@@ -123,11 +123,14 @@ vi.mock('../../../hooks/useSwapDrag', () => ({
 
 const mockPlayOneShot = vi.fn();
 
-vi.mock('../../../hud/SfxContext', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../../../hud/SfxContext')>();
+const mockPlay = vi.fn();
+const mockStop = vi.fn();
+
+vi.mock('../../../lib/audio/SfxContext', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../lib/audio/SfxContext')>();
     return {
         ...actual,
-        useSfx: () => ({ playOneShot: mockPlayOneShot }),
+        useSfx: () => ({ playOneShot: mockPlayOneShot, play: mockPlay, stop: mockStop }),
     };
 });
 

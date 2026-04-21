@@ -1,4 +1,5 @@
 import { useEffect, type ReactElement } from 'react';
+import { useClickSfx, useHoverSfx } from '../audio/hooks';
 import './Tweaks.css';
 
 export interface TweaksState {
@@ -52,15 +53,19 @@ interface ToggleRowProps {
 }
 
 function ToggleRow({ label, value, onToggle }: ToggleRowProps): ReactElement {
+    const hoverSfx = useHoverSfx('button');
+    const clickSfx = useClickSfx(onToggle);
     return (
         <div className="lib-tweaks__row">
             <span>{label}</span>
             <button
                 type="button"
                 className={['lib-tweaks__toggle', value && 'on'].filter(Boolean).join(' ')}
-                onClick={onToggle}
+                onClick={clickSfx}
+                onMouseEnter={hoverSfx}
                 aria-pressed={value}
                 aria-label={label}
+                data-sfx-hover="button"
             />
         </div>
     );
@@ -99,15 +104,11 @@ export function Tweaks({ open, tweaks, onChange, className }: TweaksProps): Reac
                 />
                 <div className="lib-tweaks__swatches">
                     {HUE_SWATCHES.map((h) => (
-                        <button
+                        <SwatchButton
                             key={h}
-                            type="button"
-                            className={['lib-tweaks__swatch', tweaks.hue === h && 'active']
-                                .filter(Boolean)
-                                .join(' ')}
-                            style={{ background: `oklch(0.72 0.14 ${h})` }}
-                            onClick={() => upd('hue', h)}
-                            aria-label={`Hue ${h}`}
+                            hue={h}
+                            active={tweaks.hue === h}
+                            onSelect={() => upd('hue', h)}
                         />
                     ))}
                 </div>
@@ -154,6 +155,28 @@ export function Tweaks({ open, tweaks, onChange, className }: TweaksProps): Reac
                 onToggle={() => upd('idleDim', !tweaks.idleDim)}
             />
         </div>
+    );
+}
+
+interface SwatchButtonProps {
+    hue: number;
+    active: boolean;
+    onSelect: () => void;
+}
+
+function SwatchButton({ hue, active, onSelect }: SwatchButtonProps): ReactElement {
+    const hoverSfx = useHoverSfx('button');
+    const clickSfx = useClickSfx(onSelect);
+    return (
+        <button
+            type="button"
+            className={['lib-tweaks__swatch', active && 'active'].filter(Boolean).join(' ')}
+            style={{ background: `oklch(0.72 0.14 ${hue})` }}
+            onClick={clickSfx}
+            onMouseEnter={hoverSfx}
+            aria-label={`Hue ${hue}`}
+            data-sfx-hover="button"
+        />
     );
 }
 

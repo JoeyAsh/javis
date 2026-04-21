@@ -1,8 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
+import React from 'react';
 import { Tweaks, TWEAKS_DEFAULTS } from '../Tweaks';
+import { SfxContext } from '../../audio/SfxContext';
+import type { SfxContextValue } from '../../audio/SfxContext';
+import type { SfxEvent } from '../../audio/config';
 
-describe('Tweaks', () => {
+type MockFn = ReturnType<typeof vi.fn> & ((event: SfxEvent) => void);
+
+function makeSfx(): { playOneShot: MockFn; play: MockFn; stop: MockFn } & SfxContextValue {
+    return { playOneShot: vi.fn() as MockFn, play: vi.fn() as MockFn, stop: vi.fn() as MockFn };
+}
+
+function renderWithSfx(sfx: SfxContextValue, ui: React.ReactElement) {
+    return render(<SfxContext.Provider value={sfx}>{ui}</SfxContext.Provider>);
+}
+
+describe('Tweaks — visual', () => {
     it('renders without crashing', () => {
         const { container } = render(
             <Tweaks open={false} tweaks={TWEAKS_DEFAULTS} onChange={() => undefined} />,
@@ -100,5 +114,37 @@ describe('Tweaks', () => {
             <Tweaks open tweaks={TWEAKS_DEFAULTS} onChange={() => undefined} className="extra" />,
         );
         expect(container.querySelector('.lib-tweaks')?.classList.contains('extra')).toBe(true);
+    });
+});
+
+describe('Tweaks — SFX', () => {
+    it('plays click when toggle button is clicked', () => {
+        const sfx = makeSfx();
+        const { getByLabelText } = renderWithSfx(
+            sfx,
+            <Tweaks open tweaks={TWEAKS_DEFAULTS} onChange={() => undefined} />,
+        );
+        fireEvent.click(getByLabelText('Scanlines'));
+        expect(sfx.playOneShot).toHaveBeenCalledWith('click');
+    });
+
+    it('plays click when swatch is clicked', () => {
+        const sfx = makeSfx();
+        const { getByLabelText } = renderWithSfx(
+            sfx,
+            <Tweaks open tweaks={TWEAKS_DEFAULTS} onChange={() => undefined} />,
+        );
+        fireEvent.click(getByLabelText('Hue 28'));
+        expect(sfx.playOneShot).toHaveBeenCalledWith('click');
+    });
+
+    it('plays hover_button on mouseenter of toggle', () => {
+        const sfx = makeSfx();
+        const { getByLabelText } = renderWithSfx(
+            sfx,
+            <Tweaks open tweaks={TWEAKS_DEFAULTS} onChange={() => undefined} />,
+        );
+        fireEvent.mouseEnter(getByLabelText('Scanlines'));
+        expect(sfx.playOneShot).toHaveBeenCalledWith('hover_button');
     });
 });

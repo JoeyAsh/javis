@@ -1,4 +1,12 @@
-import { type CSSProperties, type ReactNode, type MouseEvent, type ReactElement } from 'react';
+import {
+    type CSSProperties,
+    type ReactNode,
+    type MouseEvent,
+    type ReactElement,
+    type Ref,
+    type PointerEventHandler,
+} from 'react';
+import { useHoverSfx } from '../audio/hooks';
 import './Panel.css';
 
 export interface PanelProps {
@@ -12,6 +20,21 @@ export interface PanelProps {
     className?: string;
     style?: CSSProperties;
     children?: ReactNode;
+    /**
+     * When provided, attached to the `.lib-panel__hdr` element so the caller
+     * can imperatively bind drag handlers (e.g. via useDraggable).
+     */
+    headerRef?: Ref<HTMLDivElement>;
+    /**
+     * Called on `pointerdown` on the entire header element. Used by Window to
+     * make the full header the drag handle.
+     */
+    onHeaderPointerDown?: PointerEventHandler<HTMLDivElement>;
+    /**
+     * Called on `click` on the header element (bubbles from children).
+     * Used by Window for double-click mode-toggle detection.
+     */
+    onHeaderClick?: (e: MouseEvent<HTMLDivElement>) => void;
 }
 
 function cn(...parts: (string | undefined | false)[]): string {
@@ -28,7 +51,12 @@ export function Panel({
     className,
     style,
     children,
+    headerRef,
+    onHeaderPointerDown,
+    onHeaderClick,
 }: PanelProps): ReactElement {
+    const hoverSfx = useHoverSfx('panel');
+
     function handleMouseDown(_e: MouseEvent<HTMLDivElement>): void {
         if (onFocus) onFocus();
     }
@@ -38,6 +66,7 @@ export function Panel({
             className={cn('lib-panel', focused && 'focused', className)}
             style={style}
             onMouseDown={handleMouseDown}
+            onMouseEnter={hoverSfx}
         >
             {/* Corner brackets */}
             <span className="lib-panel__ck tl" />
@@ -56,7 +85,12 @@ export function Panel({
             </span>
 
             {/* Header */}
-            <div className="lib-panel__hdr">
+            <div
+                className="lib-panel__hdr"
+                ref={headerRef}
+                onPointerDown={onHeaderPointerDown}
+                onClick={onHeaderClick}
+            >
                 {ix !== undefined && <span className="ix">{ix}</span>}
                 <span className="tt">{title}</span>
                 <span className="dots">

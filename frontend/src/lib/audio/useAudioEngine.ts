@@ -14,12 +14,17 @@
  *   - Shutdown: fire `shutdown` on beforeunload.
  *   - Persist mute preference to localStorage.
  *   - Handle `visibilitychange` to resume a suspended context on tab focus.
+ *   - Fire `state_change` on every orb state transition except:
+ *       - First render (prev === null)
+ *       - Same-state transitions
+ *       - listening transitions while wake-guard is active
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AudioEngine } from '../lib/audioEngine';
-import type { SfxEvent } from '../config/audio';
-import type { AppOrbState } from '../types';
+import { getAudioEngine } from './audioEngine';
+import type { AudioEngine } from './audioEngine';
+import type { SfxEvent } from './config';
+import type { AppOrbState } from '../../types';
 
 const STORAGE_KEY = 'jarvis.sfx.muted';
 
@@ -55,6 +60,8 @@ export interface UseAudioEngineReturn {
     isMuted: boolean;
     toggleMute: () => void;
     playOneShot: (event: SfxEvent) => void;
+    play: (event: SfxEvent) => void;
+    stop: (event: SfxEvent) => void;
     engine: AudioEngine;
 }
 
@@ -71,18 +78,15 @@ export function useAudioEngine(
     connected: boolean,
     heartbeatEnabled = false,
 ): UseAudioEngineReturn {
-    const engineRef = useRef<AudioEngine | null>(null);
-
-    // Initialise engine once per mount.
-    if (engineRef.current === null) {
-        engineRef.current = new AudioEngine();
-    }
+    // Module-level singleton: all mounts (incl. StrictMode double-invoke) share
+    // the same AudioContext, which must not be closed between mounts.
+    const engineRef = useRef<AudioEngine>(getAudioEngine());
 
     const [isMuted, setIsMuted] = useState<boolean>(readStoredMute);
 
     // Apply initial mute state to the engine right away.
     useEffect(() => {
-        engineRef.current?.setMuted(isMuted);
+        engineRef.current.setMuted(isMuted);
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── State-machine refs ────────────────────────────────────────────────────
@@ -114,8 +118,8 @@ export function useAudioEngine(
 
     const stopIdleLoops = useCallback(() => {
         clearIdleTimer();
-        engineRef.current?.stop('idle_pulse');
-        engineRef.current?.stop('heartbeat');
+        engineRef.current.stop('idle_pulse');
+        engineRef.current.stop('heartbeat');
     }, [clearIdleTimer]);
 
     const startIdleTimer = useCallback(() => {
@@ -190,7 +194,7 @@ export function useAudioEngine(
 
     useEffect(() => {
         const onUnload = (): void => {
-            engineRef.current?.playOneShot('shutdown');
+            engineRef.current.playOneShot('shutdown');
         };
         window.addEventListener('beforeunload', onUnload);
         return () => {
@@ -207,8 +211,18 @@ export function useAudioEngine(
         const prev = prevOrbStateRef.current;
         prevOrbStateRef.current = orbState;
 
-        // Skip if state hasn't changed (handles initial render where prev is null).
+        // Skip if state hasn't changed.
         if (prev === orbState) return;
+
+        // Fire state_change on every real transition, but:
+        //   - not on first render (prev === null)
+        //   - not when entering listening with wake-guard active
+        if (prev !== null) {
+            const suppressStateChange = orbState === 'listening' && wakeGuardActiveRef.current;
+            if (!suppressStateChange) {
+                engine.playOneShot('state_change');
+            }
+        }
 
         // ── Exit handlers for the previous state ─────────────────────────────
         if (prev === 'listening') {
@@ -240,9 +254,6 @@ export function useAudioEngine(
             stopIdleLoops();
             engine.setDucking(true);
             engine.playOneShot('mic_open');
-            if (!wakeGuardActiveRef.current) {
-                engine.playOneShot('state_change');
-            }
         } else if (orbState === 'thinking') {
             stopIdleLoops();
             engine.play('thinking');
@@ -264,11 +275,11 @@ export function useAudioEngine(
     useEffect(() => {
         if (!connected) {
             disconnectSfxTimerRef.current = setTimeout(() => {
-                engineRef.current?.playOneShot('disconnect');
+                engineRef.current.playOneShot('disconnect');
             }, DISCONNECT_SFX_GATE_MS);
 
             offlineTimerRef.current = setTimeout(() => {
-                engineRef.current?.playOneShot('offline');
+                engineRef.current.playOneShot('offline');
             }, OFFLINE_DELAY_MS);
         } else {
             if (disconnectSfxTimerRef.current !== null) {
@@ -300,24 +311,32 @@ export function useAudioEngine(
         // sync the heartbeat loop with the setting.
         if ((orbState === 'idle' || orbState === 'follow_up') && idleTimerRef.current === null) {
             if (heartbeatEnabled) {
-                engineRef.current?.play('heartbeat');
+                engineRef.current.play('heartbeat');
             } else {
-                engineRef.current?.stop('heartbeat');
+                engineRef.current.stop('heartbeat');
             }
         }
     }, [heartbeatEnabled, orbState]);
 
-    // ── Destroy on unmount ────────────────────────────────────────────────────
+    // ── Cleanup on unmount ────────────────────────────────────────────────────
 
     useEffect(() => {
         return () => {
             clearIdleTimer();
-            // Destroy current engine and null the ref so the next mount (e.g. React
-            // StrictMode's double-invoke in dev) gets a fresh AudioContext instead
-            // of trying to use the closed one.
-            engineRef.current?.destroy();
-            engineRef.current = null;
+            // Intentionally do NOT destroy the engine — it is a module singleton
+            // shared with any re-mounts (StrictMode double-invoke, route changes).
+            // Just stop active loops so a remount starts clean.
+            const engine = engineRef.current;
+            engine.stop('ambient');
+            engine.stop('scan');
+            engine.stop('thinking');
+            engine.stop('working');
+            engine.stop('idle_pulse');
+            engine.stop('heartbeat');
+            engine.stop('drag_move');
+            engine.stop('resize');
             bootFiredRef.current = false;
+            prevOrbStateRef.current = null;
         };
     }, [clearIdleTimer]);
 
@@ -325,7 +344,6 @@ export function useAudioEngine(
 
     const toggleMute = useCallback(() => {
         const engine = engineRef.current;
-        if (!engine) return;
         const next = !engine.isMuted;
         engine.setMuted(next);
         setIsMuted(next);
@@ -333,7 +351,15 @@ export function useAudioEngine(
     }, []);
 
     const playOneShot = useCallback((event: SfxEvent) => {
-        engineRef.current?.playOneShot(event);
+        engineRef.current.playOneShot(event);
+    }, []);
+
+    const play = useCallback((event: SfxEvent) => {
+        engineRef.current.play(event);
+    }, []);
+
+    const stop = useCallback((event: SfxEvent) => {
+        engineRef.current.stop(event);
     }, []);
 
     // Silence the unused-variable warning for WAKE_GUARD_MS until the wake
@@ -344,6 +370,8 @@ export function useAudioEngine(
         isMuted,
         toggleMute,
         playOneShot,
+        play,
+        stop,
         engine: engineRef.current,
     };
 }

@@ -16,7 +16,7 @@ import { useResizable } from '../../hooks/useResizable';
 import { useSwapDrag } from '../../hooks/useSwapDrag';
 import { HudPanel } from './primitives/HudPanel';
 import { HudIconButton } from './primitives/HudIconButton';
-import { useSfx } from '../../hud/SfxContext';
+import { useSfx } from '../../lib/audio/SfxContext';
 import './hud.css';
 import './Window.css';
 

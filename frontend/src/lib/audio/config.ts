@@ -6,13 +6,13 @@
  * silently skips the event — no throws.
  *
  * Batch 1 events: boot, wakeWord, scan, confirm, error, transition,
- *   ambient, drag_start, drag_end, resize, pin, unpin, expand, collapse,
- *   click, hover.
+ *   ambient, drag_start, drag_end, drag_move, resize, pin, unpin, expand,
+ *   collapse, click, hover_button, hover_panel.
  *
  * Batch 2 events (SFX #34): boot_complete, shutdown, wake, state_change,
  *   mic_open, mic_close, speech_start, speech_end, barge_in, offline,
  *   disconnect, thinking, working, idle_pulse, heartbeat, menu_open,
- *   menu_close, transition_1, transition_2.
+ *   menu_close, transition_1, transition_2, recall.
  */
 
 export interface SfxEntry {
@@ -43,13 +43,15 @@ export type SfxEvent =
     | 'ambient'
     | 'drag_start'
     | 'drag_end'
+    | 'drag_move'
     | 'resize'
     | 'pin'
     | 'unpin'
     | 'expand'
     | 'collapse'
     | 'click'
-    | 'hover'
+    | 'hover_button'
+    | 'hover_panel'
     // ── Batch 2 ────────────────────────────────────────────────────────────────
     | 'boot_complete'
     | 'shutdown'
@@ -69,7 +71,8 @@ export type SfxEvent =
     | 'menu_open'
     | 'menu_close'
     | 'transition_1'
-    | 'transition_2';
+    | 'transition_2'
+    | 'recall';
 
 /** Gain applied to duckable loops when ducking is active. */
 export const DUCK_VOLUME = 0.12;
@@ -82,9 +85,10 @@ export const DUCK_RAMP_MS = 200;
  *
  * Volumes and duckable flags per spec:
  *   - click: 50 %, not duckable (one-shot UI feedback)
- *   - hover: 30 %, not duckable
+ *   - hover_button / hover_panel: 30 %, not duckable
  *   - drag_start / drag_end: 60 %, not duckable
- *   - resize: 55 %, not duckable
+ *   - drag_move: 40 %, loop, not duckable
+ *   - resize: 40 %, loop, not duckable
  *   - pin / unpin / expand / collapse: 65 %, not duckable
  *   - ambient: 25 %, duckable (background loop), duckedVolume: 5 %
  *   - scan: 70 %, duckable (scanning loop during thinking)
@@ -94,7 +98,7 @@ export const DUCK_RAMP_MS = 200;
 export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
     // ── Batch 1 ──────────────────────────────────────────────────────────────
     boot: {
-        file: 'boot/boot_3.mp3',
+        file: 'boot/boot_default.mp3',
         loop: false,
         volume: 1.0,
         duckable: false,
@@ -112,7 +116,7 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
         duckable: true,
     },
     confirm: {
-        file: 'confirm/confirm_1.mp3',
+        file: 'confirm/confirm_default.mp3',
         loop: false,
         volume: 0.8,
         duckable: false,
@@ -124,13 +128,13 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
         duckable: false,
     },
     transition: {
-        file: 'transition/transition_1.mp3',
+        file: 'transition/transition_default.mp3',
         loop: false,
         volume: 0.75,
         duckable: false,
     },
     ambient: {
-        file: 'ambient/ambient_2.mp3',
+        file: 'ambient/ambient_background.mp3',
         loop: true,
         volume: 0.25,
         duckable: true,
@@ -148,10 +152,16 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
         volume: 0.6,
         duckable: false,
     },
+    drag_move: {
+        file: 'drag_move/drag_move_1.mp3',
+        loop: true,
+        volume: 0.4,
+        duckable: false,
+    },
     resize: {
         file: 'resize/resize_1.mp3',
-        loop: false,
-        volume: 0.55,
+        loop: true,
+        volume: 0.4,
         duckable: false,
     },
     pin: {
@@ -184,8 +194,14 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
         volume: 0.5,
         duckable: false,
     },
-    hover: {
-        file: 'hover/hover_1.mp3',
+    hover_button: {
+        file: 'hover/hover_button.mp3',
+        loop: false,
+        volume: 0.3,
+        duckable: false,
+    },
+    hover_panel: {
+        file: 'hover/hover_panel.mp3',
         loop: false,
         volume: 0.3,
         duckable: false,
@@ -294,7 +310,7 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
         duckable: false,
     },
     transition_1: {
-        file: 'transition/transition_1.mp3',
+        file: 'transition/transition_default.mp3',
         loop: false,
         volume: 0.7,
         duckable: false,
@@ -303,6 +319,12 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
         file: 'transition/transition_2.mp3',
         loop: false,
         volume: 0.7,
+        duckable: false,
+    },
+    recall: {
+        file: 'recall/recall_1.mp3',
+        loop: false,
+        volume: 0.65,
         duckable: false,
     },
 };

@@ -1,13 +1,33 @@
 import {
     useCallback,
+    useRef,
     type ReactElement,
     type ReactNode,
+    type MouseEvent,
     type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { Panel } from './Panel';
 import { useDraggable } from '../hooks/useDraggable';
 import type { DragState } from '../hooks/useDraggable';
+import { useResizable } from '../hooks/useResizable';
+import type { ResizeDir, ResizeState } from '../hooks/useResizable';
+import { useClickSfx, useHoverSfx } from '../audio/hooks';
+import { useSfx } from '../audio/SfxContext';
 import './Window.css';
+
+// ── Mode types (canonical lib definitions) ────────────────────────────────────
+
+/** Docked/undocked mode for a lib window. compact = docked in slot. expanded = free-floating. */
+export type PanelMode = 'compact' | 'expanded';
+
+/** Props passed into the render-prop callback so content can adapt per mode. */
+export interface PanelContentRenderProps {
+    mode: PanelMode;
+    focused: boolean;
+    dragging: boolean;
+}
+
+// ── WindowState ───────────────────────────────────────────────────────────────
 
 export type WindowState =
     | 'idle'
@@ -16,8 +36,9 @@ export type WindowState =
     | 'swap-preview'
     | 'settling'
     | 'focused'
-    | 'minimized'
-    | 'maximized';
+    | 'resizing';
+
+// ── WindowProps ───────────────────────────────────────────────────────────────
 
 export interface WindowProps {
     /** Stable window id passed back to all callbacks. */
@@ -30,21 +51,44 @@ export interface WindowProps {
     /** Visual state — purely driven from outside. */
     state?: WindowState;
     focused?: boolean;
+    /**
+     * Current docked/undocked mode. WindowManager owns this; Window renders accordingly.
+     * Default: 'compact'.
+     */
+    mode?: PanelMode;
     onFocus?: (id: string) => void;
     onDragStart?: (id: string, e: ReactPointerEvent) => void;
     onDragMove?: (id: string, dx: number, dy: number, e: PointerEvent) => void;
     onDragEnd?: (id: string, e: PointerEvent) => void;
-    onMinimize?: (id: string) => void;
-    onMaximize?: (id: string) => void;
+    onResizeStart?: (id: string, dir: ResizeDir, e: ReactPointerEvent) => void;
+    onResizeMove?: (id: string, dir: ResizeDir, dx: number, dy: number, e: PointerEvent) => void;
+    onResizeEnd?: (id: string, e: PointerEvent) => void;
     /** Restore the window to its original position/slot. */
     onReset?: (id: string) => void;
     /** If not provided the close button is omitted. */
     onClose?: (id: string) => void;
+    /**
+     * Called when the user clicks the dock/undock header button or double-clicks
+     * the header. WindowManager toggles mode in response.
+     */
+    onModeToggle?: (id: string) => void;
     /** Default true. */
     draggable?: boolean;
+    /** Default true. */
+    resizable?: boolean;
     className?: string;
-    children?: ReactNode;
+    /**
+     * Render-prop content. Receives mode, focused, dragging so the consumer can
+     * render compact vs expanded views differently.
+     */
+    itemRenderer: (props: PanelContentRenderProps) => ReactNode;
 }
+
+// ── Double-click threshold (ms) ───────────────────────────────────────────────
+
+const DOUBLE_CLICK_MS = 300;
+
+// ── SVG Icons ─────────────────────────────────────────────────────────────────
 
 /** RotateCcw icon at 11 px — reset/restore to home slot. */
 function RotateCcwIcon(): ReactElement {
@@ -67,27 +111,7 @@ function RotateCcwIcon(): ReactElement {
     );
 }
 
-/** Minus icon at 11 px — minimize. */
-function MinusIcon(): ReactElement {
-    return (
-        <svg
-            width="11"
-            height="11"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-            focusable="false"
-        >
-            <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-    );
-}
-
-/** Square icon at 11 px — maximize. */
+/** Square icon at 11 px — undock (compact → expanded). */
 function SquareIcon(): ReactElement {
     return (
         <svg
@@ -107,7 +131,7 @@ function SquareIcon(): ReactElement {
     );
 }
 
-/** Minimize2 icon at 11 px — restore from maximized. */
+/** Minimize2 / collapse-arrows icon at 11 px — dock back (expanded → compact). */
 function Minimize2Icon(): ReactElement {
     return (
         <svg
@@ -151,6 +175,8 @@ function XIcon(): ReactElement {
     );
 }
 
+// ── Window component ──────────────────────────────────────────────────────────
+
 export function Window({
     id,
     title,
@@ -159,18 +185,25 @@ export function Window({
     position,
     state = 'idle',
     focused = false,
+    mode = 'compact',
     onFocus,
     onDragStart,
     onDragMove,
     onDragEnd,
-    onMinimize,
-    onMaximize,
+    onResizeStart,
+    onResizeMove,
+    onResizeEnd,
     onReset,
     onClose,
+    onModeToggle,
     draggable = true,
+    resizable = true,
     className,
-    children,
+    itemRenderer,
 }: WindowProps): ReactElement {
+    const { playOneShot } = useSfx();
+    const hoverButtonSfx = useHoverSfx('button');
+
     const handleFocus = useCallback((): void => {
         if (onFocus) onFocus(id);
     }, [id, onFocus]);
@@ -178,8 +211,6 @@ export function Window({
     const handleDragStart = useCallback(
         (e: PointerEvent): void => {
             if (onDragStart) {
-                // We can't create a real ReactPointerEvent from a native one, so
-                // we cast for the callback signature contract.
                 onDragStart(id, e as unknown as ReactPointerEvent);
             }
         },
@@ -207,64 +238,103 @@ export function Window({
         disabled: !draggable,
     });
 
+    const handleResizeStartCb = useCallback(
+        (dir: ResizeDir, e: PointerEvent): void => {
+            if (onResizeStart) onResizeStart(id, dir, e as unknown as ReactPointerEvent);
+        },
+        [id, onResizeStart],
+    );
+
+    const handleResizeMoveCb = useCallback(
+        (resizeState: ResizeState, e: PointerEvent): void => {
+            if (onResizeMove && resizeState.dir !== null) {
+                onResizeMove(id, resizeState.dir, resizeState.dx, resizeState.dy, e);
+            }
+        },
+        [id, onResizeMove],
+    );
+
+    const handleResizeEndCb = useCallback(
+        (_resizeState: ResizeState, e: PointerEvent): void => {
+            if (onResizeEnd) onResizeEnd(id, e);
+        },
+        [id, onResizeEnd],
+    );
+
+    const { onPointerDown: handleResizePointerDown, resizing } = useResizable({
+        onStart: handleResizeStartCb,
+        onMove: handleResizeMoveCb,
+        onEnd: handleResizeEndCb,
+        disabled: !resizable,
+    });
+
     const handlePointerDownCapture = useCallback((): void => {
         if (onFocus) onFocus(id);
     }, [id, onFocus]);
 
     const handleReset = useCallback(
-        (e: React.MouseEvent<HTMLButtonElement>): void => {
+        (e: MouseEvent<HTMLButtonElement>): void => {
             e.stopPropagation();
+            playOneShot('click');
+            playOneShot('recall');
             if (onReset) onReset(id);
         },
-        [id, onReset],
-    );
-
-    const handleMinimize = useCallback(
-        (e: React.MouseEvent<HTMLButtonElement>): void => {
-            e.stopPropagation();
-            if (onMinimize) onMinimize(id);
-        },
-        [id, onMinimize],
-    );
-
-    const handleMaximize = useCallback(
-        (e: React.MouseEvent<HTMLButtonElement>): void => {
-            e.stopPropagation();
-            if (onMaximize) onMaximize(id);
-        },
-        [id, onMaximize],
+        [id, onReset, playOneShot],
     );
 
     const handleClose = useCallback(
-        (e: React.MouseEvent<HTMLButtonElement>): void => {
+        (e: MouseEvent<HTMLButtonElement>): void => {
             e.stopPropagation();
             if (onClose) onClose(id);
         },
         [id, onClose],
     );
 
-    // Resolve the effective visual state: if we're actively dragging, override.
-    const effectiveState: WindowState = dragging ? 'dragging' : state;
+    const handleModeToggle = useCallback(
+        (e: MouseEvent<HTMLButtonElement>): void => {
+            e.stopPropagation();
+            playOneShot('click');
+            playOneShot(mode === 'compact' ? 'expand' : 'collapse');
+            if (onModeToggle) onModeToggle(id);
+        },
+        [id, mode, onModeToggle, playOneShot],
+    );
 
-    const rootStyle =
-        effectiveState === 'maximized'
-            ? undefined // CSS handles fixed inset:16px
-            : {
-                  left: position.x,
-                  top: position.y,
-                  width: position.w,
-                  height: position.h,
-              };
+    const onCloseClick = useClickSfx(handleClose);
+
+    // Double-click on header toggles mode.
+    const lastClickRef = useRef(0);
+    const handleHeaderClick = useCallback(
+        (e: MouseEvent<HTMLDivElement>): void => {
+            // Ignore clicks that originate from buttons (they stop propagation).
+            const target = e.target as HTMLElement | null;
+            if (target && target.closest('[data-no-drag]')) return;
+            const now = performance.now();
+            if (now - lastClickRef.current < DOUBLE_CLICK_MS) {
+                if (onModeToggle) onModeToggle(id);
+                lastClickRef.current = 0;
+            } else {
+                lastClickRef.current = now;
+            }
+        },
+        [id, onModeToggle],
+    );
+
+    // Resolve the effective visual state: resizing > dragging > external state.
+    const effectiveState: WindowState = resizing ? 'resizing' : dragging ? 'dragging' : state;
+
+    const rootStyle = {
+        left: position.x,
+        top: position.y,
+        width: position.w,
+        height: position.h,
+    };
 
     const rootCls = ['lib-window', className].filter(Boolean).join(' ');
 
-    // Header left (drag area): ix + title
+    // Header left (ix + title) — no drag binding here; header element owns drag.
     const headerLeft = (
-        <span
-            className="lib-window__hdr-drag"
-            onPointerDown={handlePointerDown}
-            data-testid="window-drag-handle"
-        >
+        <span className="lib-window__hdr-drag" data-testid="window-drag-handle">
             {ix !== undefined && (
                 <span style={{ color: 'var(--accent-bright)', fontWeight: 500, opacity: 0.8 }}>
                     {ix}
@@ -283,12 +353,11 @@ export function Window({
         </span>
     );
 
-    // Header action cluster — order: Reset · Minimize · Maximize · Close.
-    const hasActions =
-        onReset !== undefined ||
-        onMinimize !== undefined ||
-        onMaximize !== undefined ||
-        onClose !== undefined;
+    // Whether the mode-toggle button should appear.
+    const hasModeToggle = onModeToggle !== undefined;
+
+    // Header action cluster — order: Reset · DockToggle · Close.
+    const hasActions = onReset !== undefined || hasModeToggle || onClose !== undefined;
 
     const headerActions = hasActions ? (
         <>
@@ -298,33 +367,28 @@ export function Window({
                     aria-label="Reset window"
                     title="Reset"
                     onClick={handleReset}
+                    onMouseEnter={hoverButtonSfx}
+                    onPointerDown={(e) => e.stopPropagation()}
                     type="button"
+                    data-no-drag
+                    data-sfx-hover="button"
                 >
                     <RotateCcwIcon />
                 </button>
             )}
-            {onMinimize !== undefined && (
+            {hasModeToggle && (
                 <button
                     className="lib-window__btn"
-                    aria-label="Minimize window"
-                    title="Minimize"
-                    onClick={handleMinimize}
+                    aria-label={mode === 'compact' ? 'Undock window' : 'Dock window'}
+                    title={mode === 'compact' ? 'Undock' : 'Dock'}
+                    onClick={handleModeToggle}
+                    onMouseEnter={hoverButtonSfx}
+                    onPointerDown={(e) => e.stopPropagation()}
                     type="button"
+                    data-no-drag
+                    data-sfx-hover="button"
                 >
-                    <MinusIcon />
-                </button>
-            )}
-            {onMaximize !== undefined && (
-                <button
-                    className="lib-window__btn"
-                    aria-label={
-                        effectiveState === 'maximized' ? 'Restore window' : 'Maximize window'
-                    }
-                    title={effectiveState === 'maximized' ? 'Restore' : 'Maximize'}
-                    onClick={handleMaximize}
-                    type="button"
-                >
-                    {effectiveState === 'maximized' ? <Minimize2Icon /> : <SquareIcon />}
+                    {mode === 'compact' ? <SquareIcon /> : <Minimize2Icon />}
                 </button>
             )}
             {onClose !== undefined && (
@@ -332,8 +396,12 @@ export function Window({
                     className="lib-window__btn lib-window__btn--close"
                     aria-label="Close window"
                     title="Close"
-                    onClick={handleClose}
+                    onClick={onCloseClick}
+                    onMouseEnter={hoverButtonSfx}
+                    onPointerDown={(e) => e.stopPropagation()}
                     type="button"
+                    data-no-drag
+                    data-sfx-hover="button"
                 >
                     <XIcon />
                 </button>
@@ -345,6 +413,7 @@ export function Window({
         <div
             className={rootCls}
             data-state={effectiveState}
+            data-mode={mode}
             data-window-id={id}
             style={rootStyle}
             role="dialog"
@@ -358,10 +427,58 @@ export function Window({
                 actions={headerActions}
                 focused={focused}
                 onFocus={handleFocus}
+                onHeaderPointerDown={handlePointerDown}
+                onHeaderClick={handleHeaderClick}
                 style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
             >
-                <div className="lib-window__body">{children}</div>
+                <div className="lib-window__body">
+                    {itemRenderer({ mode, focused, dragging: dragging || resizing })}
+                </div>
             </Panel>
+            {resizable && (
+                <>
+                    <span
+                        className="lib-window__resize lib-window__resize--n"
+                        onPointerDown={handleResizePointerDown('n')}
+                        data-testid="resize-n"
+                    />
+                    <span
+                        className="lib-window__resize lib-window__resize--s"
+                        onPointerDown={handleResizePointerDown('s')}
+                        data-testid="resize-s"
+                    />
+                    <span
+                        className="lib-window__resize lib-window__resize--e"
+                        onPointerDown={handleResizePointerDown('e')}
+                        data-testid="resize-e"
+                    />
+                    <span
+                        className="lib-window__resize lib-window__resize--w"
+                        onPointerDown={handleResizePointerDown('w')}
+                        data-testid="resize-w"
+                    />
+                    <span
+                        className="lib-window__resize lib-window__resize--ne"
+                        onPointerDown={handleResizePointerDown('ne')}
+                        data-testid="resize-ne"
+                    />
+                    <span
+                        className="lib-window__resize lib-window__resize--nw"
+                        onPointerDown={handleResizePointerDown('nw')}
+                        data-testid="resize-nw"
+                    />
+                    <span
+                        className="lib-window__resize lib-window__resize--se"
+                        onPointerDown={handleResizePointerDown('se')}
+                        data-testid="resize-se"
+                    />
+                    <span
+                        className="lib-window__resize lib-window__resize--sw"
+                        onPointerDown={handleResizePointerDown('sw')}
+                        data-testid="resize-sw"
+                    />
+                </>
+            )}
         </div>
     );
 }

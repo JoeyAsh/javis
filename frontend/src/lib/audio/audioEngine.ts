@@ -12,8 +12,8 @@
  * directly.
  */
 
-import { SFX_CONFIG, DUCK_VOLUME, DUCK_RAMP_MS } from '../config/audio';
-import type { SfxEvent } from '../config/audio';
+import { SFX_CONFIG, DUCK_VOLUME, DUCK_RAMP_MS } from './config';
+import type { SfxEvent } from './config';
 
 interface ActiveLoop {
     source: AudioBufferSourceNode;
@@ -158,7 +158,7 @@ export class AudioEngine {
     }
 
     private async fireOneShot(event: SfxEvent, overrideFile?: string): Promise<void> {
-        if (this.ctx.state === 'suspended') return;
+        if (this.ctx.state !== 'running') return;
 
         let buffer: AudioBuffer | null;
         if (overrideFile !== undefined) {
@@ -170,6 +170,8 @@ export class AudioEngine {
                     return;
                 }
                 const ab = await response.arrayBuffer();
+                // Post-await re-check: ctx may have been closed during the async fetch.
+                if (this.ctx.state !== 'running') return;
                 buffer = await this.ctx.decodeAudioData(ab);
             } catch (err) {
                 console.warn('[AudioEngine] Override load failed:', err);
@@ -180,6 +182,10 @@ export class AudioEngine {
         }
 
         if (!buffer) return;
+
+        // Post-await re-check: ctx may have been closed or suspended during the
+        // async load (e.g. React StrictMode unmount, or tab backgrounded).
+        if (this.ctx.state !== 'running') return;
 
         const entry = SFX_CONFIG[event];
         const gainNode = this.ctx.createGain();
@@ -208,10 +214,15 @@ export class AudioEngine {
     }
 
     private async launchLoop(event: SfxEvent): Promise<void> {
-        if (this.ctx.state === 'suspended') return;
+        // Pre-check: bail if not running (suspended or closed).
+        if (this.ctx.state !== 'running') return;
 
         const buffer = await this.loadBuffer(event);
         if (!buffer) return;
+
+        // Post-await re-check: ctx may have been closed or suspended during the
+        // async load (e.g. during React StrictMode unmount, or tab backgrounded).
+        if (this.ctx.state !== 'running') return;
 
         // Guard: another caller may have started the loop while we awaited.
         if (this.activeLoops.has(event)) return;
@@ -291,5 +302,41 @@ export class AudioEngine {
             // Already disconnected.
         }
         void this.ctx.close();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level singleton
+// ---------------------------------------------------------------------------
+
+/**
+ * Module-level singleton. The AudioContext lives for the page lifetime —
+ * creating multiple instances (e.g. via React StrictMode's double-invoke)
+ * would close the ctx on the first cleanup and break all subsequent usage.
+ * Every mount of `useAudioEngine` reuses the same engine.
+ */
+let __singleton: AudioEngine | null = null;
+
+export function getAudioEngine(): AudioEngine {
+    if (__singleton === null) {
+        __singleton = new AudioEngine();
+    }
+    return __singleton;
+}
+
+/**
+ * TEST-ONLY: reset the module singleton.
+ *
+ * Call this in `afterEach` to restore test isolation. Do not call from
+ * application code — it closes the AudioContext and discards all state.
+ */
+export function __resetAudioEngineSingleton(): void {
+    if (__singleton !== null) {
+        try {
+            __singleton.destroy();
+        } catch {
+            // Ignore — context may already be closed.
+        }
+        __singleton = null;
     }
 }

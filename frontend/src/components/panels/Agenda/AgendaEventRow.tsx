@@ -3,7 +3,7 @@
  * Matches prototype `.ev` pattern exactly.
  */
 import type { ReactElement } from 'react';
-import { useSfx } from '../../../hud/SfxContext';
+import { useSfx } from '../../../lib/audio/SfxContext';
 import type { AgendaEvent } from '../../../types';
 import './AgendaPanel.css';
 

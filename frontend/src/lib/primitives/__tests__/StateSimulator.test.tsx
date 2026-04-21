@@ -1,8 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
+import React from 'react';
 import { StateSimulator } from '../StateSimulator';
+import { SfxContext } from '../../audio/SfxContext';
+import type { SfxContextValue } from '../../audio/SfxContext';
+import type { SfxEvent } from '../../audio/config';
 
-describe('StateSimulator', () => {
+type MockFn = ReturnType<typeof vi.fn> & ((event: SfxEvent) => void);
+
+function makeSfx(): { playOneShot: MockFn; play: MockFn; stop: MockFn } & SfxContextValue {
+    return { playOneShot: vi.fn() as MockFn, play: vi.fn() as MockFn, stop: vi.fn() as MockFn };
+}
+
+function renderWithSfx(sfx: SfxContextValue, ui: React.ReactElement) {
+    return render(<SfxContext.Provider value={sfx}>{ui}</SfxContext.Provider>);
+}
+
+describe('StateSimulator — visual', () => {
     it('renders without crashing', () => {
         const { container } = render(<StateSimulator state="idle" onChange={() => undefined} />);
         expect(container.querySelector('.lib-sim')).toBeDefined();
@@ -67,5 +81,27 @@ describe('StateSimulator', () => {
             <StateSimulator state="idle" onChange={() => undefined} className="extra" />,
         );
         expect(container.querySelector('.lib-sim')?.classList.contains('extra')).toBe(true);
+    });
+});
+
+describe('StateSimulator — SFX', () => {
+    it('plays click when state button is clicked', () => {
+        const sfx = makeSfx();
+        const { getByText } = renderWithSfx(
+            sfx,
+            <StateSimulator state="idle" onChange={() => undefined} />,
+        );
+        fireEvent.click(getByText('THINKING'));
+        expect(sfx.playOneShot).toHaveBeenCalledWith('click');
+    });
+
+    it('plays hover_button on mouseenter of state button', () => {
+        const sfx = makeSfx();
+        const { getByText } = renderWithSfx(
+            sfx,
+            <StateSimulator state="idle" onChange={() => undefined} />,
+        );
+        fireEvent.mouseEnter(getByText('THINKING').closest('button') as HTMLElement);
+        expect(sfx.playOneShot).toHaveBeenCalledWith('hover_button');
     });
 });

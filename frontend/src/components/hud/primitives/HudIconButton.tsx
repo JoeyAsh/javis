@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactElement, ReactNode } from 'react';
-import { useSfx } from '../../../hud/SfxContext';
+import { useSfx } from '../../../lib/audio/SfxContext';
 import '../hud.css';
 import './HudIconButton.css';
 
@@ -64,7 +64,7 @@ export function HudIconButton({
         }
         hoverTimerRef.current = setTimeout(() => {
             hoverTimerRef.current = null;
-            playOneShot('hover');
+            playOneShot('hover_button');
         }, HOVER_DEBOUNCE_MS);
     }, [disabled, playOneShot]);
 

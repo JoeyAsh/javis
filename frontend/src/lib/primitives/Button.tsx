@@ -1,4 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useClickSfx, useHoverSfx } from '../audio/hooks';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md';
@@ -29,9 +30,12 @@ const SIZE_CLASSES: Record<ButtonSize, string> = {
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-    { variant = 'secondary', size = 'md', className, children, ...rest },
+    { variant = 'secondary', size = 'md', className, children, onClick, ...rest },
     ref,
 ) {
+    const hoverSfx = useHoverSfx('button');
+    const clickSfx = useClickSfx(onClick);
+
     return (
         <button
             ref={ref}
@@ -45,6 +49,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
                 SIZE_CLASSES[size],
                 className,
             )}
+            onMouseEnter={hoverSfx}
+            onClick={clickSfx}
+            data-sfx-hover="button"
             {...rest}
         >
             {children}

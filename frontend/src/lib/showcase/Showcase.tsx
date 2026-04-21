@@ -10,6 +10,7 @@ import { OrbSection } from './sections/OrbSection';
 import { CompositionsSection } from './sections/CompositionsSection';
 import { WindowsSection } from './sections/WindowsSection';
 import { DevOverlaysSection } from './sections/DevOverlaysSection';
+import { useShowcaseSfx } from './ShowcaseSfxRoot';
 
 /* ---- Nav definition ---- */
 
@@ -37,6 +38,7 @@ const NAV: NavItem[] = [
 
 export function Showcase(): ReactElement {
     const [activeSection, setActiveSection] = useState<string>('overview');
+    const { isMuted, toggleMute } = useShowcaseSfx();
 
     function handleNavClick(id: string): void {
         setActiveSection(id);
@@ -69,8 +71,24 @@ export function Showcase(): ReactElement {
 
                 {buildNavItems(NAV, activeSection, handleNavClick, handleNavKeyDown)}
 
-                <div className="mt-auto pt-3">
-                    <span className="text-[8px] text-text-muted uppercase tracking-[1px]">
+                <div className="mt-auto pt-3 flex flex-col gap-2">
+                    <button
+                        onClick={toggleMute}
+                        data-sfx-hover="button"
+                        className={[
+                            'w-full text-left text-[9px] uppercase tracking-[1px] font-mono',
+                            'px-2 py-[5px] border transition-all duration-[200ms]',
+                            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
+                            isMuted
+                                ? 'text-text-muted border-transparent hover:text-text-secondary hover:border-border'
+                                : 'text-accent border-accent-dim bg-[rgba(76,168,232,0.08)]',
+                        ].join(' ')}
+                        aria-pressed={!isMuted}
+                        aria-label={isMuted ? 'Unmute SFX' : 'Mute SFX'}
+                    >
+                        {isMuted ? 'SFX ◯' : 'SFX ◉'}
+                    </button>
+                    <span className="text-[8px] text-text-muted uppercase tracking-[1px] px-2">
                         v0.1.0
                     </span>
                 </div>

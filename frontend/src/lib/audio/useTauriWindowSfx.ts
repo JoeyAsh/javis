@@ -16,7 +16,7 @@
  */
 
 import { useEffect } from 'react';
-import type { SfxEvent } from '../config/audio';
+import type { SfxEvent } from './config';
 
 interface TauriWindowSfxProps {
     playOneShot: (event: SfxEvent) => void;

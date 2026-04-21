@@ -14,9 +14,9 @@ import { useAudioAnalyser } from './hooks/useAudioAnalyser';
 import { useMicStream } from './hooks/useMicStream';
 import { useConversationMode } from './hooks/useConversationMode';
 import { useSettings } from './hooks/useSettings';
-import { useAudioEngine } from './hooks/useAudioEngine';
-import { useTauriWindowSfx } from './hooks/useTauriWindowSfx';
-import { SfxProvider } from './hud/SfxContext';
+import { useAudioEngine } from './lib/audio/useAudioEngine';
+import { useTauriWindowSfx } from './lib/audio/useTauriWindowSfx';
+import { SfxProvider } from './lib/audio/SfxContext';
 import { Scene } from './components/hud/Scene';
 import type { AppOrbState } from './types';
 
@@ -70,6 +70,8 @@ function AppInner(): ReactElement {
         isMuted: sfxMuted,
         toggleMute: toggleSfxMute,
         playOneShot: sfxPlayOneShot,
+        play: sfxPlay,
+        stop: sfxStop,
     } = useAudioEngine(
         orbOverride ?? (followUp.active && orbState === 'listening' ? 'follow_up' : orbState),
         connected,
@@ -131,7 +133,7 @@ function AppInner(): ReactElement {
     } as React.CSSProperties;
 
     return (
-        <SfxProvider playOneShot={sfxPlayOneShot}>
+        <SfxProvider playOneShot={sfxPlayOneShot} play={sfxPlay} stop={sfxStop}>
             <div
                 className={`app fixed inset-0 w-screen h-screen overflow-hidden${effectiveOrbState === 'working' ? ' is-working' : ''}${idle ? ' idle' : ''}`}
                 style={{ ...panelOpacityCssVar }}

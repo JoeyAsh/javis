@@ -129,9 +129,17 @@ export type { DragState, UseDraggableOptions } from './hooks/useDraggable';
 export { useSlotDrag } from './hooks/useSlotDrag';
 export type { SlotDragState, UseSlotDragOptions, WindowId } from './hooks/useSlotDrag';
 
+export { useResizable } from './hooks/useResizable';
+export type { ResizeDir, ResizeState, UseResizableOptions } from './hooks/useResizable';
+
 // Window primitives
 export { Window } from './primitives/Window';
-export type { WindowProps, WindowState } from './primitives/Window';
+export type {
+    WindowProps,
+    WindowState,
+    PanelMode,
+    PanelContentRenderProps,
+} from './primitives/Window';
 
 export { SnapOverlay } from './primitives/SnapOverlay';
 export type { SnapOverlayProps } from './primitives/SnapOverlay';
@@ -141,6 +149,18 @@ export type { SwapOverlayProps } from './primitives/SwapOverlay';
 
 export { SlotGhost } from './primitives/SlotGhost';
 export type { SlotGhostProps } from './primitives/SlotGhost';
+
+// Audio infrastructure
+export { SfxProvider, useSfx, SfxContext } from './audio/SfxContext';
+export type { SfxContextValue, SfxProviderProps } from './audio/SfxContext';
+export { useAudioEngine } from './audio/useAudioEngine';
+export type { UseAudioEngineReturn } from './audio/useAudioEngine';
+export { useTauriWindowSfx } from './audio/useTauriWindowSfx';
+export { AudioEngine } from './audio/audioEngine';
+export { SFX_CONFIG, DUCK_VOLUME, DUCK_RAMP_MS } from './audio/config';
+export type { SfxEvent, SfxEntry } from './audio/config';
+export { useClickSfx, useHoverSfx } from './audio/hooks';
+export type { HoverSfxTarget, UseHoverSfxOptions } from './audio/hooks';
 
 // Compositions
 export { GlassCard } from './compositions/GlassCard';
@@ -156,4 +176,8 @@ export { HUDShell } from './compositions/HUDShell';
 export type { HUDShellProps } from './compositions/HUDShell';
 
 export { WindowManager } from './compositions/WindowManager';
-export type { ManagedWindow, WindowManagerProps } from './compositions/WindowManager';
+export type {
+    ManagedWindow,
+    WindowManagerProps,
+    ExpandedRect,
+} from './compositions/WindowManager';

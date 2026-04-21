@@ -12,7 +12,7 @@
     /* Transition geometry on settle; otherwise instant so drag feels live. */
     transition:
         box-shadow 0.2s ease,
-        opacity 0.3s ease;
+        opacity 140ms ease;
     /* Panel animation disabled here — Panel inside handles its own winIn. */
     z-index: 10;
     outline: none;
@@ -30,6 +30,22 @@
     animation: none;
 }
 
+/* ── Full-header grab cursor — only inside a Window, not standalone Panels ── */
+.lib-window .lib-panel__hdr {
+    cursor: grab;
+}
+
+.lib-window[data-state='dragging'] .lib-panel__hdr,
+.lib-window[data-state='snap-preview'] .lib-panel__hdr,
+.lib-window[data-state='swap-preview'] .lib-panel__hdr {
+    cursor: grabbing;
+}
+
+/* Buttons keep their own pointer cursor regardless of header state. */
+.lib-window .lib-panel__hdr button {
+    cursor: pointer;
+}
+
 /* ── dragging state ── */
 .lib-window[data-state='dragging'],
 .lib-window[data-state='snap-preview'],
@@ -40,6 +56,21 @@
         0 0 36px 4px color-mix(in srgb, var(--accent) 45%, transparent);
     z-index: 9000;
     cursor: grabbing;
+}
+
+/* ── compact + dragging: semi-transparent ghost so overlays remain readable ── */
+.lib-window[data-mode='compact'][data-state='dragging'],
+.lib-window[data-mode='compact'][data-state='snap-preview'],
+.lib-window[data-mode='compact'][data-state='swap-preview'] {
+    opacity: 0.45;
+}
+
+/* ── expanded mode: elevated shadow + slightly higher z-index base ── */
+.lib-window[data-mode='expanded'] {
+    box-shadow:
+        0 16px 56px rgba(0, 0, 0, 0.72),
+        0 0 0 1px color-mix(in srgb, var(--accent) 30%, var(--border));
+    z-index: 50;
 }
 
 /* ── settling state — subtle position snap animation ── */
@@ -57,43 +88,19 @@
     z-index: 100;
 }
 
-/* ── minimized state ── */
-.lib-window[data-state='minimized'] {
-    overflow: hidden;
+/* expanded + focused gets higher elevation */
+.lib-window[data-mode='expanded'][data-state='focused'] {
+    z-index: 200;
 }
 
-.lib-window[data-state='minimized'] .lib-window__body {
-    display: none;
-}
-
-.lib-window[data-state='minimized'] > .lib-panel {
-    height: 26px;
-}
-
-/* ── maximized state ── */
-.lib-window[data-state='maximized'] {
-    position: fixed;
-    inset: 16px;
-    width: auto !important;
-    height: auto !important;
-    z-index: 500;
-}
-
-/* ── drag handle ── */
+/* ── drag handle (ix + title span — visual only, no pointer binding) ── */
 .lib-window__hdr-drag {
-    cursor: grab;
     flex: 1;
     display: flex;
     align-items: center;
     gap: 8px;
     overflow: hidden;
     min-width: 0;
-}
-
-.lib-window[data-state='dragging'] .lib-window__hdr-drag,
-.lib-window[data-state='snap-preview'] .lib-window__hdr-drag,
-.lib-window[data-state='swap-preview'] .lib-window__hdr-drag {
-    cursor: grabbing;
 }
 
 /* ── header action buttons (new slot-based cluster) ── */
@@ -197,6 +204,88 @@
 
 .lib-window__body::-webkit-scrollbar-thumb {
     background: var(--border);
+}
+
+/* ── resize handles ── */
+.lib-window__resize {
+    position: absolute;
+    z-index: 20;
+    background: transparent;
+    pointer-events: auto;
+}
+
+/* Edge handles — thin strips */
+.lib-window__resize--n {
+    top: -4px;
+    left: 8px;
+    right: 8px;
+    height: 8px;
+    cursor: ns-resize;
+}
+.lib-window__resize--s {
+    bottom: -4px;
+    left: 8px;
+    right: 8px;
+    height: 8px;
+    cursor: ns-resize;
+}
+.lib-window__resize--e {
+    right: -4px;
+    top: 8px;
+    bottom: 8px;
+    width: 8px;
+    cursor: ew-resize;
+}
+.lib-window__resize--w {
+    left: -4px;
+    top: 8px;
+    bottom: 8px;
+    width: 8px;
+    cursor: ew-resize;
+}
+
+/* Corner handles — squares that overlap edges */
+.lib-window__resize--ne {
+    top: -4px;
+    right: -4px;
+    width: 12px;
+    height: 12px;
+    cursor: nesw-resize;
+}
+.lib-window__resize--nw {
+    top: -4px;
+    left: -4px;
+    width: 12px;
+    height: 12px;
+    cursor: nwse-resize;
+}
+.lib-window__resize--se {
+    bottom: -4px;
+    right: -4px;
+    width: 12px;
+    height: 12px;
+    cursor: nwse-resize;
+}
+.lib-window__resize--sw {
+    bottom: -4px;
+    left: -4px;
+    width: 12px;
+    height: 12px;
+    cursor: nesw-resize;
+}
+
+/* Disable handles in compact mode */
+.lib-window[data-mode='compact'] .lib-window__resize {
+    display: none;
+}
+
+/* Resizing state mirrors dragging visual */
+.lib-window[data-state='resizing'] {
+    box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.6),
+        0 0 0 1px var(--accent),
+        0 0 36px 4px color-mix(in srgb, var(--accent) 45%, transparent);
+    z-index: 9000;
 }
 
 /* ── entrance ── */

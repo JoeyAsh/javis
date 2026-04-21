@@ -1,8 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Button } from '../Button';
+import { SfxContext } from '../../audio/SfxContext';
+import type { SfxContextValue } from '../../audio/SfxContext';
+import type { SfxEvent } from '../../audio/config';
 
-describe('Button', () => {
+type MockFn = ReturnType<typeof vi.fn> & ((event: SfxEvent) => void);
+
+function makeSfx(): { playOneShot: MockFn; play: MockFn; stop: MockFn } & SfxContextValue {
+    return { playOneShot: vi.fn() as MockFn, play: vi.fn() as MockFn, stop: vi.fn() as MockFn };
+}
+
+function renderWithSfx(sfx: SfxContextValue, ui: React.ReactElement) {
+    return render(<SfxContext.Provider value={sfx}>{ui}</SfxContext.Provider>);
+}
+
+import React from 'react';
+
+describe('Button — visual', () => {
     it('renders children as a button element', () => {
         render(<Button>CLICK ME</Button>);
         expect(screen.getByRole('button', { name: 'CLICK ME' })).toBeDefined();
@@ -62,5 +77,26 @@ describe('Button', () => {
         render(<Button disabled>D</Button>);
         const btn = screen.getByRole('button');
         expect((btn as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('has data-sfx-hover="button" attribute', () => {
+        const { container } = render(<Button>X</Button>);
+        expect(container.querySelector('[data-sfx-hover="button"]')).not.toBeNull();
+    });
+});
+
+describe('Button — SFX', () => {
+    it('plays hover_button on mouseenter', () => {
+        const sfx = makeSfx();
+        renderWithSfx(sfx, <Button>hover</Button>);
+        fireEvent.mouseEnter(screen.getByRole('button'));
+        expect(sfx.playOneShot).toHaveBeenCalledWith('hover_button');
+    });
+
+    it('plays click on click', () => {
+        const sfx = makeSfx();
+        renderWithSfx(sfx, <Button>click</Button>);
+        fireEvent.click(screen.getByRole('button'));
+        expect(sfx.playOneShot).toHaveBeenCalledWith('click');
     });
 });

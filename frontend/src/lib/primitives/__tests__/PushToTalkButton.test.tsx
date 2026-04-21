@@ -1,8 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
+import React from 'react';
 import { PushToTalkButton } from '../PushToTalkButton';
+import { SfxContext } from '../../audio/SfxContext';
+import type { SfxContextValue } from '../../audio/SfxContext';
+import type { SfxEvent } from '../../audio/config';
 
-describe('PushToTalkButton', () => {
+type MockFn = ReturnType<typeof vi.fn> & ((event: SfxEvent) => void);
+
+function makeSfx(): { playOneShot: MockFn; play: MockFn; stop: MockFn } & SfxContextValue {
+    return { playOneShot: vi.fn() as MockFn, play: vi.fn() as MockFn, stop: vi.fn() as MockFn };
+}
+
+function renderWithSfx(sfx: SfxContextValue, ui: React.ReactElement) {
+    return render(<SfxContext.Provider value={sfx}>{ui}</SfxContext.Provider>);
+}
+
+describe('PushToTalkButton — visual', () => {
     it('renders without crashing', () => {
         const { container } = render(<PushToTalkButton />);
         expect(container.querySelector('.lib-ptt')).toBeDefined();
@@ -60,5 +74,26 @@ describe('PushToTalkButton', () => {
     it('merges className', () => {
         const { container } = render(<PushToTalkButton className="extra" />);
         expect(container.querySelector('.lib-ptt')?.classList.contains('extra')).toBe(true);
+    });
+
+    it('has data-sfx-hover="button" attribute', () => {
+        const { container } = render(<PushToTalkButton />);
+        expect(container.querySelector('[data-sfx-hover="button"]')).not.toBeNull();
+    });
+});
+
+describe('PushToTalkButton — SFX', () => {
+    it('plays hover_button on mouseenter', () => {
+        const sfx = makeSfx();
+        const { getByRole } = renderWithSfx(sfx, <PushToTalkButton />);
+        fireEvent.mouseEnter(getByRole('button'));
+        expect(sfx.playOneShot).toHaveBeenCalledWith('hover_button');
+    });
+
+    it('plays click on click', () => {
+        const sfx = makeSfx();
+        const { getByRole } = renderWithSfx(sfx, <PushToTalkButton />);
+        fireEvent.click(getByRole('button'));
+        expect(sfx.playOneShot).toHaveBeenCalledWith('click');
     });
 });

@@ -14,7 +14,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HudButton } from '../HudButton';
-import { SfxProvider } from '../../../../hud/SfxContext';
+import { SfxProvider } from '../../../../lib/audio/SfxContext';
 import type { ReactNode } from 'react';
 
 // ---------------------------------------------------------------------------
@@ -37,8 +37,15 @@ afterEach(() => {
 
 const mockPlayOneShot = vi.fn();
 
+const mockPlay = vi.fn();
+const mockStop = vi.fn();
+
 function Wrapper({ children }: { children: ReactNode }) {
-    return <SfxProvider playOneShot={mockPlayOneShot}>{children}</SfxProvider>;
+    return (
+        <SfxProvider playOneShot={mockPlayOneShot} play={mockPlay} stop={mockStop}>
+            {children}
+        </SfxProvider>
+    );
 }
 
 function renderButton(props: Partial<React.ComponentProps<typeof HudButton>> = {}) {
@@ -78,17 +85,17 @@ describe('HudButton — click SFX', () => {
 });
 
 describe('HudButton — hover SFX debounce', () => {
-    it('mouseenter held ≥ 200 ms fires playOneShot("hover") exactly once', () => {
+    it('mouseenter held ≥ 200 ms fires playOneShot("hover_button") exactly once', () => {
         renderButton();
         fireEvent.mouseEnter(screen.getByRole('button'));
         vi.advanceTimersByTime(200);
         const hoverCalls = (mockPlayOneShot as ReturnType<typeof vi.fn>).mock.calls.filter(
-            (c) => c[0] === 'hover',
+            (c) => c[0] === 'hover_button',
         );
         expect(hoverCalls).toHaveLength(1);
     });
 
-    it('mouseenter then mouseleave before 200 ms → hover NOT played', () => {
+    it('mouseenter then mouseleave before 200 ms → hover_button NOT played', () => {
         renderButton();
         const btn = screen.getByRole('button');
         fireEvent.mouseEnter(btn);
@@ -96,12 +103,12 @@ describe('HudButton — hover SFX debounce', () => {
         fireEvent.mouseLeave(btn);
         vi.advanceTimersByTime(200);
         const hoverCalls = (mockPlayOneShot as ReturnType<typeof vi.fn>).mock.calls.filter(
-            (c) => c[0] === 'hover',
+            (c) => c[0] === 'hover_button',
         );
         expect(hoverCalls).toHaveLength(0);
     });
 
-    it('rapid repeated mouseenter within 200 ms fires at most 1 hover', () => {
+    it('rapid repeated mouseenter within 200 ms fires at most 1 hover_button', () => {
         renderButton();
         const btn = screen.getByRole('button');
         fireEvent.mouseEnter(btn);
@@ -113,7 +120,7 @@ describe('HudButton — hover SFX debounce', () => {
         fireEvent.mouseEnter(btn);
         vi.advanceTimersByTime(200); // let the final timer fire
         const hoverCalls = (mockPlayOneShot as ReturnType<typeof vi.fn>).mock.calls.filter(
-            (c) => c[0] === 'hover',
+            (c) => c[0] === 'hover_button',
         );
         expect(hoverCalls).toHaveLength(1);
     });
@@ -137,7 +144,7 @@ describe('HudButton — hover SFX debounce', () => {
         vi.advanceTimersByTime(200);
 
         const hoverCalls = (mockPlayOneShot as ReturnType<typeof vi.fn>).mock.calls.filter(
-            (c) => c[0] === 'hover',
+            (c) => c[0] === 'hover_button',
         );
         expect(hoverCalls).toHaveLength(2);
     });
@@ -165,7 +172,7 @@ describe('HudButton — disabled prop', () => {
         fireEvent.mouseEnter(screen.getByRole('button'));
         vi.advanceTimersByTime(300);
         const hoverCalls = (mockPlayOneShot as ReturnType<typeof vi.fn>).mock.calls.filter(
-            (c) => c[0] === 'hover',
+            (c) => c[0] === 'hover_button',
         );
         expect(hoverCalls).toHaveLength(0);
     });

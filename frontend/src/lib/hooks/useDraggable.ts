@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type React from 'react';
+import { useSfx } from '../audio/SfxContext';
 
 export interface DragState {
     dragging: boolean;
@@ -23,6 +24,9 @@ export interface UseDraggableOptions {
  * pointermove/pointerup inside the gesture so drag-outside-element works.
  * Uses pointer capture to prevent pointer loss when cursor leaves the element.
  *
+ * Plays `drag_start` + starts `drag_move` loop on drag begin.
+ * Stops `drag_move` loop + plays `drag_end` on drag end.
+ *
  * Returns `onPointerDown` to attach to the drag handle and the current
  * `dragging` boolean for CSS state.
  */
@@ -31,6 +35,7 @@ export function useDraggable(options: UseDraggableOptions): {
     dragging: boolean;
 } {
     const { onStart, onMove, onEnd, disabled = false } = options;
+    const { playOneShot, play, stop } = useSfx();
 
     const [dragging, setDragging] = useState(false);
     const stateRef = useRef<DragState>({
@@ -51,6 +56,14 @@ export function useDraggable(options: UseDraggableOptions): {
     onStartRef.current = onStart;
     onMoveRef.current = onMove;
     onEndRef.current = onEnd;
+
+    // Keep SFX fns in refs so closures in event handlers see latest values.
+    const playOneShotRef = useRef(playOneShot);
+    const playRef = useRef(play);
+    const stopRef = useRef(stop);
+    playOneShotRef.current = playOneShot;
+    playRef.current = play;
+    stopRef.current = stop;
 
     // Cleanup on unmount.
     useEffect(() => {
@@ -90,6 +103,8 @@ export function useDraggable(options: UseDraggableOptions): {
             setDragging(true);
 
             const nativeEvent = e.nativeEvent;
+            playOneShotRef.current('drag_start');
+            playRef.current('drag_move');
             if (onStartRef.current) onStartRef.current(nativeEvent);
 
             const handleMove = (ev: PointerEvent): void => {
@@ -109,6 +124,8 @@ export function useDraggable(options: UseDraggableOptions): {
                 const finalState: DragState = { ...stateRef.current, dragging: false };
                 stateRef.current = finalState;
                 setDragging(false);
+                stopRef.current('drag_move');
+                playOneShotRef.current('drag_end');
                 if (onEndRef.current) onEndRef.current(finalState, ev);
             };
 

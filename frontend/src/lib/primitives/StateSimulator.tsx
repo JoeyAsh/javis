@@ -1,5 +1,6 @@
 import { type ReactElement } from 'react';
 import type { OrbState } from './Orb/Orb';
+import { useClickSfx, useHoverSfx } from '../audio/hooks';
 import './StateSimulator.css';
 
 interface SimOption {
@@ -23,6 +24,37 @@ export interface StateSimulatorProps {
     className?: string;
 }
 
+interface SimButtonProps {
+    option: SimOption;
+    active: boolean;
+    onChange: (state: OrbState) => void;
+}
+
+function SimButton({ option, active, onChange }: SimButtonProps): ReactElement {
+    const hoverSfx = useHoverSfx('button');
+    const clickSfx = useClickSfx(() => onChange(option.key));
+    const btnClass = [
+        'lib-sim__btn',
+        active && 'active',
+        active && option.key === 'working' && 'working',
+    ]
+        .filter(Boolean)
+        .join(' ');
+    return (
+        <button
+            key={option.key}
+            type="button"
+            className={btnClass}
+            onClick={clickSfx}
+            onMouseEnter={hoverSfx}
+            data-sfx-hover="button"
+        >
+            <span className="lib-sim__dot" aria-hidden="true" />
+            {option.label}
+        </button>
+    );
+}
+
 export function StateSimulator({
     state,
     onChange,
@@ -35,27 +67,9 @@ export function StateSimulator({
     return (
         <div className={classes}>
             <span className="lib-sim__label">{label}</span>
-            {SIM_OPTIONS.map((opt) => {
-                const isActive = state === opt.key;
-                const btnClass = [
-                    'lib-sim__btn',
-                    isActive && 'active',
-                    isActive && opt.key === 'working' && 'working',
-                ]
-                    .filter(Boolean)
-                    .join(' ');
-                return (
-                    <button
-                        key={opt.key}
-                        type="button"
-                        className={btnClass}
-                        onClick={() => onChange(opt.key)}
-                    >
-                        <span className="lib-sim__dot" aria-hidden="true" />
-                        {opt.label}
-                    </button>
-                );
-            })}
+            {SIM_OPTIONS.map((opt) => (
+                <SimButton key={opt.key} option={opt} active={state === opt.key} onChange={onChange} />
+            ))}
         </div>
     );
 }

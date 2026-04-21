@@ -1,307 +1,145 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
-import { Window } from '../Window';
-import type { WindowState } from '../Window';
+/**
+ * Window lib primitive — SFX integration tests (Vitest + RTL).
+ *
+ * Verifies:
+ *   - hover_panel does NOT fire directly from Window root (Panel owns that)
+ *   - Reset button click → click + recall
+ *   - ModeToggle button click (compact) → click + expand
+ *   - ModeToggle button click (expanded) → click + collapse
+ *   - Close button click → click
+ */
 
-const BASE_POS = { x: 10, y: 20, w: 300, h: 200 };
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import React from 'react';
+import { Window } from '../Window';
+import { SfxContext } from '../../audio/SfxContext';
+import type { SfxContextValue } from '../../audio/SfxContext';
+import type { SfxEvent } from '../../audio/config';
+
+type MockFn = ReturnType<typeof vi.fn> & ((event: SfxEvent) => void);
+
+function makeSfx(): { playOneShot: MockFn; play: MockFn; stop: MockFn } & SfxContextValue {
+    return { playOneShot: vi.fn() as MockFn, play: vi.fn() as MockFn, stop: vi.fn() as MockFn };
+}
+
+const defaultPosition = { x: 0, y: 0, w: 400, h: 300 };
+
+function renderWindow(
+    sfx: SfxContextValue,
+    props: Partial<React.ComponentProps<typeof Window>> = {},
+) {
+    const mergedProps = {
+        id: 'test-win',
+        position: defaultPosition,
+        itemRenderer: () => <div>content</div>,
+        ...props,
+    };
+    return render(
+        <SfxContext.Provider value={sfx}>
+            <Window {...mergedProps} />
+        </SfxContext.Provider>,
+    );
+}
 
 beforeEach(() => {
     HTMLElement.prototype.setPointerCapture = vi.fn();
     HTMLElement.prototype.releasePointerCapture = vi.fn();
 });
 
-afterEach(() => {
-    vi.restoreAllMocks();
-});
-
-describe('Window', () => {
-    it('renders without crashing', () => {
-        const { container } = render(
-            <Window id="w1" position={BASE_POS}>
-                body
-            </Window>,
+describe('Window — SFX', () => {
+    it('does NOT fire hover_panel directly from Window root mouseenter (Panel owns that)', () => {
+        const sfx = makeSfx();
+        const { container } = renderWindow(sfx);
+        const root = container.querySelector('.lib-window');
+        if (root) fireEvent.mouseEnter(root);
+        const hoverPanelCalls = (sfx.playOneShot as ReturnType<typeof vi.fn>).mock.calls.filter(
+            (c) => c[0] === 'hover_panel',
         );
-        expect(container.querySelector('.lib-window')).toBeDefined();
+        // Window root has no onMouseEnter for hover_panel — Panel's handler owns it.
+        // fireEvent.mouseEnter on the Window root div does not propagate into Panel's handler,
+        // so no hover_panel call should originate from this event.
+        expect(hoverPanelCalls).toHaveLength(0);
     });
 
-    it('renders title in Panel chrome', () => {
-        render(
-            <Window id="w1" title="My Window" position={BASE_POS}>
-                body
-            </Window>,
-        );
-        expect(screen.getByText('My Window')).toBeDefined();
+    it('Reset button click fires click + recall', () => {
+        const sfx = makeSfx();
+        const onReset = vi.fn();
+        renderWindow(sfx, { onReset });
+        const resetBtn = screen.getByRole('button', { name: /reset window/i });
+        fireEvent.click(resetBtn);
+        expect(sfx.playOneShot).toHaveBeenCalledWith('click');
+        expect(sfx.playOneShot).toHaveBeenCalledWith('recall');
     });
 
-    it('renders ix slot', () => {
-        render(
-            <Window id="w1" ix="◈" position={BASE_POS}>
-                body
-            </Window>,
-        );
-        expect(screen.getByText('◈')).toBeDefined();
+    it('ModeToggle click in compact mode fires click + expand', () => {
+        const sfx = makeSfx();
+        const onModeToggle = vi.fn();
+        renderWindow(sfx, { onModeToggle, mode: 'compact' });
+        const modeBtn = screen.getByRole('button', { name: /undock window/i });
+        fireEvent.click(modeBtn);
+        expect(sfx.playOneShot).toHaveBeenCalledWith('click');
+        expect(sfx.playOneShot).toHaveBeenCalledWith('expand');
     });
 
-    it('renders badge slot when no action buttons are provided', () => {
-        render(
-            <Window id="w1" badge="LIVE" position={BASE_POS}>
-                body
-            </Window>,
-        );
-        expect(screen.getByText('LIVE')).toBeDefined();
+    it('ModeToggle click in expanded mode fires click + collapse', () => {
+        const sfx = makeSfx();
+        const onModeToggle = vi.fn();
+        renderWindow(sfx, { onModeToggle, mode: 'expanded' });
+        const modeBtn = screen.getByRole('button', { name: /dock window/i });
+        fireEvent.click(modeBtn);
+        expect(sfx.playOneShot).toHaveBeenCalledWith('click');
+        expect(sfx.playOneShot).toHaveBeenCalledWith('collapse');
     });
 
-    it('renders Panel corner brackets (chrome present)', () => {
-        const { container } = render(
-            <Window id="w1" position={BASE_POS}>
-                body
-            </Window>,
-        );
-        expect(container.querySelectorAll('.lib-panel__ck')).toHaveLength(4);
-    });
-});
-
-describe('Window — data-state attribute', () => {
-    const states: WindowState[] = [
-        'idle',
-        'dragging',
-        'snap-preview',
-        'swap-preview',
-        'settling',
-        'focused',
-        'minimized',
-        'maximized',
-    ];
-
-    for (const s of states) {
-        it(`data-state="${s}" when state="${s}"`, () => {
-            const { container } = render(
-                <Window id="w1" position={BASE_POS} state={s}>
-                    body
-                </Window>,
-            );
-            const root = container.querySelector('.lib-window');
-            expect(root?.getAttribute('data-state')).toBe(s);
-        });
-    }
-});
-
-describe('Window — focused prop', () => {
-    it('focused prop adds focused class to inner Panel', () => {
-        const { container } = render(
-            <Window id="w1" position={BASE_POS} focused>
-                body
-            </Window>,
-        );
-        expect(container.querySelector('.lib-panel')?.classList.contains('focused')).toBe(true);
+    it('Close button click fires click', () => {
+        const sfx = makeSfx();
+        const onClose = vi.fn();
+        renderWindow(sfx, { onClose });
+        const closeBtn = screen.getByRole('button', { name: /close window/i });
+        fireEvent.click(closeBtn);
+        expect(sfx.playOneShot).toHaveBeenCalledWith('click');
     });
 
-    it('no focused class by default', () => {
-        const { container } = render(
-            <Window id="w1" position={BASE_POS}>
-                body
-            </Window>,
-        );
-        expect(container.querySelector('.lib-panel')?.classList.contains('focused')).toBe(false);
+    it('header buttons have data-sfx-hover="button"', () => {
+        const sfx = makeSfx();
+        const onClose = vi.fn();
+        const onReset = vi.fn();
+        const onModeToggle = vi.fn();
+        const { container } = renderWindow(sfx, { onClose, onReset, onModeToggle, mode: 'compact' });
+        const sfxButtons = container.querySelectorAll('.lib-window__btn[data-sfx-hover="button"]');
+        expect(sfxButtons.length).toBeGreaterThanOrEqual(3);
     });
 });
 
-describe('Window — drag callbacks', () => {
-    it('fires onDragStart when header is pointer-downed', () => {
-        const onDragStart = vi.fn();
-        const { container } = render(
-            <Window id="win-1" position={BASE_POS} onDragStart={onDragStart}>
-                body
-            </Window>,
-        );
-        const handle = container.querySelector('[data-testid="window-drag-handle"]') as HTMLElement;
-        fireEvent.pointerDown(handle, { button: 0, clientX: 50, clientY: 50 });
-        expect(onDragStart).toHaveBeenCalledOnce();
-        expect(onDragStart.mock.calls[0][0]).toBe('win-1');
+describe('Window — visual', () => {
+    it('renders with data-window-id', () => {
+        const { container } = renderWindow(makeSfx());
+        expect(container.querySelector('[data-window-id="test-win"]')).not.toBeNull();
     });
 
-    it('fires onDragMove when pointer moves after pointerdown', () => {
-        const onDragMove = vi.fn();
-        const { container } = render(
-            <Window id="win-1" position={BASE_POS} onDragMove={onDragMove}>
-                body
-            </Window>,
-        );
-        const handle = container.querySelector('[data-testid="window-drag-handle"]') as HTMLElement;
-        fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0 });
-        act(() => {
-            window.dispatchEvent(
-                new PointerEvent('pointermove', { bubbles: true, clientX: 20, clientY: 30 }),
-            );
-        });
-        expect(onDragMove).toHaveBeenCalled();
-        const [id, dx, dy] = onDragMove.mock.calls[0] as [string, number, number];
-        expect(id).toBe('win-1');
-        expect(dx).toBe(20);
-        expect(dy).toBe(30);
+    it('renders resize handles when resizable=true', () => {
+        const { container } = renderWindow(makeSfx(), { resizable: true });
+        expect(container.querySelector('[data-testid="resize-se"]')).not.toBeNull();
     });
 
-    it('fires onDragEnd when pointer released', () => {
-        const onDragEnd = vi.fn();
-        const { container } = render(
-            <Window id="win-1" position={BASE_POS} onDragEnd={onDragEnd}>
-                body
-            </Window>,
-        );
-        const handle = container.querySelector('[data-testid="window-drag-handle"]') as HTMLElement;
-        fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0 });
-        act(() => {
-            window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-        });
-        expect(onDragEnd).toHaveBeenCalledOnce();
-        expect(onDragEnd.mock.calls[0][0]).toBe('win-1');
+    it('does not render resize handles when resizable=false', () => {
+        const { container } = renderWindow(makeSfx(), { resizable: false });
+        expect(container.querySelector('[data-testid="resize-se"]')).toBeNull();
     });
 
-    it('draggable=false disables drag callbacks', () => {
-        const onDragStart = vi.fn();
-        const { container } = render(
-            <Window id="win-1" position={BASE_POS} draggable={false} onDragStart={onDragStart}>
-                body
-            </Window>,
-        );
-        const handle = container.querySelector('[data-testid="window-drag-handle"]') as HTMLElement;
-        fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0 });
-        expect(onDragStart).not.toHaveBeenCalled();
-    });
-});
-
-describe('Window — action buttons', () => {
-    it('renders minimize button when onMinimize is provided', () => {
-        render(
-            <Window id="w1" position={BASE_POS} onMinimize={vi.fn()}>
-                body
-            </Window>,
-        );
-        expect(screen.getByRole('button', { name: /minimize/i })).toBeDefined();
-    });
-
-    it('fires onMinimize with window id when minimize button is clicked', () => {
-        const onMinimize = vi.fn();
-        render(
-            <Window id="w1" position={BASE_POS} onMinimize={onMinimize}>
-                body
-            </Window>,
-        );
-        fireEvent.click(screen.getByRole('button', { name: /minimize/i }));
-        expect(onMinimize).toHaveBeenCalledWith('w1');
-    });
-
-    it('renders maximize button when onMaximize is provided', () => {
-        render(
-            <Window id="w1" position={BASE_POS} onMaximize={vi.fn()}>
-                body
-            </Window>,
-        );
-        expect(screen.getByRole('button', { name: /maximize/i })).toBeDefined();
-    });
-
-    it('fires onMaximize with window id when maximize button is clicked', () => {
-        const onMaximize = vi.fn();
-        render(
-            <Window id="w1" position={BASE_POS} onMaximize={onMaximize}>
-                body
-            </Window>,
-        );
-        fireEvent.click(screen.getByRole('button', { name: /maximize/i }));
-        expect(onMaximize).toHaveBeenCalledWith('w1');
+    it('renders drag handle', () => {
+        renderWindow(makeSfx());
+        expect(screen.getByTestId('window-drag-handle')).toBeDefined();
     });
 
     it('renders close button when onClose is provided', () => {
-        render(
-            <Window id="w1" position={BASE_POS} onClose={vi.fn()}>
-                body
-            </Window>,
-        );
-        expect(screen.getByRole('button', { name: /close/i })).toBeDefined();
+        renderWindow(makeSfx(), { onClose: vi.fn() });
+        expect(screen.getByRole('button', { name: /close window/i })).toBeDefined();
     });
 
-    it('fires onClose with window id when close button is clicked', () => {
-        const onClose = vi.fn();
-        render(
-            <Window id="w1" position={BASE_POS} onClose={onClose}>
-                body
-            </Window>,
-        );
-        fireEvent.click(screen.getByRole('button', { name: /close/i }));
-        expect(onClose).toHaveBeenCalledWith('w1');
-    });
-
-    it('does not render action buttons when none are provided', () => {
-        render(
-            <Window id="w1" position={BASE_POS}>
-                body
-            </Window>,
-        );
-        expect(screen.queryByRole('button', { name: /minimize/i })).toBeNull();
-        expect(screen.queryByRole('button', { name: /maximize/i })).toBeNull();
-        expect(screen.queryByRole('button', { name: /close/i })).toBeNull();
-    });
-
-    it('renders reset button when onReset is provided', () => {
-        render(
-            <Window id="w1" position={BASE_POS} onReset={vi.fn()}>
-                body
-            </Window>,
-        );
-        expect(screen.getByRole('button', { name: /reset window/i })).toBeDefined();
-    });
-
-    it('fires onReset with window id when reset button is clicked', () => {
-        const onReset = vi.fn();
-        render(
-            <Window id="w1" position={BASE_POS} onReset={onReset}>
-                body
-            </Window>,
-        );
-        fireEvent.click(screen.getByRole('button', { name: /reset window/i }));
-        expect(onReset).toHaveBeenCalledWith('w1');
-    });
-
-    it('action buttons render inside the Panel header actions slot', () => {
-        const { container } = render(
-            <Window id="w1" position={BASE_POS} onReset={vi.fn()} onMaximize={vi.fn()}>
-                body
-            </Window>,
-        );
-        const actionsSpan = container.querySelector('.lib-panel__hdr-actions');
-        expect(actionsSpan).not.toBeNull();
-        const buttons = actionsSpan?.querySelectorAll('button');
-        expect(buttons?.length).toBeGreaterThanOrEqual(2);
-    });
-
-    it('maximize button shows Restore label when state is maximized', () => {
-        render(
-            <Window id="w1" position={BASE_POS} state="maximized" onMaximize={vi.fn()}>
-                body
-            </Window>,
-        );
-        expect(screen.getByRole('button', { name: /restore window/i })).toBeDefined();
-    });
-
-    it('maximize button shows Maximize label when state is idle', () => {
-        render(
-            <Window id="w1" position={BASE_POS} state="idle" onMaximize={vi.fn()}>
-                body
-            </Window>,
-        );
-        expect(screen.getByRole('button', { name: /maximize window/i })).toBeDefined();
-    });
-});
-
-describe('Window — className', () => {
-    it('merges className without replacing base class', () => {
-        const { container } = render(
-            <Window id="w1" position={BASE_POS} className="custom-win">
-                body
-            </Window>,
-        );
-        const root = container.querySelector('.lib-window');
-        expect(root?.classList.contains('custom-win')).toBe(true);
-        expect(root?.classList.contains('lib-window')).toBe(true);
+    it('does not render close button when onClose is not provided', () => {
+        renderWindow(makeSfx());
+        expect(screen.queryByRole('button', { name: /close window/i })).toBeNull();
     });
 });

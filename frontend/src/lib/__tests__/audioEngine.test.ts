@@ -9,7 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DUCK_VOLUME, DUCK_RAMP_MS } from '../../config/audio';
+import { DUCK_VOLUME, DUCK_RAMP_MS } from '../../lib/audio/config';
 
 // ---------------------------------------------------------------------------
 // Gain node factory
@@ -187,7 +187,7 @@ async function freshEngine(state: AudioContextState = 'suspended') {
     (globalThis as unknown as Record<string, unknown>)['AudioContext'] =
         buildAudioContextClass(state);
     vi.resetModules();
-    const { AudioEngine } = await import('../../lib/audioEngine');
+    const { AudioEngine } = await import('../../lib/audio/audioEngine');
     return new AudioEngine();
 }
 

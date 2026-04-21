@@ -1,0 +1,133 @@
+/* ====================== TranscriptPanel ====================== */
+
+.transcript-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-3);
+  font-family: var(--font);
+  font-size: 11px;
+}
+
+/* ---- Turn row (prototype `.turn` pattern) ---- */
+
+.transcript-turn {
+  margin-bottom: var(--s-2);
+  display: flex;
+}
+
+.transcript-turn--user {
+  justify-content: flex-end;
+}
+
+.transcript-turn--jarvis {
+  justify-content: flex-start;
+}
+
+.transcript-turn__block {
+  max-width: 84%;
+}
+
+.transcript-turn--user .transcript-turn__block {
+  text-align: right;
+}
+
+/* meta line: role + time */
+.transcript-turn__meta {
+  font-size: 8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.transcript-turn--user .transcript-turn__meta {
+  text-align: right;
+}
+
+.transcript-turn__meta-role {
+  color: var(--accent);
+  font-weight: 500;
+  margin-right: var(--s-1);
+}
+
+.transcript-turn__meta-time {
+  opacity: 0.7;
+}
+
+/* bubble */
+.transcript-turn__bubble--user {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 2px 0;
+  text-align: right;
+}
+
+.transcript-turn__bubble--jarvis {
+  background: rgba(76, 168, 232, 0.06);
+  border: 1px solid var(--border);
+  padding: var(--s-1) var(--s-2);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+  border-radius: var(--r-1);
+  position: relative;
+}
+
+/* left accent bar on jarvis bubble — matches prototype */
+.transcript-turn__bubble--jarvis::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -1px;
+  width: 2px;
+  height: calc(100% + 2px);
+  background: var(--accent);
+  box-shadow: var(--glow);
+}
+
+/* ---- Compact mode ---- */
+
+.transcript-compact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font-family: var(--font);
+}
+
+.transcript-compact__header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.transcript-compact__role {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.transcript-compact__time {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.transcript-compact__text {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transcript-empty {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: var(--s-2) 0;
+  letter-spacing: 1px;
+}

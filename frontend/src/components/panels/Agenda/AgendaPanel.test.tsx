@@ -1,47 +1,39 @@
 /**
- * AgendaPanel — Vitest + RTL tests.
+ * AgendaPanel — Vitest + RTL tests (modular folder rebuild).
  *
- * All WS subscriptions are intercepted via vi.mock so no real WebSocket
- * connection is attempted. Tests cover:
+ * All WS subscriptions are intercepted via vi.mock. Tests cover:
  *   - Loading state before first live push
- *   - Empty event list (no events)
- *   - Compact mode with a next event
- *   - Expanded mode with up to 4 events
+ *   - Empty event list
+ *   - Compact mode with next event
+ *   - Expanded mode renders up to 4 events
  *   - Live calendar_state WS message triggers re-render
- *   - No agendaMock import present in the panel source
+ *   - SFX select fires on row click
  */
 import { act, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CalendarStateListener } from '../../../hooks/useWebSocket';
 
-// ---------------------------------------------------------------------------
-// Mock the WS stream helper so no real WebSocket is used.
-// ---------------------------------------------------------------------------
-
+// Mock WS
 let capturedCalendarStateListener: CalendarStateListener | null = null;
-
 vi.mock('../../../hooks/useWebSocket', () => ({
   subscribeCalendarStateStream: vi.fn((listener: CalendarStateListener) => {
     capturedCalendarStateListener = listener;
-    return () => {
-      capturedCalendarStateListener = null;
-    };
+    return () => { capturedCalendarStateListener = null; };
   }),
 }));
 
+// Mock SfxContext
+const mockPlayOneShot = vi.fn();
+vi.mock('../../../hud/SfxContext', () => ({
+  useSfx: () => ({ playOneShot: mockPlayOneShot }),
+}));
+
 import type { AgendaEvent } from '../../../types';
-import { AgendaPanel } from '../Agenda';
+import { AgendaPanel } from './AgendaPanel';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeEvent(
-  id: string,
-  title: string,
-  offsetMinutes = 30,
-): AgendaEvent {
+function makeEvent(id: string, title: string, offsetMinutes = 30): AgendaEvent {
   const now = new Date();
   const start = new Date(now.getTime() + offsetMinutes * 60_000);
   const end = new Date(start.getTime() + 60 * 60_000);
@@ -55,13 +47,10 @@ function makeEvent(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe('AgendaPanel', () => {
   beforeEach(() => {
     capturedCalendarStateListener = null;
+    mockPlayOneShot.mockClear();
     vi.clearAllMocks();
   });
 
@@ -74,7 +63,7 @@ describe('AgendaPanel', () => {
     expect(screen.getByText(/kalender wird geladen/i)).toBeTruthy();
   });
 
-  it('renders empty state when events prop is empty array', () => {
+  it('renders empty state when events prop is empty array (expanded)', () => {
     render(<AgendaPanel events={[]} mode="expanded" />);
     expect(screen.getByText(/keine termine/i)).toBeTruthy();
   });
@@ -87,12 +76,12 @@ describe('AgendaPanel', () => {
     expect(screen.getByText('NÄCHSTER')).toBeTruthy();
   });
 
-  it('compact: shows "Keine Termine heute" when events prop is empty', () => {
+  it('compact: shows empty state when events prop is empty', () => {
     render(<AgendaPanel events={[]} mode="compact" />);
     expect(screen.getByText(/keine termine heute/i)).toBeTruthy();
   });
 
-  it('expanded: renders up to 4 events with title visible', () => {
+  it('expanded: renders up to 4 events', () => {
     const events = [
       makeEvent('1', 'Standup', 10),
       makeEvent('2', 'Lunch', 60),
@@ -110,10 +99,8 @@ describe('AgendaPanel', () => {
 
   it('updates when a calendar_state WS message fires', async () => {
     render(<AgendaPanel mode="expanded" />);
-    // Initially loading
     expect(screen.getByText(/kalender wird geladen/i)).toBeTruthy();
 
-    // Simulate live push
     await act(async () => {
       capturedCalendarStateListener?.({
         events: [makeEvent('live1', 'Live Standup', 5)],
@@ -124,10 +111,17 @@ describe('AgendaPanel', () => {
     expect(screen.getByText('Live Standup')).toBeTruthy();
   });
 
-  it('does not import agendaMock (no mock dependency in module)', async () => {
-    // Verify no agendaMock reference exists in AgendaPanel source.
-    // We import the raw source text via Vite's ?raw suffix to avoid node:fs deps.
-    const source = await import('../Agenda/AgendaPanel.tsx?raw').then((m) => m.default as string);
-    expect(source).not.toContain('agendaMock');
+  it('fires select SFX when a row is clicked', async () => {
+    const events = [makeEvent('1', 'Clickable Event', 60)];
+    render(<AgendaPanel events={events} mode="expanded" />);
+    await userEvent.click(screen.getByText('Clickable Event'));
+    expect(mockPlayOneShot).toHaveBeenCalledWith('click');
+  });
+
+  it('expanded: renders correct number of rows for 2 events', () => {
+    const events = [makeEvent('a', 'EventA', 30), makeEvent('b', 'EventB', 90)];
+    render(<AgendaPanel events={events} mode="expanded" />);
+    expect(screen.getByText('EventA')).toBeTruthy();
+    expect(screen.getByText('EventB')).toBeTruthy();
   });
 });

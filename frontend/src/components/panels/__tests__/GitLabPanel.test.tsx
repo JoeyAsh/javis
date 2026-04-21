@@ -32,7 +32,7 @@ vi.mock('../../../hooks/useGitlabState', () => ({
 }));
 
 import { useGitlabState } from '../../../hooks/useGitlabState';
-import { GitLabPanel } from '../GitLabPanel';
+import { GitLabPanel } from '../GitLab';
 import type { GitLabStatePayload } from '../../../types';
 
 // ---------------------------------------------------------------------------

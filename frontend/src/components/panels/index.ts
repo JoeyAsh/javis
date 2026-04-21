@@ -1,11 +1,13 @@
-export { AgendaPanel } from './AgendaPanel';
-export { GitLabPanel } from './GitLabPanel';
-export { MailPanel } from './MailPanel';
-export { NowPlayingPanel } from './NowPlayingPanel';
+// Modular panel folders
+export { AgendaPanel } from './Agenda';
+export { GitLabPanel } from './GitLab';
+export { MailPanel } from './Mail';
+export { NowPlayingPanel } from './NowPlaying';
+export { SystemPanel } from './System';
+export { DevPanel } from './Dev';
+export { NotificationsPanel } from './Notifications';
+export { TranscriptPanel } from './Transcript';
+export { LogPanel } from './Log';
+// Untouched panels (epic #40 out-of-scope)
 export { LightsPanel } from './LightsPanel';
-export { SystemPanel } from './SystemPanel';
-export { DevPanel } from './DevPanel';
-export { NotificationsPanel } from './NotificationsPanel';
-export { TranscriptPanel } from './TranscriptPanel';
 export { SelfFixPanel } from './SelfFixPanel';
-export { LogPanel } from './LogPanel';

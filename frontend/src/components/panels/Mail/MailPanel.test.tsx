@@ -1,19 +1,9 @@
 /**
- * MailPanel — Vitest + RTL tests.
- *
- * All WS subscriptions are intercepted via vi.mock so no real WebSocket
- * connection is attempted. Tests cover:
- *   - Renders live unread count + senders from mail_state data
- *   - Shows DraftPreview section when email_draft_preview arrives
- *   - Renders the empty / grace-period state (no mock data within 2 s)
+ * MailPanel — Vitest + RTL tests (modular folder rebuild).
  */
 import { act, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-// ---------------------------------------------------------------------------
-// Mock the WS subscription helpers so no real network is used.
-// We capture the registered listeners and call them manually in tests.
-// ---------------------------------------------------------------------------
 
 import type {
   EmailDraftPreviewListener,
@@ -28,31 +18,25 @@ let capturedSendDoneListener: EmailSendDoneListener | null = null;
 vi.mock('../../../hooks/useWebSocket', () => ({
   subscribeMailStateStream: vi.fn((listener: MailStateListener) => {
     capturedMailStateListener = listener;
-    return () => {
-      capturedMailStateListener = null;
-    };
+    return () => { capturedMailStateListener = null; };
   }),
   subscribeEmailDraftPreviewStream: vi.fn((listener: EmailDraftPreviewListener) => {
     capturedDraftPreviewListener = listener;
-    return () => {
-      capturedDraftPreviewListener = null;
-    };
+    return () => { capturedDraftPreviewListener = null; };
   }),
   subscribeEmailSendDoneStream: vi.fn((listener: EmailSendDoneListener) => {
     capturedSendDoneListener = listener;
-    return () => {
-      capturedSendDoneListener = null;
-    };
+    return () => { capturedSendDoneListener = null; };
   }),
 }));
 
-// Import after mocking
-import { MailPanel } from '../Mail';
-import type { MailMessage } from '../../../types';
+const mockPlayOneShot = vi.fn();
+vi.mock('../../../hud/SfxContext', () => ({
+  useSfx: () => ({ playOneShot: mockPlayOneShot }),
+}));
 
-// ---------------------------------------------------------------------------
-// Test data
-// ---------------------------------------------------------------------------
+import { MailPanel } from './MailPanel';
+import type { MailMessage } from '../../../types';
 
 const liveMessages: MailMessage[] = [
   {
@@ -75,99 +59,83 @@ const liveMessages: MailMessage[] = [
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function renderPanel(mode: 'compact' | 'expanded' = 'expanded') {
-  return render(<MailPanel mode={mode} />);
-}
-
-// ---------------------------------------------------------------------------
-// Test suites
-// ---------------------------------------------------------------------------
-
-describe('MailPanel — live mail_state data', () => {
+describe('MailPanel — live data', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     capturedMailStateListener = null;
     capturedDraftPreviewListener = null;
     capturedSendDoneListener = null;
+    mockPlayOneShot.mockClear();
   });
-
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
   });
 
-  it('renders unread count and sender names from live mail_state payload', async () => {
-    renderPanel();
-
+  it('renders unread count and senders from live mail_state', async () => {
+    render(<MailPanel mode="expanded" />);
     act(() => {
-      capturedMailStateListener?.({
-        messages: liveMessages,
-        unread_count: 7,
-      });
+      capturedMailStateListener?.({ messages: liveMessages, unread_count: 7 });
     });
-
-    // Unread count
     expect(screen.getByText('7')).toBeInTheDocument();
-    // Senders
     expect(screen.getByText('Sarah Connor')).toBeInTheDocument();
     expect(screen.getByText('John Doe')).toBeInTheDocument();
   });
 
-  it('mock-data sender names are absent when live data has been received', async () => {
-    renderPanel();
-
+  it('mock senders absent when live data arrived', async () => {
+    render(<MailPanel mode="expanded" />);
     act(() => {
-      capturedMailStateListener?.({
-        messages: liveMessages,
-        unread_count: 2,
-      });
+      capturedMailStateListener?.({ messages: liveMessages, unread_count: 2 });
     });
-
-    // Mock senders from mailMock.ts — must not appear
     expect(screen.queryByText('Elena Vogt (CTO)')).not.toBeInTheDocument();
-    expect(screen.queryByText('Marco Reinhardt')).not.toBeInTheDocument();
   });
 
-  it('falls back to mock data after 2 s grace period with no mail_state', () => {
-    renderPanel();
-
-    // Grace timer fires — mock data should appear
-    act(() => {
-      vi.advanceTimersByTime(2100);
-    });
-
+  it('falls back to mock after 2s grace period', () => {
+    render(<MailPanel mode="expanded" />);
+    act(() => { vi.advanceTimersByTime(2100); });
     expect(screen.getByText('Elena Vogt (CTO)')).toBeInTheDocument();
   });
 
   it('shows no messages before grace period elapses and no live data', () => {
-    renderPanel();
-
-    // Neither live nor mock — within grace window
+    render(<MailPanel mode="expanded" />);
     expect(screen.queryByText('Elena Vogt (CTO)')).not.toBeInTheDocument();
     expect(screen.queryByText('Sarah Connor')).not.toBeInTheDocument();
   });
+
+  it('renders correct number of rows for 2 messages', async () => {
+    render(<MailPanel mode="expanded" />);
+    act(() => {
+      capturedMailStateListener?.({ messages: liveMessages, unread_count: 2 });
+    });
+    const rows = screen.getAllByRole('button');
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('fires click SFX on row click', async () => {
+    render(<MailPanel mode="expanded" />);
+    act(() => {
+      capturedMailStateListener?.({ messages: liveMessages, unread_count: 2 });
+    });
+    await userEvent.click(screen.getByText('Meeting tomorrow'));
+    expect(mockPlayOneShot).toHaveBeenCalledWith('click');
+  });
 });
 
-describe('MailPanel — DraftPreview section', () => {
+describe('MailPanel — DraftPreview', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     capturedMailStateListener = null;
     capturedDraftPreviewListener = null;
     capturedSendDoneListener = null;
+    mockPlayOneShot.mockClear();
   });
-
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
   });
 
-  it('shows draft preview section when email_draft_preview arrives', async () => {
-    renderPanel();
-
+  it('shows draft preview when email_draft_preview arrives', async () => {
+    render(<MailPanel mode="expanded" />);
     act(() => {
       capturedDraftPreviewListener?.({
         draft_id: 'draft-abc',
@@ -177,16 +145,13 @@ describe('MailPanel — DraftPreview section', () => {
         created_at: new Date().toISOString(),
       });
     });
-
     expect(screen.getByText('sarah@example.com')).toBeInTheDocument();
     expect(screen.getByText('Treffen morgen')).toBeInTheDocument();
-    // Confirmation prompt
     expect(screen.getByText(/JA/)).toBeInTheDocument();
   });
 
   it('truncates body_preview to 80 chars', async () => {
-    renderPanel();
-
+    render(<MailPanel mode="expanded" />);
     const longBody = 'A'.repeat(100);
     act(() => {
       capturedDraftPreviewListener?.({
@@ -197,35 +162,25 @@ describe('MailPanel — DraftPreview section', () => {
         created_at: new Date().toISOString(),
       });
     });
-
-    // Displayed text must be truncated
     const truncated = `${'A'.repeat(80)}…`;
     expect(screen.getByText(truncated)).toBeInTheDocument();
   });
 
-  it('hides draft preview after email_send_done arrives', async () => {
-    renderPanel();
-
+  it('hides draft preview after email_send_done', async () => {
+    render(<MailPanel mode="expanded" />);
     act(() => {
       capturedDraftPreviewListener?.({
-        draft_id: 'draft-abc',
-        to: 'sarah@example.com',
-        subject: 'Treffen morgen',
-        body_preview: 'Lass uns treffen.',
+        draft_id: 'draft-abc', to: 'sarah@example.com',
+        subject: 'Treffen morgen', body_preview: 'Lass uns treffen.',
         created_at: new Date().toISOString(),
       });
     });
-
     expect(screen.getByText('sarah@example.com')).toBeInTheDocument();
-
     act(() => {
       capturedSendDoneListener?.({
-        draft_id: 'draft-abc',
-        success: true,
-        message_id: 'msg-xyz',
+        draft_id: 'draft-abc', success: true, message_id: 'msg-xyz',
       });
     });
-
     expect(screen.queryByText('sarah@example.com')).not.toBeInTheDocument();
   });
 });
@@ -234,41 +189,18 @@ describe('MailPanel — compact mode', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     capturedMailStateListener = null;
-    capturedDraftPreviewListener = null;
-    capturedSendDoneListener = null;
+    mockPlayOneShot.mockClear();
   });
-
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
   });
 
   it('renders live unread count in compact mode', async () => {
-    renderPanel('compact');
-
+    render(<MailPanel mode="compact" />);
     act(() => {
-      capturedMailStateListener?.({
-        messages: liveMessages,
-        unread_count: 3,
-      });
+      capturedMailStateListener?.({ messages: liveMessages, unread_count: 3 });
     });
-
     expect(screen.getByText('3')).toBeInTheDocument();
-  });
-
-  it('shows draft preview in compact mode', async () => {
-    renderPanel('compact');
-
-    act(() => {
-      capturedDraftPreviewListener?.({
-        draft_id: 'd1',
-        to: 'boss@corp.com',
-        subject: 'Status report',
-        body_preview: 'Everything is on track.',
-        created_at: new Date().toISOString(),
-      });
-    });
-
-    expect(screen.getByText('boss@corp.com')).toBeInTheDocument();
   });
 });

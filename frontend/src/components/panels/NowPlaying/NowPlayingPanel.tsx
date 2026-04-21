@@ -1,22 +1,34 @@
+/**
+ * NowPlayingPanel — panel body for Spotify playback control.
+ * Returns only body content; the Window wrapper supplies chrome via HudPanel.
+ *
+ * Prototype reference: NowPlayingPanel() in JARVIS HUD Hypermodern.html
+ * Art monogram + track meta + progress bar + transport controls + volume.
+ *
+ * SFX: click baked into buttons via HudButton (handled externally);
+ * no additional SFX wired here beyond what the transport buttons dispatch.
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { nowPlayingMock } from '../../mock/nowPlayingMock';
-import { useMockTicker } from '../../mock/useMockTicker';
+import { nowPlayingMock } from '../../../mock/nowPlayingMock';
+import { useMockTicker } from '../../../mock/useMockTicker';
 import {
   sendSpotifyCmdStream,
   subscribeSpotifyStateStream,
-} from '../../hooks/useWebSocket';
+} from '../../../hooks/useWebSocket';
 import type {
   NowPlayingTrack,
   PanelMode,
   SpotifyCmdAction,
   SpotifyStatePayload,
-} from '../../types';
+} from '../../../types';
+import './NowPlayingPanel.css';
 
-// ============ Auth URL ============
+// ============ Constants ============
 
 const SPOTIFY_AUTH_URL = 'http://127.0.0.1:8766/oauth/spotify/start';
 const MOCK_GRACE_MS = 2000;
+const WAVE_BARS = 7;
 
 // ============ Helpers ============
 
@@ -56,55 +68,26 @@ function useLiveProgress(track: NowPlayingTrack): number {
   }, [tick, track]);
 }
 
-// ============ Transport button ============
+// ============ WaveStrip ============
 
-interface TransportButtonProps {
-  children: React.ReactNode;
-  ariaLabel: string;
-  primary?: boolean;
-  active?: boolean;
-  onClick?: () => void;
-}
-
-function TransportButton({
-  children,
-  ariaLabel,
-  primary = false,
-  active = false,
-  onClick,
-}: TransportButtonProps): ReactElement {
-  const size = primary ? 34 : 26;
+function WaveStrip({ playing }: { playing: boolean }): ReactElement {
   return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      onClick={onClick}
-      style={{
-        width: size,
-        height: size,
-        background: primary ? 'var(--accent)' : 'transparent',
-        border: `1px solid ${active ? 'var(--accent-bright)' : 'var(--border)'}`,
-        borderRadius: 2,
-        color: primary
-          ? 'var(--bg)'
-          : active
-            ? 'var(--accent-bright)'
-            : 'var(--text-secondary)',
-        cursor: 'pointer',
-        fontFamily: 'var(--font)',
-        fontSize: primary ? 14 : 12,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        lineHeight: 1,
-      }}
-    >
-      {children}
-    </button>
+    <div className={`nowplaying-wave${playing ? '' : ' nowplaying-wave--paused'}`} aria-hidden>
+      {Array.from({ length: WAVE_BARS }, (_, i) => (
+        <div
+          key={i}
+          className="nowplaying-wave__bar"
+          style={{
+            height: `${30 + ((i * 17) % 70)}%`,
+            animationDelay: `${(i * 0.12).toFixed(2)}s`,
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
-// ============ TrackInfo sub-component ============
+// ============ TrackInfo ============
 
 interface TrackInfoProps {
   track: NowPlayingTrack;
@@ -113,85 +96,29 @@ interface TrackInfoProps {
 function TrackInfo({ track }: TrackInfoProps): ReactElement {
   const hasArt = Boolean(track.albumArtUrl);
   return (
-    <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+    <div className="nowplaying-track">
       {hasArt ? (
         <img
           src={track.albumArtUrl}
           alt={track.album}
-          width={56}
-          height={56}
-          style={{
-            width: 56,
-            height: 56,
-            objectFit: 'cover',
-            flexShrink: 0,
-            borderRadius: 2,
-            boxShadow: 'var(--glow)',
-          }}
+          className="nowplaying-art"
         />
       ) : (
-        <div
-          aria-label="Album art placeholder"
-          style={{
-            width: 56,
-            height: 56,
-            background: 'var(--accent)',
-            color: 'var(--bg)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 14,
-            fontWeight: 700,
-            letterSpacing: 1,
-            flexShrink: 0,
-            borderRadius: 2,
-            boxShadow: 'var(--glow)',
-          }}
-        >
+        <div aria-label="Album art placeholder" className="nowplaying-art-placeholder">
           {track.monogram}
         </div>
       )}
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div
-          style={{
-            fontSize: 13,
-            color: 'var(--text)',
-            marginBottom: 2,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {track.title}
-        </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: 'var(--text-secondary)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {track.artist}
-        </div>
-        <div
-          style={{
-            fontSize: 10,
-            color: 'var(--text-muted)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {track.album}
-        </div>
+      <div className="nowplaying-meta">
+        <div className="nowplaying-title">{track.title}</div>
+        <div className="nowplaying-artist">{track.artist}</div>
+        <div className="nowplaying-album">{track.album}</div>
+        <WaveStrip playing={track.playing} />
       </div>
     </div>
   );
 }
 
-// ============ TransportControls sub-component ============
+// ============ TransportControls ============
 
 interface TransportControlsProps {
   track: NowPlayingTrack;
@@ -200,34 +127,51 @@ interface TransportControlsProps {
 
 function TransportControls({ track, onCmd }: TransportControlsProps): ReactElement {
   return (
-    <div
-      data-no-drag
-      style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 8,
-        marginTop: 10,
-      }}
-    >
-      <TransportButton ariaLabel="Previous" onClick={() => onCmd('prev')}>
-        ⏮
-      </TransportButton>
-      <TransportButton
-        ariaLabel={track.playing ? 'Pause' : 'Play'}
-        primary
+    <div className="nowplaying-controls" data-no-drag>
+      <button
+        type="button"
+        aria-label="Previous"
+        className="nowplaying-tbtn"
+        onClick={() => onCmd('prev')}
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="18,5 8,12 18,19" />
+          <rect x="6" y="5" width="2" height="14" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        aria-label={track.playing ? 'Pause' : 'Play'}
+        className="nowplaying-tbtn nowplaying-tbtn--primary"
         onClick={() => onCmd(track.playing ? 'pause' : 'play')}
       >
-        {track.playing ? '⏸' : '▶'}
-      </TransportButton>
-      <TransportButton ariaLabel="Next" onClick={() => onCmd('next')}>
-        ⏭
-      </TransportButton>
+        {track.playing ? (
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="4" width="4" height="16" />
+            <rect x="14" y="4" width="4" height="16" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="6,3 21,12 6,21" />
+          </svg>
+        )}
+      </button>
+      <button
+        type="button"
+        aria-label="Next"
+        className="nowplaying-tbtn"
+        onClick={() => onCmd('next')}
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="6,5 16,12 6,19" />
+          <rect x="16" y="5" width="2" height="14" />
+        </svg>
+      </button>
     </div>
   );
 }
 
-// ============ VolumeSlider sub-component ============
+// ============ VolumeSlider ============
 
 interface VolumeSliderProps {
   volume: number;
@@ -255,11 +199,8 @@ function VolumeSlider({ volume, onCmd }: VolumeSliderProps): ReactElement {
   }, []);
 
   return (
-    <div
-      style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}
-      data-no-drag
-    >
-      <span style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: 1 }}>VOL</span>
+    <div className="nowplaying-volume" data-no-drag>
+      <span className="nowplaying-vol-label">VOL</span>
       <input
         type="range"
         min={0}
@@ -267,7 +208,6 @@ function VolumeSlider({ volume, onCmd }: VolumeSliderProps): ReactElement {
         defaultValue={volume}
         onChange={handleChange}
         aria-label="Volume"
-        style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }}
       />
     </div>
   );
@@ -281,26 +221,25 @@ interface NowPlayingExpandedProps {
   onCmd: (action: SpotifyCmdAction, value?: number) => void;
 }
 
-function NowPlayingExpanded({
-  track,
-  volumePercent,
-  onCmd,
-}: NowPlayingExpandedProps): ReactElement {
+function NowPlayingExpanded({ track, volumePercent, onCmd }: NowPlayingExpandedProps): ReactElement {
   const progress = useLiveProgress(track);
   const pct = Math.min(100, (progress / track.durationMs) * 100);
+
   return (
-    <>
+    <div className="nowplaying-panel">
       <TrackInfo track={track} />
-      <div className="bar" style={{ marginBottom: 4 }}>
-        <div className="bar-fill" style={{ width: `${pct}%` }} />
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <span className="mono-small">{formatMs(progress)}</span>
-        <span className="mono-small">{formatMs(track.durationMs)}</span>
+      <div className="nowplaying-progress">
+        <div className="bar">
+          <div className="bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="nowplaying-times">
+          <span>{formatMs(progress)}</span>
+          <span>{formatMs(track.durationMs)}</span>
+        </div>
       </div>
       <TransportControls track={track} onCmd={onCmd} />
       <VolumeSlider volume={volumePercent} onCmd={onCmd} />
-    </>
+    </div>
   );
 }
 
@@ -314,18 +253,12 @@ interface NowPlayingCompactProps {
 function NowPlayingCompact({ track, onCmd }: NowPlayingCompactProps): ReactElement {
   const progress = useLiveProgress(track);
   const pct = Math.min(100, (progress / track.durationMs) * 100);
+
   return (
-    <>
-      <div className="window-compact-row truncate" style={{ fontSize: 12, color: 'var(--text)' }}>
-        {track.title}
-      </div>
-      <div
-        className="window-compact-row truncate"
-        style={{ fontSize: 10, color: 'var(--text-muted)' }}
-      >
-        {track.artist}
-      </div>
-      <div className="window-compact-row" style={{ gap: 8, marginTop: 6 }}>
+    <div className="nowplaying-compact">
+      <div className="nowplaying-compact__title">{track.title}</div>
+      <div className="nowplaying-compact__artist">{track.artist}</div>
+      <div className="nowplaying-compact__row">
         <div className="bar" style={{ flex: 1 }}>
           <div className="bar-fill" style={{ width: `${pct}%` }} />
         </div>
@@ -333,29 +266,17 @@ function NowPlayingCompact({ track, onCmd }: NowPlayingCompactProps): ReactEleme
           type="button"
           aria-label={track.playing ? 'Pause' : 'Play'}
           data-no-drag
+          className="nowplaying-compact__playbtn"
           onClick={() => onCmd(track.playing ? 'pause' : 'play')}
-          style={{
-            width: 20,
-            height: 20,
-            background: 'transparent',
-            border: '1px solid var(--border)',
-            borderRadius: 2,
-            color: 'var(--accent-bright)',
-            cursor: 'pointer',
-            fontFamily: 'var(--font)',
-            fontSize: 10,
-            lineHeight: 1,
-            flexShrink: 0,
-          }}
         >
-          {track.playing ? '\u23F8' : '\u25B6'}
+          {track.playing ? '⏸' : '▶'}
         </button>
       </div>
-    </>
+    </div>
   );
 }
 
-// ============ Unauthenticated state ============
+// ============ Auth / no-playback states ============
 
 function UnauthenticatedState(): ReactElement {
   const handleConnect = useCallback(() => {
@@ -363,34 +284,13 @@ function UnauthenticatedState(): ReactElement {
   }, []);
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 10,
-        padding: '16px 0',
-      }}
-    >
-      <span style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: 1 }}>
-        SPOTIFY — NICHT VERBUNDEN
-      </span>
+    <div className="nowplaying-state">
+      <span className="nowplaying-state__label">SPOTIFY — NICHT VERBUNDEN</span>
       <button
         type="button"
         aria-label="Log in to Spotify"
+        className="nowplaying-state__btn"
         onClick={handleConnect}
-        style={{
-          padding: '6px 16px',
-          background: 'transparent',
-          border: '1px solid var(--accent)',
-          borderRadius: 2,
-          color: 'var(--accent)',
-          cursor: 'pointer',
-          fontFamily: 'var(--font)',
-          fontSize: 11,
-          letterSpacing: 1,
-        }}
       >
         VERBINDEN
       </button>
@@ -398,22 +298,10 @@ function UnauthenticatedState(): ReactElement {
   );
 }
 
-// ============ No active playback state ============
-
 function NoPlaybackState(): ReactElement {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px 0',
-        fontSize: 10,
-        color: 'var(--text-muted)',
-        letterSpacing: 1,
-      }}
-    >
-      NO ACTIVE PLAYBACK
+    <div className="nowplaying-state">
+      <span className="nowplaying-state__label">NO ACTIVE PLAYBACK</span>
     </div>
   );
 }
@@ -453,14 +341,10 @@ export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): Re
     return unsub;
   }, []);
 
-  // Stable command sender — delegates to the module-level sender so no WS
-  // ref prop-drilling is needed.
-  const sendCmd = useCallback(
-    (action: SpotifyCmdAction, value?: number) => {
-      sendSpotifyCmdStream(action, value);
-    },
-    [],
-  );
+  // Stable command sender.
+  const sendCmd = useCallback((action: SpotifyCmdAction, value?: number): void => {
+    sendSpotifyCmdStream(action, value);
+  }, []);
 
   // Render live data when available.
   if (spotifyPayload !== null) {

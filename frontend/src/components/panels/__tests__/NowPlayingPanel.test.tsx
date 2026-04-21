@@ -34,7 +34,7 @@ vi.mock('../../../hooks/useWebSocket', () => ({
 }));
 
 // Import after mocking
-import { NowPlayingPanel } from '../NowPlayingPanel';
+import { NowPlayingPanel } from '../NowPlaying';
 import type { SpotifyStatePayload } from '../../../types';
 
 // ---------------------------------------------------------------------------

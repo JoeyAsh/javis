@@ -152,14 +152,15 @@ export function Scene({ grid = true, scan = true, stars = true }: SceneProps): R
       {/* 7. Vignette */}
       <div className="hud-scene__layer hud-scene__layer--vignette" />
 
-      {/* 8. Reactor glow — width/height/translate kept inline (absolute px values) */}
+      {/* 8. Reactor glow — per spec: centred at bottom-of-screen minus 90px.
+           900px tall, so top places the centre 360px below the viewport. */}
       <div
         className="hud-scene__layer--reactor"
         style={{
           position: 'absolute',
-          top: '50%',
+          top: 'calc(100vh - 90px)',
           left: '50%',
-          transform: 'translate(-50%, -50%)',
+          transform: 'translate(-50%, 0)',
           width: 900,
           height: 900,
         }}

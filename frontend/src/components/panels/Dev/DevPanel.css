@@ -1,0 +1,107 @@
+/* ====================== DevPanel ====================== */
+
+.dev-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--s-3);
+  font-family: var(--font);
+  overflow-y: auto;
+}
+
+/* ---- Section header ---- */
+
+.dev-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+
+.dev-section__label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dev-section__stale {
+  margin-left: var(--s-2);
+  font-size: 8px;
+  color: var(--warning);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.dev-section__right {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+/* ---- Compact mode ---- */
+
+.dev-compact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font-family: var(--font);
+}
+
+.dev-compact__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 11px;
+}
+
+.dev-compact__count {
+  font-weight: 500;
+}
+
+.dev-compact__label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-left: 2px;
+}
+
+.dev-compact__sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Bar row (docker/CI) ---- */
+
+.dev-bar-row {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  margin-top: 3px;
+}
+
+.dev-bar-label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  width: 24px;
+}
+
+.dev-bar-value {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  width: 26px;
+  text-align: right;
+}

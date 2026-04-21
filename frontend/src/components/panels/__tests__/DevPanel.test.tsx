@@ -26,7 +26,7 @@ vi.mock('../../../hooks/useGitHubState', () => ({
 }));
 
 import { useGitHubState } from '../../../hooks/useGitHubState';
-import { DevPanel } from '../DevPanel';
+import { DevPanel } from '../Dev';
 import type { GitHubStatePayload } from '../../../types';
 
 // ---------------------------------------------------------------------------

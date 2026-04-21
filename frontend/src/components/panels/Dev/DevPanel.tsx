@@ -1,5 +1,14 @@
+/**
+ * DevPanel — panel body for the developer toolkit.
+ * Returns only body content; the Window wrapper supplies chrome via HudPanel.
+ *
+ * Shows GitHub PRs, Issues, CI (live when available), Local Repos, Docker.
+ * Falls back to mock data when the backend GitHub poller is not running.
+ *
+ * SFX: click baked into buttons (handled externally by HudButton primitives).
+ */
 import type { ReactElement } from 'react';
-import { devMock } from '../../mock/devMock';
+import { devMock } from '../../../mock/devMock';
 import type {
   CIStatus,
   DevToolkitMock,
@@ -9,13 +18,18 @@ import type {
   GitHubStatePayload,
   PanelMode,
   RepoSyncStatus,
-} from '../../types';
-import { useGitHubState } from '../../hooks/useGitHubState';
+} from '../../../types';
+import { useGitHubState } from '../../../hooks/useGitHubState';
+import './DevPanel.css';
 
 export interface DevPanelProps {
   data?: DevToolkitMock;
   mode?: PanelMode;
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function repoPillClass(status: RepoSyncStatus): string {
   switch (status) {
@@ -53,6 +67,10 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+// ---------------------------------------------------------------------------
+// Section header
+// ---------------------------------------------------------------------------
+
 function SectionHeader({
   label,
   right,
@@ -63,41 +81,12 @@ function SectionHeader({
   stale?: boolean;
 }): ReactElement {
   return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'baseline',
-        marginTop: 8,
-        marginBottom: 6,
-      }}
-    >
-      <span
-        style={{
-          fontSize: 9,
-          letterSpacing: 2,
-          textTransform: 'uppercase',
-          color: 'var(--accent)',
-          fontWeight: 600,
-        }}
-      >
+    <div className="dev-section">
+      <span className="dev-section__label">
         {label}
-        {stale && (
-          <span
-            style={{
-              marginLeft: 6,
-              fontSize: 8,
-              color: 'var(--warning)',
-              fontWeight: 400,
-              textTransform: 'none',
-              letterSpacing: 0,
-            }}
-          >
-            [stale]
-          </span>
-        )}
+        {stale && <span className="dev-section__stale">[stale]</span>}
       </span>
-      {right !== undefined && <span className="mono-small">{right}</span>}
+      {right !== undefined && <span className="dev-section__right">{right}</span>}
     </div>
   );
 }
@@ -109,11 +98,7 @@ function SectionHeader({
 function LivePRList({ prs, stale }: { prs: GithubPRLive[]; stale: boolean }): ReactElement {
   return (
     <>
-      <SectionHeader
-        label="GitHub PRs"
-        right={`${prs.length} open`}
-        stale={stale}
-      />
+      <SectionHeader label="GitHub PRs" right={`${prs.length} open`} stale={stale} />
       {prs.slice(0, 3).map((pr) => (
         <div className="list-item" key={pr.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
           <div
@@ -143,10 +128,7 @@ function LivePRList({ prs, stale }: { prs: GithubPRLive[]; stale: boolean }): Re
         </div>
       ))}
       {prs.length === 0 && (
-        <div
-          className="list-item"
-          style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 4 }}
-        >
+        <div className="list-item" style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 4 }}>
           No open PRs
         </div>
       )}
@@ -154,20 +136,10 @@ function LivePRList({ prs, stale }: { prs: GithubPRLive[]; stale: boolean }): Re
   );
 }
 
-function LiveIssueList({
-  issues,
-  stale,
-}: {
-  issues: GithubIssueLive[];
-  stale: boolean;
-}): ReactElement {
+function LiveIssueList({ issues, stale }: { issues: GithubIssueLive[]; stale: boolean }): ReactElement {
   return (
     <>
-      <SectionHeader
-        label="GitHub Issues"
-        right={`${issues.length} assigned`}
-        stale={stale}
-      />
+      <SectionHeader label="GitHub Issues" right={`${issues.length} assigned`} stale={stale} />
       {issues.slice(0, 3).map((issue) => (
         <div className="list-item" key={issue.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
           <div
@@ -195,10 +167,7 @@ function LiveIssueList({
         </div>
       ))}
       {issues.length === 0 && (
-        <div
-          className="list-item"
-          style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 4 }}
-        >
+        <div className="list-item" style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 4 }}>
           No assigned issues
         </div>
       )}
@@ -214,13 +183,7 @@ function LiveCIList({ ci, stale }: { ci: GithubCIRunLive[]; stale: boolean }): R
         <div
           className="list-item"
           key={run.repo}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            paddingTop: 4,
-            paddingBottom: 4,
-          }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4, paddingBottom: 4 }}
         >
           <span className={ciPillClass(run.status)}>{run.status}</span>
           <span style={{ fontSize: 11, color: 'var(--text)', flex: 1 }}>{run.repo}</span>
@@ -228,10 +191,7 @@ function LiveCIList({ ci, stale }: { ci: GithubCIRunLive[]; stale: boolean }): R
         </div>
       ))}
       {ci.length === 0 && (
-        <div
-          className="list-item"
-          style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 4 }}
-        >
+        <div className="list-item" style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 4 }}>
           No CI runs
         </div>
       )}
@@ -254,44 +214,47 @@ function DevCompact({
   const issues = liveData !== null ? liveData.issues.length : 0;
   const dirty = data.repos.filter((r) => r.status === 'dirty' || r.status === 'behind').length;
   const containers = data.docker.filter((c) => c.status === 'running').length;
-
-  const firstPR =
-    liveData !== null ? liveData.prs[0] : data.prs[0];
+  const firstPR = liveData !== null ? liveData.prs[0] : data.prs[0];
 
   return (
-    <>
-      <div className="window-compact-row" style={{ gap: 10, fontSize: 11 }}>
+    <div className="dev-compact">
+      <div className="dev-compact__row">
         <span>
-          <span style={{ color: 'var(--accent-bright)', fontWeight: 500 }}>{prs}</span>
-          <span className="mono-small" style={{ marginLeft: 4 }}>PRs</span>
+          <span className="dev-compact__count" style={{ color: 'var(--accent-bright)' }}>
+            {prs}
+          </span>
+          <span className="dev-compact__label">PRs</span>
         </span>
         {liveData !== null ? (
           <span>
-            <span style={{ color: 'var(--warning)', fontWeight: 500 }}>{issues}</span>
-            <span className="mono-small" style={{ marginLeft: 4 }}>Issues</span>
+            <span className="dev-compact__count" style={{ color: 'var(--warning)' }}>
+              {issues}
+            </span>
+            <span className="dev-compact__label">Issues</span>
           </span>
         ) : (
           <span>
-            <span style={{ color: 'var(--warning)', fontWeight: 500 }}>{dirty}</span>
-            <span className="mono-small" style={{ marginLeft: 4 }}>Repos dirty</span>
+            <span className="dev-compact__count" style={{ color: 'var(--warning)' }}>
+              {dirty}
+            </span>
+            <span className="dev-compact__label">Repos dirty</span>
           </span>
         )}
         <span>
-          <span style={{ color: 'var(--success)', fontWeight: 500 }}>{containers}</span>
-          <span className="mono-small" style={{ marginLeft: 4 }}>Containers</span>
+          <span className="dev-compact__count" style={{ color: 'var(--success)' }}>
+            {containers}
+          </span>
+          <span className="dev-compact__label">Containers</span>
         </span>
       </div>
       {firstPR && (
-        <div
-          className="window-compact-row truncate"
-          style={{ fontSize: 10, color: 'var(--text-muted)' }}
-        >
+        <div className="dev-compact__sub">
           {liveData !== null
             ? `${(firstPR as GithubPRLive).repo} · ${(firstPR as GithubPRLive).title}`
             : `${data.prs[0]?.repo} · ${data.prs[0]?.title}`}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -307,7 +270,7 @@ function DevExpanded({
   liveData: GitHubStatePayload | null;
 }): ReactElement {
   return (
-    <>
+    <div className="dev-panel">
       {liveData !== null ? (
         <>
           <LivePRList prs={liveData.prs} stale={liveData.stale} />
@@ -373,13 +336,7 @@ function DevExpanded({
         <div
           className="list-item"
           key={r.id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            paddingTop: 4,
-            paddingBottom: 4,
-          }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4, paddingBottom: 4 }}
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 11, color: 'var(--text)' }}>{r.name}</div>
@@ -405,14 +362,7 @@ function DevExpanded({
       <SectionHeader label="Docker" right={`${data.docker.length} containers`} />
       {data.docker.map((c) => (
         <div className="list-item" key={c.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'baseline',
-              gap: 6,
-              marginBottom: 3,
-            }}
-          >
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
             <span
               style={{
                 fontSize: 11,
@@ -437,30 +387,22 @@ function DevExpanded({
               {c.status}
             </span>
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span className="mono-small" style={{ width: 24 }}>
-              CPU
-            </span>
+          <div className="dev-bar-row">
+            <span className="dev-bar-label">CPU</span>
             <div className="bar" style={{ flex: 1 }}>
               <div className="bar-fill" style={{ width: `${c.cpu}%` }} />
             </div>
-            <span className="mono-small" style={{ width: 26, textAlign: 'right' }}>
-              {c.cpu}%
-            </span>
+            <span className="dev-bar-value">{c.cpu}%</span>
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3 }}>
-            <span className="mono-small" style={{ width: 24 }}>
-              MEM
-            </span>
+          <div className="dev-bar-row">
+            <span className="dev-bar-label">MEM</span>
             <div className="bar" style={{ flex: 1 }}>
               <div
                 className="bar-fill"
                 style={{ width: `${c.mem}%`, background: 'var(--accent-bright)' }}
               />
             </div>
-            <span className="mono-small" style={{ width: 26, textAlign: 'right' }}>
-              {c.mem}%
-            </span>
+            <span className="dev-bar-value">{c.mem}%</span>
           </div>
         </div>
       ))}
@@ -490,7 +432,7 @@ function DevExpanded({
           ))}
         </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -502,9 +444,8 @@ function DevExpanded({
  * DevPanel — developer toolkit panel for the JARVIS HUD.
  *
  * When the backend GitHub poller is running, live PR, issue, and CI data
- * replaces the mock GitHub/CI sections.  The Local Repos and Docker sections
- * always use mock data (separate feature).  Mock data is shown for the first
- * ~2 s while waiting for the first WS frame.
+ * replaces the mock GitHub/CI sections. The Local Repos and Docker sections
+ * always use mock data. Mock data shown for the first ~2 s while waiting.
  */
 export function DevPanel({ data = devMock, mode = 'expanded' }: DevPanelProps): ReactElement {
   const { data: liveData } = useGitHubState();

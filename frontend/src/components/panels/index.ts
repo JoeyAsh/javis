@@ -8,6 +8,9 @@ export { DevPanel } from './Dev';
 export { NotificationsPanel } from './Notifications';
 export { TranscriptPanel } from './Transcript';
 export { LogPanel } from './Log';
-// Untouched panels (epic #40 out-of-scope)
-export { LightsPanel } from './LightsPanel';
+
+/* LightsPanel registered but NOT mounted by default — awaiting backend follow-up #54 */
+export { LightsPanel } from './Lights';
+
+// Untouched panel (epic #40 out-of-scope)
 export { SelfFixPanel } from './SelfFixPanel';

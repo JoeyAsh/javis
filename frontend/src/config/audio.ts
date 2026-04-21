@@ -192,7 +192,7 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
   },
   // ── Batch 2 ──────────────────────────────────────────────────────────────
   boot_complete: {
-    file: 'boot/boot_complete_1.mp3',
+    file: 'boot_complete/boot_complete_1.mp3',
     loop: false,
     volume: 0.85,
     duckable: false,
@@ -204,7 +204,7 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
     duckable: false,
   },
   wake: {
-    file: 'wake/wake_2.mp3',
+    file: 'wake/wake_1.mp3',
     loop: false,
     volume: 0.85,
     duckable: false,

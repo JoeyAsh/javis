@@ -282,13 +282,13 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
     duckable: true,
   },
   menu_open: {
-    file: 'menu/menu_open_1.mp3',
+    file: 'menu_open/menu_open_1.mp3',
     loop: false,
     volume: 0.60,
     duckable: false,
   },
   menu_close: {
-    file: 'menu/menu_close_1.mp3',
+    file: 'menu_close/menu_close_1.mp3',
     loop: false,
     volume: 0.60,
     duckable: false,

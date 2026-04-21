@@ -300,8 +300,8 @@
     margin-left: 4px;
 }
 
-/* focused shimmer line under header */
-.lib-panel.focused .lib-panel__hdr::after {
+/* shimmer line under header — always animated */
+.lib-panel__hdr::after {
     content: '';
     position: absolute;
     left: 0;
@@ -310,6 +310,13 @@
     height: 1px;
     background: linear-gradient(90deg, transparent, var(--accent-bright), transparent);
     animation: shimmer 2s linear infinite;
+    opacity: 0.65;
+}
+
+/* focused emphasis — brighter and faster shimmer */
+.lib-panel.focused .lib-panel__hdr::after {
+    animation-duration: 1.4s;
+    opacity: 1;
 }
 
 /* ── body ── */

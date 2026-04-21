@@ -40,29 +40,14 @@
 }
 
 .window--unfocused {
-  transform: perspective(1800px) rotateX(3deg) scale(0.96);
-  opacity: 0.55;
-  filter: blur(0.3px);
+  opacity: 0.9;
 }
 
-/* Hovered unfocused windows render like focused ones (no 3D / no dim). */
-.window--unfocused:hover {
-  transform: none;
-  opacity: 1;
-  filter: none;
-}
-
+/* Idle dimming is now handled via .app.idle .hud-panel in index.css
+   (prototype pattern). The .window--idle class is kept for fallback
+   compatibility but should be a no-op when the new idle mode is active. */
 .window--idle {
-  opacity: 0.15 !important;
   pointer-events: none !important;
-  transition: opacity var(--panel-fade-duration) ease-in-out;
-}
-
-/* Idle state always wins — hover must not pierce it. */
-.window--idle:hover {
-  opacity: 0.15 !important;
-  transform: perspective(1800px) rotateX(3deg) scale(0.96) !important;
-  filter: blur(0.3px) !important;
 }
 
 .window--hidden {
@@ -75,47 +60,6 @@
   display: inline-flex;
   gap: 4px;
   flex-shrink: 0;
-}
-
-.window-header-btn {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-family: var(--font);
-  font-size: 11px;
-  line-height: 1;
-  padding: 0;
-  transition: color 120ms, border-color 120ms, box-shadow 120ms;
-}
-
-.window-header-btn:hover {
-  color: var(--accent-bright);
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
-
-.window-header-btn:focus-visible {
-  outline: none;
-  color: var(--accent-bright);
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
-
-.window-header-btn--reset svg {
-  stroke: var(--text-secondary);
-  transition: stroke 120ms;
-}
-
-.window-header-btn--reset:hover svg,
-.window-header-btn--reset:focus-visible svg {
-  stroke: var(--accent);
 }
 
 /* ====================== Window body ====================== */

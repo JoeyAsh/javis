@@ -1,7 +1,6 @@
 /* ====================== SystemPanel ====================== */
 
 .system-panel {
-  padding: var(--s-3);
   font-family: var(--font);
   height: 100%;
   overflow-y: auto;
@@ -11,7 +10,7 @@
 .system-tiles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--s-3);
+  gap: 12px;
 }
 
 /* ---- SystemTile ---- */

@@ -31,21 +31,35 @@ export interface OrbProps {
   particles?: boolean;
 }
 
-// Particle configuration — 6 orbiters at increasing radii.
-const PARTICLE_RADII = [180, 210, 240, 265, 295, 330] as const;
-const PARTICLE_SPEEDS = [0.0008, 0.0006, 0.0010, 0.0007, 0.0005, 0.0009] as const;
-const PARTICLE_OFFSETS = [0, 1.05, 2.09, 3.14, 4.19, 5.24] as const; // ~60° steps
+// Particle configuration — 6 orbiters matching prototype exactly.
+// { r: radius px, dur: period seconds, size: px, col: CSS var, dir: +1|-1 }
+interface ParticleConfig {
+  r: number;
+  dur: number;
+  size: number;
+  col: string;
+  dir: 1 | -1;
+}
+
+const PARTICLES: readonly ParticleConfig[] = [
+  { r: 180, dur: 10, size: 3, col: '--accent-bright', dir:  1 },
+  { r: 210, dur: 14, size: 2, col: '--accent',        dir: -1 },
+  { r: 240, dur: 16, size: 2, col: '--accent-bright', dir:  1 },
+  { r: 265, dur: 20, size: 3, col: '--accent',        dir: -1 },
+  { r: 295, dur: 24, size: 2, col: '--accent-speak',  dir:  1 },
+  { r: 330, dur: 28, size: 3, col: '--accent-bright', dir: -1 },
+] as const;
 
 interface ParticlePos {
   x: number;
   y: number;
 }
 
-function computeParticle(radius: number, speed: number, offset: number, t: number): ParticlePos {
-  const angle = t * speed + offset;
+function computeParticle(p: ParticleConfig, tSec: number, idx: number): ParticlePos {
+  const ang = (tSec * (2 * Math.PI) / p.dur) * p.dir + idx * 1.05;
   return {
-    x: Math.cos(angle) * radius,
-    y: Math.sin(angle) * radius,
+    x: Math.cos(ang) * p.r,
+    y: Math.sin(ang) * p.r,
   };
 }
 
@@ -55,10 +69,7 @@ function computeParticle(radius: number, speed: number, offset: number, t: numbe
  */
 export function Orb({ state, rings = true, particles = true }: OrbProps): ReactElement {
   const [particlePositions, setParticlePositions] = useState<ParticlePos[]>(
-    () =>
-      PARTICLE_RADII.map((r, i) =>
-        computeParticle(r, PARTICLE_SPEEDS[i], PARTICLE_OFFSETS[i], 0),
-      ),
+    () => PARTICLES.map((p, i) => computeParticle(p, 0, i)),
   );
 
   const rafRef = useRef<number | null>(null);
@@ -74,13 +85,9 @@ export function Orb({ state, rings = true, particles = true }: OrbProps): ReactE
 
     function tick(ts: number): void {
       if (startTimeRef.current === null) startTimeRef.current = ts;
-      const elapsed = ts - startTimeRef.current;
+      const tSec = (ts - startTimeRef.current) / 1000;
 
-      setParticlePositions(
-        PARTICLE_RADII.map((r, i) =>
-          computeParticle(r, PARTICLE_SPEEDS[i], PARTICLE_OFFSETS[i], elapsed),
-        ),
-      );
+      setParticlePositions(PARTICLES.map((p, i) => computeParticle(p, tSec, i)));
 
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -113,17 +120,17 @@ export function Orb({ state, rings = true, particles = true }: OrbProps): ReactE
           <div className="ring r4" />
           {/* r3 — 580 px */}
           <div className="ring r3" />
-          {/* r2 — 460 px — tick ring layer */}
+          {/* r2 actual ring */}
+          <div className="ring r2" />
+          {/* Tick ring — 36 ticks × 10°, 460 px radius, 110 s */}
           <div className="ring-ticks">
             {Array.from({ length: 36 }).map((_, i) => (
               <i
                 key={i}
-                style={{ transform: `rotate(${i * 10}deg) translateY(-230px)` }}
+                style={{ transform: `translateX(-50%) rotate(${i * 10}deg)` }}
               />
             ))}
           </div>
-          {/* r2 actual ring */}
-          <div className="ring r2" />
           {/* r1 — innermost, 360 px */}
           <div className="ring r1" />
         </>
@@ -137,15 +144,24 @@ export function Orb({ state, rings = true, particles = true }: OrbProps): ReactE
       <div className="pulse d2" />
       <div className="pulse d3" />
 
-      {/* Orbiting particles */}
+      {/* Orbiting particles — 6 particles, position driven by RAF */}
       {particles &&
-        particlePositions.map((p, i) => (
-          <div
-            key={i}
-            className="particle"
-            style={{ transform: `translate(${p.x}px, ${p.y}px)` }}
-          />
-        ))}
+        particlePositions.map((pos, i) => {
+          const p = PARTICLES[i];
+          return (
+            <span
+              key={i}
+              className="particle"
+              style={{
+                width: p.size,
+                height: p.size,
+                background: `var(${p.col})`,
+                boxShadow: `0 0 ${p.size * 3}px var(${p.col})`,
+                transform: `translate(${pos.x}px, ${pos.y}px)`,
+              }}
+            />
+          );
+        })}
     </div>
   );
 }

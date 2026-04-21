@@ -5,10 +5,10 @@
  * Prototype reference: TranscriptPanel() in JARVIS HUD Hypermodern.html
  */
 import { useEffect, useMemo, useRef } from 'react';
-import type { ReactElement } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
 import { transcriptMock } from '../../../mock/transcriptMock';
 import { useTranscripts } from '../../../hooks/useTranscripts';
-import type { TranscriptTurn, PanelMode } from '../../../types';
+import type { AppOrbState, TranscriptTurn, PanelMode } from '../../../types';
 import { TranscriptEntry } from './TranscriptEntry';
 import './TranscriptPanel.css';
 
@@ -42,20 +42,56 @@ function TranscriptCompact({ turns }: { turns: TranscriptTurn[] }): ReactElement
   );
 }
 
+// Thinking dots — 3 blinking circles matching prototype blink 1.2s pattern.
+const dotStyle: CSSProperties = {
+  width: 4,
+  height: 4,
+  background: 'var(--accent)',
+  borderRadius: '50%',
+  display: 'inline-block',
+};
+
+function ThinkingDots(): ReactElement {
+  return (
+    <div className="transcript-turn transcript-turn--jarvis">
+      <div className="transcript-turn__block">
+        <div className="transcript-turn__meta">
+          <span className="transcript-turn__meta-role">J.</span>
+          <span className="transcript-turn__meta-time">…</span>
+        </div>
+        <div className="transcript-turn__bubble--jarvis">
+          <span style={{ display: 'inline-flex', gap: 3 }}>
+            <i style={{ ...dotStyle, animation: 'blink 1.2s ease-in-out infinite' }} />
+            <i style={{ ...dotStyle, animation: 'blink 1.2s ease-in-out infinite 0.2s' }} />
+            <i style={{ ...dotStyle, animation: 'blink 1.2s ease-in-out infinite 0.4s' }} />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Expanded mode ----
 
-function TranscriptExpanded({ turns }: { turns: TranscriptTurn[] }): ReactElement {
+function TranscriptExpanded({
+  turns,
+  orbState,
+}: {
+  turns: TranscriptTurn[];
+  orbState: AppOrbState;
+}): ReactElement {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [turns]);
+  }, [turns, orbState]);
 
   return (
     <div className="transcript-panel">
       {turns.map((t) => (
         <TranscriptEntry key={t.id} turn={t} />
       ))}
+      {orbState === 'thinking' && <ThinkingDots />}
       <div ref={bottomRef} />
     </div>
   );
@@ -66,14 +102,17 @@ function TranscriptExpanded({ turns }: { turns: TranscriptTurn[] }): ReactElemen
 export interface TranscriptPanelProps {
   turns?: TranscriptTurn[];
   mode?: PanelMode;
+  orbState?: AppOrbState;
 }
 
 /**
  * TranscriptPanel body — conversation turns with user/jarvis bubbles.
+ * When orbState is 'thinking', shows blinking dots turn matching prototype.
  */
 export function TranscriptPanel({
   turns,
   mode = 'expanded',
+  orbState = 'idle',
 }: TranscriptPanelProps): ReactElement {
   const { turns: liveTurns, isLive } = useTranscripts();
   const effectiveTurns: TranscriptTurn[] =
@@ -82,7 +121,7 @@ export function TranscriptPanel({
   return mode === 'compact' ? (
     <TranscriptCompact turns={effectiveTurns} />
   ) : (
-    <TranscriptExpanded turns={effectiveTurns} />
+    <TranscriptExpanded turns={effectiveTurns} orbState={orbState} />
   );
 }
 

@@ -20,5 +20,5 @@
   color: var(--accent);
   font-family: var(--font);
   font-size: 9px;
-  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  background: rgba(13, 13, 20, 0.6);
 }

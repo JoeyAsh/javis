@@ -110,8 +110,7 @@ describe('MailPanel — live mail_state data', () => {
       });
     });
 
-    // Unread count
-    expect(screen.getByText('7')).toBeInTheDocument();
+    // Unread header removed per prototype — only row content shown
     // Senders
     expect(screen.getByText('Sarah Connor')).toBeInTheDocument();
     expect(screen.getByText('John Doe')).toBeInTheDocument();

@@ -42,7 +42,7 @@ import type { GitLabStatePayload } from '../../../types';
 const mockUseGitlabState = vi.mocked(useGitlabState);
 
 function setData(payload: GitLabStatePayload | null): void {
-  mockUseGitlabState.mockReturnValue({ data: payload, loading: payload === null });
+  mockUseGitlabState.mockReturnValue({ data: payload, loading: payload === null, available: true });
 }
 
 const livePayload: GitLabStatePayload = {
@@ -102,7 +102,7 @@ const errorPayload: GitLabStatePayload = {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  mockUseGitlabState.mockReturnValue({ data: null, loading: true });
+  mockUseGitlabState.mockReturnValue({ data: null, loading: true, available: true });
 });
 
 afterEach(() => {
@@ -182,25 +182,18 @@ describe('GitLabPanel expanded mode', () => {
     expect(screen.getByText(/Waiting for GitLab data/i)).toBeTruthy();
   });
 
-  it('renders MR titles in expanded mode', () => {
+  it('renders pipeline project name in expanded mode', () => {
     setData(livePayload);
     render(<GitLabPanel mode="expanded" />);
-    expect(screen.getByText('Add dark mode')).toBeTruthy();
-    expect(screen.getByText('Fix memory leak')).toBeTruthy();
+    // PipelineRow splits "group/project" → shows "project" as project name
+    expect(screen.getByText('project')).toBeTruthy();
   });
 
-  it('renders issue titles in expanded mode', () => {
+  it('renders pipeline status pill in expanded mode', () => {
     setData(livePayload);
     render(<GitLabPanel mode="expanded" />);
-    expect(screen.getByText('Bug in login form')).toBeTruthy();
-  });
-
-  it('renders pipeline project and status in expanded mode', () => {
-    setData(livePayload);
-    render(<GitLabPanel mode="expanded" />);
-    expect(screen.getByText('group/project')).toBeTruthy();
-    // success appears in both compact (first pipeline dot) and pipeline list
-    expect(screen.getAllByText('success').length).toBeGreaterThanOrEqual(1);
+    // "passed" pill rendered for success status
+    expect(screen.getByText('passed')).toBeTruthy();
   });
 
   it('shows error banner when data.error is set', () => {
@@ -209,15 +202,26 @@ describe('GitLabPanel expanded mode', () => {
     expect(screen.getByText('Connection refused')).toBeTruthy();
   });
 
-  it('shows "No open MRs" when mrs is empty', () => {
-    setData({ ...livePayload, mrs: [] });
+  it('shows "No pipelines configured" when pipelines is empty', () => {
+    setData({ ...livePayload, pipelines: [] });
     render(<GitLabPanel mode="expanded" />);
-    expect(screen.getByText('No open MRs')).toBeTruthy();
+    expect(screen.getByText('No pipelines configured')).toBeTruthy();
   });
 
-  it('shows "No assigned issues" when issues is empty', () => {
-    setData({ ...livePayload, issues: [] });
+  it('renders at most 3 pipeline rows', () => {
+    const manyPipelines: GitLabStatePayload = {
+      ...livePayload,
+      pipelines: Array.from({ length: 5 }, (_, i) => ({
+        project: `group/project-${i}`,
+        status: 'success' as const,
+        web_url: '',
+        created_at: '2024-01-15T11:00:00Z',
+      })),
+    };
+    setData(manyPipelines);
     render(<GitLabPanel mode="expanded" />);
-    expect(screen.getByText('No assigned issues')).toBeTruthy();
+    // Only 3 rows shown (slice(0,3))
+    const rows = screen.getAllByText(/project-[0-4]/);
+    expect(rows.length).toBeLessThanOrEqual(3);
   });
 });

@@ -232,64 +232,8 @@ describe('NowPlayingPanel — transport button commands', () => {
   });
 });
 
-describe('NowPlayingPanel — volume slider debounce', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    capturedSpotifyListener = null;
-    mockSendFn.mockClear();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.clearAllMocks();
-  });
-
-  it('volume slider dispatches volume cmd after 200ms debounce', () => {
-    renderPanel();
-
-    act(() => {
-      capturedSpotifyListener?.(livePayload);
-    });
-
-    const slider = screen.getByRole('slider', { name: /volume/i });
-
-    fireEvent.change(slider, { target: { value: '55' } });
-
-    // Not yet dispatched — within debounce window
-    expect(mockSendFn).not.toHaveBeenCalledWith('volume', expect.anything());
-
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-
-    expect(mockSendFn).toHaveBeenCalledWith('volume', 55);
-  });
-
-  it('rapid slider changes only dispatch once (debounce)', () => {
-    renderPanel();
-
-    act(() => {
-      capturedSpotifyListener?.(livePayload);
-    });
-
-    const slider = screen.getByRole('slider', { name: /volume/i });
-
-    fireEvent.change(slider, { target: { value: '30' } });
-    fireEvent.change(slider, { target: { value: '50' } });
-    fireEvent.change(slider, { target: { value: '80' } });
-
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-
-    // Only the last value should be dispatched
-    const volumeCalls = mockSendFn.mock.calls.filter(
-      (c: unknown[]) => c[0] === 'volume',
-    );
-    expect(volumeCalls).toHaveLength(1);
-    expect(volumeCalls[0][1]).toBe(80);
-  });
-});
+// Volume slider was removed from expanded view to match prototype.
+// See: NowPlayingPanel.tsx — VolumeSlider component removed per design spec.
 
 describe('NowPlayingPanel — unauthenticated state', () => {
   beforeEach(() => {

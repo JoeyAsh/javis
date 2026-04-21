@@ -472,6 +472,21 @@ export function WindowManagerProvider({
     setFocusedId(null);
   }, []);
 
+  // Global document-level handler: clear focus when clicking outside any .window element.
+  useEffect(() => {
+    const onDocPointerDown = (e: PointerEvent): void => {
+      const target = e.target as Element | null;
+      if (!target) return;
+      if (!target.closest('.window')) {
+        setFocusedId(null);
+      }
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', onDocPointerDown);
+    };
+  }, []);
+
   const maximize = useCallback(
     (id: PanelId): void => {
       setWindows((prev) => {

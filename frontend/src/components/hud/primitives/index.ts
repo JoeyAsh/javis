@@ -25,6 +25,4 @@ export type { HudStatusBadgeProps, BadgeStatus } from './HudStatusBadge';
 export { HudList, HudListItem } from './HudList';
 export type { HudListProps, HudListItemProps } from './HudList';
 
-export { HudSideRails } from './HudSideRails';
-
 export { HudViewportCorners } from './HudViewportCorners';

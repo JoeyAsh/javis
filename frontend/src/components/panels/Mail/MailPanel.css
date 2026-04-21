@@ -4,7 +4,6 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: var(--s-3);
   font-family: var(--font);
   overflow-y: auto;
 }
@@ -47,7 +46,7 @@
   white-space: nowrap;
 }
 
-/* ---- Unread header (expanded) ---- */
+/* ---- Unread header (JARVIS addition, not in prototype) ---- */
 
 .mail-unread-header {
   display: flex;
@@ -60,12 +59,12 @@
 .mail-unread-header__count {
   color: var(--accent-bright);
   font-weight: 600;
-  font-size: 18px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 .mail-unread-header__label {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -73,10 +72,11 @@
 
 /* ---- Mail item row (prototype `.ev` pattern) ---- */
 
+/* Prototype: .ev { display:flex; gap:8px; padding:6px 0; border-bottom:1px dashed var(--border); } */
 .mail-item-row {
   display: flex;
-  gap: var(--s-2);
-  padding: var(--s-1) 0;
+  gap: 8px;
+  padding: 6px 0;
   border-bottom: 1px dashed var(--border);
   align-items: flex-start;
   cursor: pointer;
@@ -145,6 +145,18 @@
   align-self: center;
   border-radius: var(--r-1);
   flex-shrink: 0;
+}
+
+/* ---- Empty state ---- */
+
+.mail-empty {
+  display: block;
+  padding: var(--s-3);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  text-align: center;
 }
 
 /* ---- Compact mode ---- */

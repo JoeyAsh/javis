@@ -8,11 +8,9 @@
  *
  * Content left→right:
  *   LINK·SECURE pulsing dot · Clock (HH:MM:SS de-DE tabular) · Long date ·
- *   Weather (Open-Meteo) · Coords · ── CENTER BRAND ── · Icon cluster (4 btns)
+ *   Weather (Open-Meteo) · Coords · ── CENTER BRAND ── · Icon cluster (5 btns)
  *
- * Props:
- *   idle, onToggleIdle, onResetLayout, onOpenSettings (preserved)
- *   tweaksOpen, onToggleTweaks (new)
+ * Right cluster order: Idle · Reset · Mic-Mute · SFX-Mute · Settings
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -147,8 +145,8 @@ function WeatherWidget({ latitude, longitude }: WeatherWidgetProps): ReactElemen
       className={`hud-topbar__weather${weather.stale ? ' hud-topbar__weather--stale' : ''}`}
       aria-label="Current weather"
     >
-      <span aria-hidden="true">{weather.icon}</span>
-      {' '}{tempLabel}
+      <span className="hud-topbar__weather-icon" aria-hidden="true">{weather.icon}</span>
+      {tempLabel}
     </span>
   );
 }
@@ -160,9 +158,8 @@ function WeatherWidget({ latitude, longitude }: WeatherWidgetProps): ReactElemen
 function IdleIcon(): ReactElement {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="10" y1="15" x2="10" y2="9" />
-      <line x1="14" y1="15" x2="14" y2="9" />
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 4v2M12 18v2M4 12h2M18 12h2" />
     </svg>
   );
 }
@@ -176,15 +173,45 @@ function ResetIcon(): ReactElement {
   );
 }
 
-function TweaksIcon(): ReactElement {
+function MicOnIcon(): ReactElement {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="4" y1="6" x2="20" y2="6" />
-      <line x1="4" y1="12" x2="20" y2="12" />
-      <line x1="4" y1="18" x2="20" y2="18" />
-      <circle cx="8" cy="6" r="2" fill="currentColor" />
-      <circle cx="16" cy="12" r="2" fill="currentColor" />
-      <circle cx="10" cy="18" r="2" fill="currentColor" />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
+function MicOffIcon(): ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="1" y1="1" x2="23" y2="23" />
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+      <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  );
+}
+
+function SpeakerOnIcon(): ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+    </svg>
+  );
+}
+
+function SpeakerOffIcon(): ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <line x1="23" y1="9" x2="17" y2="15" />
+      <line x1="17" y1="9" x2="23" y2="15" />
     </svg>
   );
 }
@@ -192,8 +219,10 @@ function TweaksIcon(): ReactElement {
 function SettingsIcon(): ReactElement {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+      <circle cx="5" cy="6" r="1.5" />
+      <path d="M8 6h13M3 12h9M15 12h6M3 18h5M11 18h10" />
+      <circle cx="13" cy="12" r="1.5" />
+      <circle cx="9" cy="18" r="1.5" />
     </svg>
   );
 }
@@ -207,8 +236,10 @@ export interface HudTopBarProps {
   onToggleIdle: () => void;
   onResetLayout: () => void;
   onOpenSettings: () => void;
-  tweaksOpen?: boolean;
-  onToggleTweaks?: () => void;
+  micMuted: boolean;
+  onToggleMicMute: () => void;
+  sfxMuted: boolean;
+  onToggleSfxMute: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,8 +251,10 @@ export function HudTopBar({
   onToggleIdle,
   onResetLayout,
   onOpenSettings,
-  tweaksOpen = false,
-  onToggleTweaks,
+  micMuted,
+  onToggleMicMute,
+  sfxMuted,
+  onToggleSfxMute,
 }: HudTopBarProps): ReactElement {
   const [now, setNow] = useState<Date>(() => new Date());
   const location = useLocation();
@@ -248,13 +281,15 @@ export function HudTopBar({
 
       {/* Left cluster */}
       <div className="hud-topbar__left">
-        {/* LINK · SECURE status tag */}
+        {/* LINK · SECURE status tag — prototype .infobar .tag */}
         <span className="hud-topbar__tag" aria-label="Link secure">
           <span className="hud-topbar__tag-dot" aria-hidden="true" />
-          {' '}LINK · SECURE
+          LINK · SECURE
         </span>
 
-        {/* Clock */}
+        <span className="hud-topbar__sep" aria-hidden="true">◆</span>
+
+        {/* Clock — prototype .infobar .t */}
         <span
           className="hud-topbar__clock"
           aria-label="Current time"
@@ -263,26 +298,33 @@ export function HudTopBar({
           {timeLabel}
         </span>
 
-        {/* Date */}
+        <span className="hud-topbar__sep" aria-hidden="true">·</span>
+
+        {/* Date — prototype .infobar .d */}
         <span className="hud-topbar__date" aria-label="Current date">
           {dateLabel}
         </span>
 
-        {/* Weather */}
+        <span className="hud-topbar__sep" aria-hidden="true">·</span>
+
+        {/* Weather — prototype .infobar .w */}
         <WeatherWidget latitude={lat} longitude={lon} />
 
-        {/* Coordinates */}
+        <span className="hud-topbar__sep" aria-hidden="true">·</span>
+
+        {/* Coordinates — prototype .infobar .d */}
         <span className="hud-topbar__coords" aria-label="Location coordinates">
           {coordsLabel}
         </span>
       </div>
 
-      {/* Center brand — absolutely centered */}
-      <span className="hud-topbar__brand" aria-label="JARVIS Mark 42">
-        J A R V I S / MK XLII
-      </span>
+      {/* Center brand — flex child with flex:1 text-align:center. Prototype: <div class="brand"> */}
+      <div className="hud-topbar__brand" aria-label="JARVIS Mark 42">
+        <b className="hud-topbar__brand-j">J</b>{' '}A R V I S{' '}
+        <span className="hud-topbar__brand-mk">/ MK XLII</span>
+      </div>
 
-      {/* Right cluster */}
+      {/* Right cluster — order: Idle · Reset · Mic-Mute · SFX-Mute · Settings */}
       <div className="hud-topbar__right">
         <HudIconButton
           aria-label={idle ? 'Exit idle mode (Ctrl+.)' : 'Enter idle mode (Ctrl+.)'}
@@ -300,11 +342,19 @@ export function HudTopBar({
         </HudIconButton>
 
         <HudIconButton
-          aria-label="Toggle tweaks panel"
-          onClick={onToggleTweaks ?? (() => { /* stub — TweaksPanel is out of scope for this batch */ })}
-          active={tweaksOpen}
+          aria-label={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+          onClick={onToggleMicMute}
+          active={micMuted}
         >
-          <TweaksIcon />
+          {micMuted ? <MicOffIcon /> : <MicOnIcon />}
+        </HudIconButton>
+
+        <HudIconButton
+          aria-label={sfxMuted ? 'Unmute sound effects' : 'Mute sound effects'}
+          onClick={onToggleSfxMute}
+          active={sfxMuted}
+        >
+          {sfxMuted ? <SpeakerOffIcon /> : <SpeakerOnIcon />}
         </HudIconButton>
 
         <HudIconButton

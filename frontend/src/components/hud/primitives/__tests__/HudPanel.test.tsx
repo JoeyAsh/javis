@@ -100,10 +100,11 @@ describe('HudPanel — corner brackets', () => {
     expect(container.querySelector('.hud-corner-bracket.br')).toBeInTheDocument();
   });
 
-  it('corner brackets container has aria-hidden', () => {
+  it('corner bracket spans are individually aria-hidden', () => {
     const { container } = render(<HudPanel />);
-    const brackets = container.querySelector('.hud-corner-brackets');
-    expect(brackets).toHaveAttribute('aria-hidden');
+    // Corner brackets are individual spans, each carrying aria-hidden
+    const tl = container.querySelector('.hud-corner-bracket.tl');
+    expect(tl).toHaveAttribute('aria-hidden');
   });
 });
 
@@ -122,14 +123,16 @@ describe('HudPanel — light traces', () => {
 });
 
 describe('HudPanel — bloom overlay', () => {
-  it('renders the bloom overlay element', () => {
+  it('bloom is a CSS ::after pseudo-element — panel root carries hud-panel class', () => {
+    // Bloom is implemented as .hud-panel::after in CSS (no DOM node).
+    // We verify the root element has the class that triggers it.
     const { container } = render(<HudPanel />);
-    expect(container.querySelector('.hud-bloom')).toBeInTheDocument();
+    expect(container.firstChild).toHaveClass('hud-panel');
   });
 
-  it('bloom overlay has aria-hidden', () => {
-    const { container } = render(<HudPanel />);
-    expect(container.querySelector('.hud-bloom')).toHaveAttribute('aria-hidden');
+  it('focused panel root carries hud-panel--focused for full-strength bloom', () => {
+    const { container } = render(<HudPanel focused />);
+    expect(container.firstChild).toHaveClass('hud-panel--focused');
   });
 });
 

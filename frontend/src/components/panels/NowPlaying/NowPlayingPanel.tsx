@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { nowPlayingMock } from '../../../mock/nowPlayingMock';
+import { usePanelAvailable } from '../../hud/PanelAvailability';
 import { useMockTicker } from '../../../mock/useMockTicker';
 import {
   sendSpotifyCmdStream,
@@ -27,7 +27,7 @@ import './NowPlayingPanel.css';
 // ============ Constants ============
 
 const SPOTIFY_AUTH_URL = 'http://127.0.0.1:8766/oauth/spotify/start';
-const MOCK_GRACE_MS = 2000;
+const AVAILABILITY_TIMEOUT_MS = 10_000;
 const WAVE_BARS = 7;
 
 // ============ Helpers ============
@@ -171,48 +171,6 @@ function TransportControls({ track, onCmd }: TransportControlsProps): ReactEleme
   );
 }
 
-// ============ VolumeSlider ============
-
-interface VolumeSliderProps {
-  volume: number;
-  onCmd: (action: SpotifyCmdAction, value?: number) => void;
-}
-
-function VolumeSlider({ volume, onCmd }: VolumeSliderProps): ReactElement {
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const pct = Number(e.target.value);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        onCmd('volume', pct);
-      }, 200);
-    },
-    [onCmd],
-  );
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  return (
-    <div className="nowplaying-volume" data-no-drag>
-      <span className="nowplaying-vol-label">VOL</span>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        defaultValue={volume}
-        onChange={handleChange}
-        aria-label="Volume"
-      />
-    </div>
-  );
-}
-
 // ============ Expanded view ============
 
 interface NowPlayingExpandedProps {
@@ -221,7 +179,7 @@ interface NowPlayingExpandedProps {
   onCmd: (action: SpotifyCmdAction, value?: number) => void;
 }
 
-function NowPlayingExpanded({ track, volumePercent, onCmd }: NowPlayingExpandedProps): ReactElement {
+function NowPlayingExpanded({ track, onCmd }: NowPlayingExpandedProps): ReactElement {
   const progress = useLiveProgress(track);
   const pct = Math.min(100, (progress / track.durationMs) * 100);
 
@@ -238,7 +196,6 @@ function NowPlayingExpanded({ track, volumePercent, onCmd }: NowPlayingExpandedP
         </div>
       </div>
       <TransportControls track={track} onCmd={onCmd} />
-      <VolumeSlider volume={volumePercent} onCmd={onCmd} />
     </div>
   );
 }
@@ -314,37 +271,43 @@ export interface NowPlayingPanelProps {
 
 /**
  * NowPlayingPanel — subscribes to `spotify_state` WS frames via the
- * module-level stream helper. Falls back to mock data for the first 2 s
- * after mount if no live frame has arrived yet.
+ * module-level stream helper. Shows NoPlaybackState until first live frame
+ * arrives. Returns null if no frame arrives within AVAILABILITY_TIMEOUT_MS.
  */
-export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): ReactElement {
+export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): ReactElement | null {
   const [spotifyPayload, setSpotifyPayload] = useState<SpotifyStatePayload | null>(null);
-  const [useMock, setUseMock] = useState(false);
+  const [backendAvailable, setBackendAvailable] = useState(true);
   const [volumePercent, setVolumePercent] = useState(50);
+  const availabilityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Grace-period: show mock after 2 s if no live frame has arrived.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setUseMock(true);
-    }, MOCK_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, []);
+  usePanelAvailable('nowplaying', backendAvailable || spotifyPayload !== null);
 
-  // Subscribe to live spotify_state frames.
   useEffect(() => {
+    availabilityTimerRef.current = setTimeout(() => {
+      setBackendAvailable(false);
+    }, AVAILABILITY_TIMEOUT_MS);
+
     const unsub = subscribeSpotifyStateStream((payload) => {
+      if (availabilityTimerRef.current) clearTimeout(availabilityTimerRef.current);
+      setBackendAvailable(true);
       setSpotifyPayload(payload);
       if (payload.device?.volumePercent !== undefined) {
         setVolumePercent(payload.device.volumePercent);
       }
     });
-    return unsub;
+    return () => {
+      if (availabilityTimerRef.current) clearTimeout(availabilityTimerRef.current);
+      unsub();
+    };
   }, []);
 
   // Stable command sender.
   const sendCmd = useCallback((action: SpotifyCmdAction, value?: number): void => {
     sendSpotifyCmdStream(action, value);
   }, []);
+
+  // Backend not available — hide the panel.
+  if (!backendAvailable && spotifyPayload === null) return null;
 
   // Render live data when available.
   if (spotifyPayload !== null) {
@@ -362,18 +325,8 @@ export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): Re
     );
   }
 
-  // Before grace period: show empty state; after: show mock.
-  if (!useMock) {
-    return <NoPlaybackState />;
-  }
-
-  const noopCmd = (_action: SpotifyCmdAction, _value?: number): void => undefined;
-
-  return mode === 'compact' ? (
-    <NowPlayingCompact track={nowPlayingMock} onCmd={noopCmd} />
-  ) : (
-    <NowPlayingExpanded track={nowPlayingMock} volumePercent={volumePercent} onCmd={noopCmd} />
-  );
+  // Waiting for first frame — show empty state.
+  return <NoPlaybackState />;
 }
 
 export default NowPlayingPanel;

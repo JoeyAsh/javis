@@ -64,6 +64,67 @@ function PinIcon({ active }: { active: boolean }): ReactElement {
   );
 }
 
+/** Reset-position icon SVG — refresh arrow. */
+function ResetIcon(): ReactElement {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <polyline points="3 3 3 8 8 8" />
+    </svg>
+  );
+}
+
+/** Maximize icon SVG — square outline. */
+function MaximizeIcon(): ReactElement {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <rect x="4" y="4" width="16" height="16" />
+    </svg>
+  );
+}
+
+/** Minimize icon SVG — horizontal line. */
+function MinimizeIcon(): ReactElement {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      focusable="false"
+    >
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
 export function Window({
   id,
   title,
@@ -406,39 +467,19 @@ export function Window({
         <PinIcon active={pinned} />
       </HudIconButton>
       {/* Reset position */}
-      <button
-        type="button"
-        className="window-header-btn window-header-btn--reset"
-        onClick={onResetBtn}
+      <HudIconButton
         aria-label="Reset window position"
-        title="Reset position"
+        onClick={onResetBtn}
       >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-          focusable="false"
-        >
-          <path d="M3 12a9 9 0 1 0 3-6.7" />
-          <polyline points="3 3 3 8 8 8" />
-        </svg>
-      </button>
+        <ResetIcon />
+      </HudIconButton>
       {/* Maximize / minimize */}
-      <button
-        type="button"
-        className="window-header-btn"
-        onClick={onMaxMinBtn}
+      <HudIconButton
         aria-label={state.maximized ? 'Minimize window' : 'Maximize window'}
-        title={state.maximized ? 'Minimize' : 'Maximize'}
+        onClick={onMaxMinBtn}
       >
-        {state.maximized ? '⬓' : '⛶'}
-      </button>
+        {state.maximized ? <MinimizeIcon /> : <MaximizeIcon />}
+      </HudIconButton>
     </span>
   );
 

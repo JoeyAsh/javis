@@ -6,15 +6,18 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { mailMock } from '../../../mock/mailMock';
 import {
   subscribeEmailDraftPreviewStream,
   subscribeEmailSendDoneStream,
   subscribeMailStateStream,
 } from '../../../hooks/useWebSocket';
 import type { EmailDraftPreviewPayload, MailMessage, PanelMode } from '../../../types';
+import { usePanelAvailable } from '../../hud/PanelAvailability';
 import { MailItemRow } from './MailItemRow';
 import './MailPanel.css';
+
+/** How long to wait for a first WS payload before treating backend as unavailable. */
+const AVAILABILITY_TIMEOUT_MS = 10_000;
 
 // ---- Draft preview banner ----
 
@@ -82,19 +85,14 @@ function MailCompact({ messages, unreadCount, draft }: MailCompactProps): ReactE
 
 interface MailExpandedProps {
   messages: MailMessage[];
-  unreadCount: number;
   draft: EmailDraftPreviewPayload | null;
 }
 
-function MailExpanded({ messages, unreadCount, draft }: MailExpandedProps): ReactElement {
+function MailExpanded({ messages, draft }: MailExpandedProps): ReactElement {
   return (
     <div className="mail-panel">
       {draft && <DraftPreview draft={draft} />}
-      <div className="mail-unread-header">
-        <span className="mail-unread-header__count">{unreadCount}</span>
-        <span className="mail-unread-header__label">UNGELESEN</span>
-      </div>
-      {messages.slice(0, 5).map((msg) => (
+      {messages.slice(0, 3).map((msg) => (
         <MailItemRow key={msg.id} message={msg} />
       ))}
     </div>
@@ -107,26 +105,33 @@ export interface MailPanelProps {
   mode?: PanelMode;
 }
 
-const LIVE_GRACE_MS = 2000;
-
 /**
  * MailPanel body — mail messages with optional draft preview.
+ * Shows empty-state when backend is live but inbox is empty.
+ * Hides (returns null) when no backend payload arrives within AVAILABILITY_TIMEOUT_MS.
  */
-export function MailPanel({ mode = 'expanded' }: MailPanelProps): ReactElement {
+export function MailPanel({ mode = 'expanded' }: MailPanelProps): ReactElement | null {
   const [messages, setMessages] = useState<MailMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [draft, setDraft] = useState<EmailDraftPreviewPayload | null>(null);
   const [hasLiveData, setHasLiveData] = useState(false);
+  const [backendAvailable, setBackendAvailable] = useState(true);
   const [sendFlash, setSendFlash] = useState(false);
+
+  usePanelAvailable('mail', backendAvailable || hasLiveData);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const graceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [gracePassed, setGracePassed] = useState(false);
+  const availabilityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    graceRef.current = setTimeout(() => setGracePassed(true), LIVE_GRACE_MS);
+    // If no data within timeout, treat backend as unavailable and hide panel.
+    availabilityTimerRef.current = setTimeout(() => {
+      setBackendAvailable(false);
+    }, AVAILABILITY_TIMEOUT_MS);
 
     const unsubMailState = subscribeMailStateStream((payload) => {
+      if (availabilityTimerRef.current) clearTimeout(availabilityTimerRef.current);
       setHasLiveData(true);
+      setBackendAvailable(true);
       setMessages(payload.messages);
       setUnreadCount(payload.unread_count);
     });
@@ -146,7 +151,7 @@ export function MailPanel({ mode = 'expanded' }: MailPanelProps): ReactElement {
     });
 
     return () => {
-      if (graceRef.current) clearTimeout(graceRef.current);
+      if (availabilityTimerRef.current) clearTimeout(availabilityTimerRef.current);
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
       unsubMailState();
       unsubDraftPreview();
@@ -154,28 +159,40 @@ export function MailPanel({ mode = 'expanded' }: MailPanelProps): ReactElement {
     };
   }, []);
 
-  const displayMessages = hasLiveData ? messages : gracePassed ? mailMock : [];
-  const displayUnread = hasLiveData
-    ? unreadCount
-    : gracePassed
-      ? mailMock.filter((m) => m.unread).length
-      : 0;
+  // Backend not available within timeout — hide the panel entirely.
+  if (!backendAvailable && !hasLiveData) return null;
 
   const flashStyle = sendFlash
     ? { outline: '1px solid var(--accent)', transition: 'outline 300ms' }
     : {};
 
+  // Live data arrived but inbox is empty — show empty state.
+  if (hasLiveData && messages.length === 0 && !draft) {
+    if (mode === 'compact') {
+      return (
+        <div className="mail-compact">
+          <span className="mail-empty">Keine ungelesenen E-Mails</span>
+        </div>
+      );
+    }
+    return (
+      <div className="mail-panel">
+        <span className="mail-empty">Keine ungelesenen E-Mails</span>
+      </div>
+    );
+  }
+
   if (mode === 'compact') {
     return (
       <div style={flashStyle}>
-        <MailCompact messages={displayMessages} unreadCount={displayUnread} draft={draft} />
+        <MailCompact messages={messages} unreadCount={unreadCount} draft={draft} />
       </div>
     );
   }
 
   return (
     <div style={flashStyle}>
-      <MailExpanded messages={displayMessages} unreadCount={displayUnread} draft={draft} />
+      <MailExpanded messages={messages} draft={draft} />
     </div>
   );
 }

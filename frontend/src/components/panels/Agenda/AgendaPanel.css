@@ -4,7 +4,6 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: var(--s-3);
   font-family: var(--font);
   overflow-y: auto;
 }
@@ -25,10 +24,11 @@
 
 /* ---- Event row (prototype `.ev` pattern) ---- */
 
+/* Prototype: .ev { display:flex; gap:8px; padding:6px 0; border-bottom:1px dashed var(--border); } */
 .agenda-event-row {
   display: flex;
-  gap: var(--s-2);
-  padding: var(--s-1) 0;
+  gap: 8px;
+  padding: 6px 0;
   border-bottom: 1px dashed var(--border);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease);
@@ -42,7 +42,7 @@
   background: rgba(76, 168, 232, 0.04);
 }
 
-/* time stamp column — matches prototype .ev .tm */
+/* Prototype: .ev .tm — width:44px, font-size:11px, accent-bright, letter-spacing:1px */
 .agenda-event-row__time {
   width: 44px;
   flex-shrink: 0;
@@ -50,7 +50,6 @@
   color: var(--accent-bright);
   font-variant-numeric: tabular-nums;
   letter-spacing: 1px;
-  padding-top: 2px;
 }
 
 /* text block */

@@ -103,8 +103,8 @@
 /* ====================== Scene keyframes ====================== */
 
 @keyframes gridDrift {
-  0%   { background-position: 0 0; }
-  100% { background-position: 44px 44px; }
+  0%   { background-position: 0 0, 0 0; }
+  100% { background-position: 44px 44px, 44px 44px; }
 }
 
 @keyframes starTwinkle {

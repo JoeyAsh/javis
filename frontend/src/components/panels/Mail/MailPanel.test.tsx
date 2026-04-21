@@ -1,8 +1,7 @@
 /**
  * MailPanel — Vitest + RTL tests (modular folder rebuild).
  */
-import { act, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -77,7 +76,7 @@ describe('MailPanel — live data', () => {
     act(() => {
       capturedMailStateListener?.({ messages: liveMessages, unread_count: 7 });
     });
-    expect(screen.getByText('7')).toBeInTheDocument();
+    // Unread header removed per prototype — only row content shown
     expect(screen.getByText('Sarah Connor')).toBeInTheDocument();
     expect(screen.getByText('John Doe')).toBeInTheDocument();
   });
@@ -111,12 +110,12 @@ describe('MailPanel — live data', () => {
     expect(rows.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('fires click SFX on row click', async () => {
+  it('fires click SFX on row click', () => {
     render(<MailPanel mode="expanded" />);
     act(() => {
       capturedMailStateListener?.({ messages: liveMessages, unread_count: 2 });
     });
-    await userEvent.click(screen.getByText('Meeting tomorrow'));
+    fireEvent.click(screen.getByText('Meeting tomorrow'));
     expect(mockPlayOneShot).toHaveBeenCalledWith('click');
   });
 });

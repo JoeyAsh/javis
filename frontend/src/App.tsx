@@ -7,7 +7,6 @@ import { HudTopBar } from './components/HudTopBar';
 import { OrbDevMenu } from './components/OrbDevMenu';
 import { HudWindows } from './components/hud/HudWindows';
 import { SettingsOverlay } from './components/SettingsOverlay';
-import { AudioMuteToggle } from './components/AudioMuteToggle';
 import { Dock } from './components/Dock';
 import { HudHint } from './components/HudHint';
 import { HudViewportCorners } from './components/hud/primitives/HudViewportCorners';
@@ -16,6 +15,7 @@ import {
   WindowManagerProvider,
   useWindowManager,
 } from './components/hud/WindowManager';
+import { PanelAvailabilityProvider } from './components/hud/PanelAvailability';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioAnalyser } from './hooks/useAudioAnalyser';
 import { useMicStream } from './hooks/useMicStream';
@@ -34,7 +34,9 @@ import type { AppOrbState } from './types';
 export function App(): ReactElement {
   return (
     <WindowManagerProvider>
-      <AppInner />
+      <PanelAvailabilityProvider>
+        <AppInner />
+      </PanelAvailabilityProvider>
     </WindowManagerProvider>
   );
 }
@@ -44,7 +46,6 @@ function AppInner(): ReactElement {
   const [idle, setIdle] = useState(false);
   const [orbOverride, setOrbOverride] = useState<AppOrbState | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [tweaksOpen, setTweaksOpen] = useState(false);
   const settingsHook = useSettings();
   const {
     orbState,
@@ -131,10 +132,6 @@ function AppInner(): ReactElement {
     setSettingsOpen(true);
   }, []);
 
-  const handleToggleTweaks = useCallback(() => {
-    setTweaksOpen((v) => !v);
-  }, []);
-
   // Apply --panel-opacity from settings so all .window elements pick it up
   // without touching individual panel styles.
   const panelOpacityCssVar = { '--panel-opacity': settingsHook.settings.panelOpacity } as React.CSSProperties;
@@ -142,8 +139,8 @@ function AppInner(): ReactElement {
   return (
     <SfxProvider playOneShot={sfxPlayOneShot}>
       <div
-        className={`app fixed inset-0 w-screen h-screen overflow-hidden${effectiveOrbState === 'working' ? ' is-working' : ''}`}
-        style={{ background: 'var(--bg)', ...panelOpacityCssVar }}
+        className={`app fixed inset-0 w-screen h-screen overflow-hidden${effectiveOrbState === 'working' ? ' is-working' : ''}${idle ? ' idle' : ''}`}
+        style={{ ...panelOpacityCssVar }}
       >
         {/* Viewport corner brackets — fixed to browser window edges, z-index 4 */}
         <HudViewportCorners />
@@ -156,16 +153,11 @@ function AppInner(): ReactElement {
 
         {/* Orb — swappable between Classic (Three.js) and Hypermodern (CSS) */}
         {settingsHook.settings.orbVariant === 'hypermodern' ? (
-          <div
-            className="fixed inset-0 w-screen h-screen"
-            style={{ zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}
-          >
-            <Orb
-              state={effectiveOrbState === 'follow_up' ? 'listening' : effectiveOrbState === 'working' ? 'working' : effectiveOrbState}
-              rings
-              particles
-            />
-          </div>
+          <Orb
+            state={effectiveOrbState === 'follow_up' ? 'listening' : effectiveOrbState === 'working' ? 'working' : effectiveOrbState}
+            rings
+            particles
+          />
         ) : (
           <OrbErrorBoundary>
             <OrbCanvas
@@ -178,7 +170,7 @@ function AppInner(): ReactElement {
         )}
 
         {/* Floating window HUD — z-index 10 */}
-        <HudWindows idle={idle} />
+        <HudWindows idle={idle} orbState={effectiveOrbState} />
 
         {/* Top bar — z-index 30 */}
         <HudTopBar
@@ -186,8 +178,10 @@ function AppInner(): ReactElement {
           onToggleIdle={() => { setIdle((v) => !v); }}
           onResetLayout={handleResetLayout}
           onOpenSettings={handleOpenSettings}
-          tweaksOpen={tweaksOpen}
-          onToggleTweaks={handleToggleTweaks}
+          micMuted={muted}
+          onToggleMicMute={() => { setMuted((m) => !m); }}
+          sfxMuted={sfxMuted}
+          onToggleSfxMute={toggleSfxMute}
         />
 
         {/* Orb dev menu — fixed bottom-left corner, dev-only overlay */}
@@ -204,66 +198,6 @@ function AppInner(): ReactElement {
             onSet={setOrbOverride}
             onStop={sendCancelTurn}
           />
-        </div>
-
-        {/* Mic mute button — inside TopBar right cluster (fixed, sits just left of TopBar controls) */}
-        <button
-          onClick={() => { setMuted((m) => !m); }}
-          aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
-          className="hud-iconbtn"
-          style={{
-            position: 'fixed',
-            top: 4,
-            right: 100,
-            zIndex: 30,
-          }}
-        >
-          {muted ? (
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="1" y1="1" x2="23" y2="23" />
-              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-              <line x1="12" y1="19" x2="12" y2="23" />
-              <line x1="8" y1="23" x2="16" y2="23" />
-            </svg>
-          ) : (
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" y1="19" x2="12" y2="23" />
-              <line x1="8" y1="23" x2="16" y2="23" />
-            </svg>
-          )}
-        </button>
-
-        {/* SFX mute toggle — right of mic mute, inside TopBar right cluster */}
-        <div
-          style={{
-            position: 'fixed',
-            top: 4,
-            right: 132,
-            zIndex: 30,
-          }}
-        >
-          <AudioMuteToggle isMuted={sfxMuted} onToggle={toggleSfxMute} />
         </div>
 
         {/* Settings overlay — z-index 50, above everything */}

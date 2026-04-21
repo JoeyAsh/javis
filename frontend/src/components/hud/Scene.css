@@ -4,14 +4,17 @@
  * Static layout/visual rules for Scene layers.
  * Dynamic values (star positions, transform per-frame, animation durations)
  * remain inline in Scene.tsx.
+ *
+ * 1:1 match to JARVIS HUD Hypermodern.html prototype.
  */
 
 .hud-scene {
   position: fixed;
   inset: 0;
-  z-index: 2;
+  z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  background: radial-gradient(ellipse at 50% 52%, #0a1220 0%, #05080f 45%, #020206 100%);
 }
 
 .hud-scene__layer {
@@ -19,29 +22,38 @@
   inset: 0;
 }
 
+/* Radial bg is baked into .hud-scene itself (see above) */
 .hud-scene__layer--radial-bg {
-  background:
-    radial-gradient(ellipse 120% 80% at 50% 40%, rgba(13,13,24,0.0) 0%, rgba(5,5,8,0.85) 70%, rgba(5,5,8,1) 100%);
+  display: none;
 }
 
+/* Grid — 44×44 px, drifts diagonally, masked ellipse */
 .hud-scene__layer--grid {
+  inset: -4px;
   background-image:
-    linear-gradient(rgba(76,168,232,0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(76,168,232,0.08) 1px, transparent 1px);
+    linear-gradient(rgba(76,168,232,0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76,168,232,0.055) 1px, transparent 1px);
   background-size: 44px 44px;
-  mask-image: radial-gradient(ellipse 100% 80% at 50% 50%, black 30%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 100% 80% at 50% 50%, black 30%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
   animation: gridDrift 28s linear infinite;
   will-change: background-position;
 }
 
+/* Scanlines — repeating 3px/1px cyan strip */
 .hud-scene__layer--scanlines {
-  background:
-    repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(76,168,232,0.028) 2px, rgba(76,168,232,0.028) 3px);
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 3px,
+    rgba(110,196,255,0.025) 3px,
+    rgba(110,196,255,0.025) 4px
+  );
   mix-blend-mode: screen;
   opacity: 0.7;
 }
 
+/* Noise — SVG turbulence data-URI, overlay blend */
 .hud-scene__layer--noise {
   /* background-image set inline (data-URI) */
   background-size: 200px 200px;
@@ -49,21 +61,24 @@
   mix-blend-mode: overlay;
 }
 
+/* Horizon glow — bottom 38% height, gradient from bottom */
 .hud-scene__layer--horizon {
-  /* positional overrides needed: left/right/height/top are structural */
   inset: unset;
   left: 0;
   right: 0;
-  top: 60%;
-  height: 1px;
-  background:
-    linear-gradient(90deg, transparent 0%, rgba(76,168,232,0.18) 20%, rgba(76,168,232,0.35) 50%, rgba(76,168,232,0.18) 80%, transparent 100%);
-  box-shadow: 0 0 20px 4px rgba(76,168,232,0.12);
+  bottom: 0;
+  height: 38%;
+  background: linear-gradient(to top, rgba(76,168,232,0.08), transparent);
 }
 
+/* Stars layer — all individual star spans positioned inline in Scene.tsx */
+.hud-scene__layer--stars {
+  opacity: 0.6;
+}
+
+/* Vignette */
 .hud-scene__layer--vignette {
-  background:
-    radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(5,5,8,0.65) 100%);
+  background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.78) 100%);
 }
 
 /* Reduced-motion: pause animated layers */

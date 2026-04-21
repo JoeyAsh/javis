@@ -19,12 +19,10 @@
 import type { ReactElement } from 'react';
 import { useGitlabState } from '../../../hooks/useGitlabState';
 import type {
-  GitLabIssuePayload,
-  GitLabMRPayload,
-  GitLabPipelinePayload,
   GitLabStatePayload,
   PanelMode,
 } from '../../../types';
+import { usePanelAvailable } from '../../hud/PanelAvailability';
 import { PipelineRow } from './PipelineRow';
 import './GitLabPanel.css';
 
@@ -36,18 +34,7 @@ export interface GitLabPanelProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function relativeTime(iso: string): string {
-  if (!iso) return '';
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return 'now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-type PipelineStatus = GitLabPipelinePayload['status'];
+type PipelineStatus = 'success' | 'failed' | 'running' | 'pending' | 'canceled' | 'skipped' | string;
 
 function pipelineColor(status: PipelineStatus): string {
   switch (status) {
@@ -61,19 +48,6 @@ function pipelineColor(status: PipelineStatus): string {
     default:
       return 'var(--text-muted)';
   }
-}
-
-// ---------------------------------------------------------------------------
-// Section header
-// ---------------------------------------------------------------------------
-
-function SectionHeader({ label, right }: { label: string; right?: string }): ReactElement {
-  return (
-    <div className="gitlab-section">
-      <span className="gitlab-section__label">{label}</span>
-      {right !== undefined && <span className="gitlab-section__right">{right}</span>}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -151,114 +125,6 @@ function GitLabCompact({ data }: { data: GitLabStatePayload | null }): ReactElem
 }
 
 // ---------------------------------------------------------------------------
-// Expanded sub-sections
-// ---------------------------------------------------------------------------
-
-function MRList({ mrs }: { mrs: GitLabMRPayload[] }): ReactElement {
-  return (
-    <>
-      <SectionHeader
-        label="Merge Requests"
-        right={`${mrs.length >= 50 ? '50+' : mrs.length} open`}
-      />
-      {mrs.slice(0, 10).map((mr) => (
-        <div className="list-item" key={mr.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
-          <div
-            style={{
-              fontSize: 11,
-              color: 'var(--text)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {mr.draft && (
-              <span style={{ marginRight: 4, fontSize: 9, color: 'var(--text-muted)' }}>
-                [DRAFT]
-              </span>
-            )}
-            {mr.title}
-          </div>
-          <div
-            style={{
-              fontSize: 9,
-              color: 'var(--text-muted)',
-              display: 'flex',
-              justifyContent: 'space-between',
-            }}
-          >
-            <span>
-              {mr.source_branch} · {mr.author}
-            </span>
-            <span>{relativeTime(mr.created_at)}</span>
-          </div>
-        </div>
-      ))}
-      {mrs.length === 0 && (
-        <div className="gitlab-empty">No open MRs</div>
-      )}
-    </>
-  );
-}
-
-function IssueList({ issues }: { issues: GitLabIssuePayload[] }): ReactElement {
-  return (
-    <>
-      <SectionHeader
-        label="Issues"
-        right={`${issues.length >= 50 ? '50+' : issues.length} assigned`}
-      />
-      {issues.slice(0, 10).map((issue) => (
-        <div className="list-item" key={issue.id} style={{ paddingTop: 4, paddingBottom: 4 }}>
-          <div
-            style={{
-              fontSize: 11,
-              color: 'var(--text)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {issue.title}
-          </div>
-          <div
-            style={{
-              fontSize: 9,
-              color: 'var(--text-muted)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 4,
-            }}
-          >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {issue.labels.length > 0 ? issue.labels.slice(0, 3).join(', ') : issue.author}
-            </span>
-            <span style={{ flexShrink: 0 }}>{relativeTime(issue.created_at)}</span>
-          </div>
-        </div>
-      ))}
-      {issues.length === 0 && (
-        <div className="gitlab-empty">No assigned issues</div>
-      )}
-    </>
-  );
-}
-
-function PipelineSection({ pipelines }: { pipelines: GitLabPipelinePayload[] }): ReactElement {
-  return (
-    <>
-      <SectionHeader label="Pipelines" />
-      {pipelines.map((p) => (
-        <PipelineRow key={p.project} pipeline={p} />
-      ))}
-      {pipelines.length === 0 && (
-        <div className="gitlab-empty">No pipelines configured</div>
-      )}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Expanded view
 // ---------------------------------------------------------------------------
 
@@ -276,9 +142,12 @@ function GitLabExpanded({ data }: { data: GitLabStatePayload | null }): ReactEle
       {data.error !== null && (
         <div className="gitlab-error">{data.error}</div>
       )}
-      <MRList mrs={data.mrs} />
-      <IssueList issues={data.issues} />
-      <PipelineSection pipelines={data.pipelines} />
+      {data.pipelines.slice(0, 3).map((p) => (
+        <PipelineRow key={p.project} pipeline={p} />
+      ))}
+      {data.pipelines.length === 0 && data.error === null && (
+        <div className="gitlab-empty">Keine aktiven Pipelines</div>
+      )}
     </div>
   );
 }
@@ -292,9 +161,16 @@ function GitLabExpanded({ data }: { data: GitLabStatePayload | null }): ReactEle
  *
  * Compact mode: MR count, Issue count, first pipeline dot.
  * Expanded mode: full lists with titles, labels, branches, and relative times.
+ * Returns null if no backend payload arrives within the availability timeout.
  */
-export function GitLabPanel({ mode = 'expanded' }: GitLabPanelProps): ReactElement {
-  const { data } = useGitlabState();
+export function GitLabPanel({ mode = 'expanded' }: GitLabPanelProps): ReactElement | null {
+  const { data, available } = useGitlabState();
+
+  // Report availability up to HudWindows.
+  usePanelAvailable('gitlab', available || data !== null);
+
+  // Backend not available — hide the panel.
+  if (!available && data === null) return null;
 
   return mode === 'compact' ? (
     <GitLabCompact data={data} />

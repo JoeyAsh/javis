@@ -8,14 +8,15 @@
  * SFX: info_pop on new toast mount, info_dismiss on dismiss,
  *      select on item click (from spec #36/#37/#38).
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { notificationsMock } from '../../../mock/notificationsMock';
-import { useMockTicker } from '../../../mock/useMockTicker';
 import { useNotifications } from '../../../hooks/useNotifications';
 import type { HudNotification, NotificationSeverity, PanelMode } from '../../../types';
+import { usePanelAvailable } from '../../hud/PanelAvailability';
 import { NotificationItem } from './NotificationItem';
 import './NotificationsPanel.css';
+
+const AVAILABILITY_TIMEOUT_MS = 10_000;
 
 export interface NotificationsPanelProps {
   /** Optional override — short-circuits the live subscription. */
@@ -116,36 +117,54 @@ function NotificationsExpanded({
 /**
  * NotificationsPanel body — renders HUD notifications with severity colouring.
  * Accepts optional `notifications` prop for testing; otherwise subscribes to live WS.
+ * Returns null if no backend payload arrives within AVAILABILITY_TIMEOUT_MS.
  */
 export function NotificationsPanel({
   notifications,
-  paused = false,
   mode = 'expanded',
-}: NotificationsPanelProps): ReactElement {
+}: NotificationsPanelProps): ReactElement | null {
   const { notifications: live, isLive } = useNotifications();
-  const source: HudNotification[] =
-    notifications !== undefined ? notifications : isLive ? live : notificationsMock;
+  const [backendAvailable, setBackendAvailable] = useState(true);
+  const availabilityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  usePanelAvailable('notifications', backendAvailable || isLive);
+
+  useEffect(() => {
+    if (notifications !== undefined) return;
+    availabilityTimerRef.current = setTimeout(() => {
+      setBackendAvailable(false);
+    }, AVAILABILITY_TIMEOUT_MS);
+    return () => {
+      if (availabilityTimerRef.current) clearTimeout(availabilityTimerRef.current);
+    };
+  }, [notifications]);
+
+  // Once live data arrives, cancel the availability timer.
+  useEffect(() => {
+    if (isLive && availabilityTimerRef.current) {
+      clearTimeout(availabilityTimerRef.current);
+      setBackendAvailable(true);
+    }
+  }, [isLive]);
 
   // Track previous IDs to detect new arrivals (for info_pop SFX).
   const prevIdsRef = useRef<Set<string>>(new Set());
+  const source: HudNotification[] = notifications !== undefined ? notifications : live;
 
   useEffect(() => {
     const currentIds = new Set(source.map((n) => n.id));
     prevIdsRef.current = currentIds;
   });
 
-  // Rotate the mock source for liveliness; keep live notifications stable.
-  const tick = useMockTicker(4000, paused || isLive);
-  const rotated = useMemo<HudNotification[]>(() => {
-    if (isLive || source.length === 0) return source;
-    const offset = tick % source.length;
-    return [...source.slice(offset), ...source.slice(0, offset)];
-  }, [source, tick, isLive]);
+  const displayed = useMemo<HudNotification[]>(() => source, [source]);
+
+  // Backend not available — hide the panel.
+  if (notifications === undefined && !backendAvailable && !isLive) return null;
 
   return mode === 'compact' ? (
-    <NotificationsCompact notifications={rotated} />
+    <NotificationsCompact notifications={displayed} />
   ) : (
-    <NotificationsExpanded notifications={rotated} />
+    <NotificationsExpanded notifications={displayed} />
   );
 }
 

@@ -29,15 +29,9 @@ import './Scene.css';
 // ---------------------------------------------------------------------------
 
 const SCENE_STYLE = `
-@keyframes gridDrift {
-  0%   { background-position: 0 0; }
-  100% { background-position: 44px 44px; }
-}
+@keyframes gridDrift { to { background-position: 44px 44px, 44px 44px; } }
 
-@keyframes starTwinkle {
-  0%, 100% { opacity: var(--star-base, 0.4); transform: scale(1); }
-  50%       { opacity: var(--star-peak, 0.9); transform: scale(1.4); }
-}
+@keyframes twinkle { 0%,100%{opacity:.2} 50%{opacity:1} }
 
 @media (prefers-reduced-motion: reduce) {
   .hud-scene__layer--grid { animation: none !important; }
@@ -56,22 +50,18 @@ export interface SceneProps {
 
 // ---------------------------------------------------------------------------
 // Star data — stable across renders via useMemo with fixed seed.
+// Matches prototype: 60 stars, position + delay deterministic.
 // ---------------------------------------------------------------------------
 
 interface StarDatum {
   id: number;
   top: string;
   left: string;
-  size: number;
-  baseOpacity: number;
-  peakOpacity: number;
-  duration: number;
-  delay: number;
+  delay: string;
 }
 
 function generateStars(count: number): StarDatum[] {
-  // Deterministic pseudo-random using a simple LCG seeded to a fixed value
-  // so hydration is stable and there's no layout shift between renders.
+  // Deterministic LCG so star positions never shift between renders.
   let seed = 0x6d2b4a1e;
   const rand = (): number => {
     seed = (seed * 1664525 + 1013904223) & 0xffffffff;
@@ -82,20 +72,16 @@ function generateStars(count: number): StarDatum[] {
   for (let i = 0; i < count; i++) {
     stars.push({
       id: i,
-      top: `${(rand() * 90).toFixed(2)}%`,
       left: `${(rand() * 100).toFixed(2)}%`,
-      size: 1 + rand() * 1,
-      baseOpacity: 0.4 + rand() * 0.3,
-      peakOpacity: 0.8 + rand() * 0.2,
-      duration: 2.5 + rand() * 4,
-      delay: -(rand() * 8),
+      top: `${(rand() * 100).toFixed(2)}%`,
+      delay: `${(rand() * 4).toFixed(2)}s`,
     });
   }
   return stars;
 }
 
-// Minimal SVG turbulence noise for organic grain texture (data-URI, static).
-const NOISE_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='200' height='200' filter='url(%23n)' opacity='0.04'/></svg>`;
+// Minimal SVG turbulence noise — baseFrequency 0.9 matches prototype.
+const NOISE_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence baseFrequency='0.9' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.55'/></svg>`;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -111,49 +97,43 @@ export function Scene({ grid = true, scan = true, stars = true }: SceneProps): R
       <style dangerouslySetInnerHTML={{ __html: SCENE_STYLE }} />
 
       <div className="hud-scene" aria-hidden>
-      {/* 1. Radial bg */}
-      <div className="hud-scene__layer hud-scene__layer--radial-bg" />
+        {/* Grid — 44×44 px drifting, ellipse-masked */}
+        {grid && <div className="hud-scene__layer hud-scene__layer--grid" />}
 
-      {/* 2. Grid */}
-      {grid && <div className="hud-scene__layer hud-scene__layer--grid scene-grid" />}
+        {/* Scanlines — 3px/1px repeating, screen blend */}
+        {scan && <div className="hud-scene__layer hud-scene__layer--scanlines" />}
 
-      {/* 3. Scanlines */}
-      {scan && <div className="hud-scene__layer hud-scene__layer--scanlines" />}
+        {/* Noise — SVG turbulence overlay blend */}
+        <div
+          className="hud-scene__layer hud-scene__layer--noise"
+          style={{ backgroundImage: `url("data:image/svg+xml,${NOISE_SVG}")` }}
+        />
 
-      {/* 4. Noise — background-image set inline because it contains a data-URI */}
-      <div
-        className="hud-scene__layer hud-scene__layer--noise"
-        style={{ backgroundImage: `url("data:image/svg+xml,${NOISE_SVG}")` }}
-      />
+        {/* Horizon glow — bottom 38% */}
+        <div className="hud-scene__layer hud-scene__layer--horizon" />
 
-      {/* 5. Horizon glow */}
-      <div className="hud-scene__layer hud-scene__layer--horizon" />
+        {/* Stars — 60 deterministic twinkle dots */}
+        <div className="hud-scene__layer hud-scene__layer--stars">
+          {stars &&
+            starData.map((s) => {
+              const starStyle: CSSProperties = {
+                position: 'absolute',
+                left: s.left,
+                top: s.top,
+                width: 1,
+                height: 1,
+                background: 'var(--text)',
+                borderRadius: '50%',
+                boxShadow: '0 0 4px var(--accent-bright)',
+                animation: `twinkle 4s ease-in-out ${s.delay} infinite`,
+              };
+              return <i key={s.id} className="scene-star" style={starStyle} />;
+            })}
+        </div>
 
-      {/* 6. Stars — position/size/timing are dynamic per star datum */}
-      {stars &&
-        starData.map((s) => {
-          const starStyle: CSSProperties = {
-            position: 'absolute',
-            top: s.top,
-            left: s.left,
-            width: s.size,
-            height: s.size,
-            borderRadius: '50%',
-            background: 'rgba(232,244,255,1)',
-            boxShadow: '0 0 2px rgba(255,255,255,0.8)',
-            // CSS custom properties for the twinkle keyframe opacity values.
-            ['--star-base' as string]: s.baseOpacity,
-            ['--star-peak' as string]: s.peakOpacity,
-            opacity: s.baseOpacity,
-            animation: `starTwinkle ${s.duration.toFixed(2)}s ease-in-out ${s.delay.toFixed(2)}s infinite`,
-            willChange: 'opacity, transform',
-          };
-          return <span key={s.id} className="scene-star" style={starStyle} />;
-        })}
-
-      {/* 7. Vignette */}
-      <div className="hud-scene__layer hud-scene__layer--vignette" />
-    </div>
+        {/* Vignette */}
+        <div className="hud-scene__layer hud-scene__layer--vignette" />
+      </div>
     </>
   );
 }

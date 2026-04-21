@@ -1,49 +1,20 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Design tokens are imported in main.tsx before this file. */
+/* Only JARVIS-specific app vars that are NOT in tokens.css live here. */
+
 :root {
-  /* Base */
-  --bg: #050508;
-  --surface: rgba(13, 13, 20, 0.75);
-  --surface-raised: rgba(22, 22, 34, 0.85);
-  --border: rgba(64, 112, 160, 0.25);
+  /* JARVIS-specific: not in handoff design token file */
 
-  /* Accent palette */
-  --accent: #4ca8e8;
-  --accent-bright: #7ec8ff;
-  --accent-speak: #a8e0ff;
+  /* Danger alias (tokens.css uses --error, app code uses --danger) */
+  --danger: var(--error);
 
-  /* Text */
-  --text: #e8f4ff;
-  --text-secondary: #8ba9c8;
-  --text-muted: #4a6a88;
-
-  /* Glow */
-  --glow: 0 0 12px rgba(76, 168, 232, 0.18);
-  --glow-strong: 0 0 24px rgba(76, 168, 232, 0.35);
-
-  /* Semantic */
-  --danger: #e84c4c;
-  --warning: #e8a84c;
-  --success: #4ce88a;
-  --info: #4ca8e8;
-
-  /* Orb working state — amber tint applied via mix-blend-mode:color overlay
-     on the Three.js canvas. Visually separates tool-execution from thinking. */
+  /* Orb working state */
   --orb-working: rgba(232, 168, 76, 0.55);
 
-  /* Font */
-  --font: 'JetBrains Mono', ui-monospace, monospace;
-
-  /* Panel opacity — controlled via Settings → Display slider.
-     Overridden at runtime via style on the root element so all panels
-     pick it up without a reload. Default: 1.0 (fully opaque). */
-  --panel-opacity: 1.0;
-
-  /* Panel dimensions */
+  /* Panel dimensions (app-specific layout vars) */
   --panel-header-height: 28px;
   --panel-padding: 14px;
   --panel-gap: 12px;
@@ -90,71 +61,8 @@ body {
   overflow: hidden;
 }
 
-/* .panel-header deleted — no tsx renders className="panel-header" (Phase C) */
-
-.panel-title {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.panel-badge {
-  margin-left: auto;
-  font-size: 9px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.panel-body {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 10px var(--panel-padding) var(--panel-padding);
-  font-size: 12px;
-  color: var(--text);
-}
-
-.panel-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.panel-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.panel-body::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 0;
-}
-
 /* ======================== HUD top bar ======================== */
 /* Shell, content, and chrome styles live in HudTopBar.css (co-located). */
-/* HudInfoBar.tsx is deprecated; clock/weather/coords are now inline in HudTopBar. */
-
-.hud-infobar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-family: var(--font);
-  font-size: 13px;
-  color: var(--text);
-}
-
-.hud-infobar__sep {
-  color: var(--text-muted);
-  opacity: 0.6;
-  padding: 0 2px;
-}
-
-.hud-infobar__time,
-.hud-infobar__date,
-.hud-infobar__weather {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
 
 .orb-devmenu {
   display: inline-flex;
@@ -219,10 +127,6 @@ body {
   margin: 0 4px;
   vertical-align: middle;
   opacity: 0.6;
-}
-
-.hud-infobar__weather-icon {
-  margin-right: 4px;
 }
 
 .hud-iconbtn {
@@ -341,6 +245,22 @@ body {
   border-radius: 50%;
   background: var(--accent);
   animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* ======================== Idle mode ======================== */
+
+/* Prototype: .app.idle .panel { opacity:.2; filter:blur(1px); pointer-events:none; transition: all .35s; } */
+.app.idle .hud-panel {
+  opacity: 0.2;
+  filter: blur(1px);
+  pointer-events: none;
+  transition: all .35s;
+}
+
+/* Prototype: .app.idle .topbar { opacity:.45; } */
+.app.idle .hud-topbar {
+  opacity: 0.45;
+  transition: opacity .35s;
 }
 
 /* ======================== Snap preview overlay ======================== */

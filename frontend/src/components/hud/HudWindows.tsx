@@ -9,13 +9,13 @@ import { Window } from './Window';
 import { SnapOverlay } from './SnapOverlay';
 import { SwapOverlay } from './SwapOverlay';
 import { useWindowManager } from './WindowManager';
-import type { PanelId, PanelMode } from '../../types';
+import { useAvailabilityMap, isPanelAvailable } from './PanelAvailability';
+import type { AppOrbState, PanelId, PanelMode } from '../../types';
 import type { SlotId } from './SlotGrid';
 import {
   AgendaPanel,
   DevPanel,
   GitLabPanel,
-  LightsPanel,
   LogPanel,
   MailPanel,
   NotificationsPanel,
@@ -28,6 +28,7 @@ import {
 export interface HudWindowsProps {
   idle: boolean;
   paused?: boolean;
+  orbState?: AppOrbState;
 }
 
 interface WindowSpec {
@@ -74,18 +75,13 @@ const WINDOWS: ReadonlyArray<WindowSpec> = [
     title: 'Transcript',
     icon: <Dot />,
     render: (mode) => <TranscriptPanel mode={mode} />,
+    // NOTE: orbState is threaded in at render time below; see WINDOWS.map
   },
   {
     id: 'nowplaying',
     title: 'Now Playing',
     icon: <Dot />,
     render: (mode) => <NowPlayingPanel mode={mode} />,
-  },
-  {
-    id: 'lights',
-    title: 'Lights',
-    icon: <Dot />,
-    render: (mode) => <LightsPanel mode={mode} />,
   },
   {
     id: 'system',
@@ -132,9 +128,10 @@ interface SwapState {
   hoveredSlotId: SlotId | null;
 }
 
-export function HudWindows({ idle, paused = false }: HudWindowsProps): ReactElement {
+export function HudWindows({ idle, paused = false, orbState = 'idle' }: HudWindowsProps): ReactElement {
   const effectivePaused = paused || idle;
   const { windows, slotRects, clearFocus, minimize, swapSlots } = useWindowManager();
+  const availabilityMap = useAvailabilityMap();
 
   // Live swap state lives at the HUD root so both overlay and ghost cards can
   // observe it without prop-drilling into every Window.
@@ -296,7 +293,7 @@ export function HudWindows({ idle, paused = false }: HudWindowsProps): ReactElem
         );
       })}
 
-      {WINDOWS.map((spec) => (
+      {WINDOWS.filter((spec) => isPanelAvailable(availabilityMap, spec.id)).map((spec) => (
         <Window
           key={spec.id}
           id={spec.id}
@@ -308,7 +305,11 @@ export function HudWindows({ idle, paused = false }: HudWindowsProps): ReactElem
           onSwapCommit={handleSwapCommit}
           onSwapCancel={handleSwapCancel}
         >
-          {(mode) => spec.render(mode, effectivePaused)}
+          {(mode) =>
+            spec.id === 'transcript'
+              ? <TranscriptPanel mode={mode} orbState={orbState} />
+              : spec.render(mode, effectivePaused)
+          }
         </Window>
       ))}
 

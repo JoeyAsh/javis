@@ -1,25 +1,18 @@
 /**
- * HudBloom — radial gradient overlay with screen mix-blend-mode.
+ * HudBloom — stub component, kept for API compatibility.
  *
- * `panelBloom` animates idle → hover → focused, driven by parent
- * `.hud-panel` state classes.
+ * The bloom effect is now implemented as a ::after pseudo-element on .hud-panel
+ * in HudPanel.css (matching the prototype 1:1). This component renders nothing.
  */
 
 import type { ReactElement } from 'react';
-import '../hud.css';
-import './HudBloom.css';
 
 export interface HudBloomProps {
   className?: string;
 }
 
-export function HudBloom({ className }: HudBloomProps): ReactElement {
-  return (
-    <div
-      className={['hud-bloom', className].filter(Boolean).join(' ')}
-      aria-hidden
-    />
-  );
+export function HudBloom(_props: HudBloomProps): ReactElement {
+  return <></>;
 }
 
 export default HudBloom;

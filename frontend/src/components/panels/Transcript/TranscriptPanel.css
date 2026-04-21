@@ -1,19 +1,22 @@
 /* ====================== TranscriptPanel ====================== */
 
+/* Prototype: @keyframes blink — used by thinking dots */
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
 .transcript-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
-  padding: var(--s-2) var(--s-3);
   font-family: var(--font);
   font-size: 11px;
 }
 
 /* ---- Turn row (prototype `.turn` pattern) ---- */
 
+/* Prototype: .turn { margin-bottom:10px; display:flex; } */
 .transcript-turn {
-  margin-bottom: var(--s-2);
+  margin-bottom: 10px;
   display: flex;
 }
 
@@ -56,19 +59,36 @@
   opacity: 0.7;
 }
 
-/* bubble */
+/* User bubble — plain text right-aligned per prototype,
+   with left accent-speak border for visual distinction (JARVIS addition) */
 .transcript-turn__bubble--user {
   color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.5;
-  padding: 2px 0;
+  padding: 6px 8px;
   text-align: right;
+  background: rgba(90, 184, 240, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  position: relative;
 }
 
+.transcript-turn__bubble--user::before {
+  content: '';
+  position: absolute;
+  right: -4px;
+  top: -1px;
+  width: 2px;
+  height: calc(100% + 2px);
+  background: var(--accent-speak);
+  box-shadow: 0 0 8px var(--accent-speak);
+}
+
+/* Prototype: .turn.jarvis .bub { background:rgba(76,168,232,.06); border:1px solid var(--border); padding:6px 8px; ... } */
 .transcript-turn__bubble--jarvis {
   background: rgba(76, 168, 232, 0.06);
   border: 1px solid var(--border);
-  padding: var(--s-1) var(--s-2);
+  padding: 6px 8px;
   font-size: 11px;
   line-height: 1.5;
   color: var(--text);
@@ -76,7 +96,7 @@
   position: relative;
 }
 
-/* left accent bar on jarvis bubble — matches prototype */
+/* Prototype: .turn.jarvis .bub::before — left:-4px; top:-1px; width:2px; height:calc(100% + 2px); background:var(--accent) */
 .transcript-turn__bubble--jarvis::before {
   content: '';
   position: absolute;

@@ -47,9 +47,7 @@
 
 .ptt.active {
   color: var(--text);
-  box-shadow:
-    0 0 40px color-mix(in srgb, var(--accent-bright) 80%, transparent),
-    0 0 90px color-mix(in srgb, var(--accent-bright) 45%, transparent);
+  box-shadow: 0 0 40px #6ec4ffcc, 0 0 90px #6ec4ff77;
 }
 
 .ptt.active::before {
@@ -78,17 +76,17 @@
   height: 24px;
 }
 
-/* Spinning dashed rim ring */
+/* Spinning dashed rim ring — prototype: var(--accent-dim) */
 .ptt .rim {
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  border: 1px dashed var(--text-muted);
-  animation: spin 22s linear infinite;
+  border: 1px dashed var(--accent-dim, #2d6aa1);
+  animation: dock-rim-spin 22s linear infinite;
   pointer-events: none;
 }
 
-@keyframes spin {
+@keyframes dock-rim-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }

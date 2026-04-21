@@ -4,7 +4,6 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: var(--s-3);
   font-family: var(--font);
   overflow-y: auto;
 }
@@ -16,47 +15,51 @@
   letter-spacing: 1px;
 }
 
-/* ---- NotificationItem ---- */
+/* ---- NotificationItem — prototype .nf pattern ---- */
 
+/* Prototype: .nf { display:flex; flex-direction:column; padding:6px 0; border-bottom:1px dashed var(--border); gap:2px; } */
 .notif-item {
-  border-left: 2px solid var(--border);
-  padding-left: var(--s-2);
-  margin-bottom: var(--s-1);
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+  gap: 2px;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease);
 }
 
 .notif-item:last-child {
-  margin-bottom: 0;
+  border-bottom: none;
 }
 
 .notif-item:hover {
   background: rgba(76, 168, 232, 0.04);
 }
 
-.notif-item--urgent {
-  border-left-color: var(--error);
-}
-
+/* warn items get a left 2px amber border as severity signal */
 .notif-item--warning {
-  border-left-color: var(--warning);
+  padding-left: 8px;
+  border-left: 2px solid var(--warning);
 }
 
-.notif-item--info {
-  border-left-color: var(--accent-bright);
+.notif-item--urgent {
+  padding-left: 8px;
+  border-left: 2px solid var(--error);
 }
 
+/* Prototype: .nf .h — flex header row */
 .notif-item__header {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s-2);
-  margin-bottom: 2px;
+  align-items: center;
+  gap: 6px;
 }
 
+/* Prototype: .nf .src — 8px, letter-spacing 1px, accent, uppercase */
 .notif-item__title {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--accent, #4ca8e8);
+  text-transform: uppercase;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -64,28 +67,30 @@
 }
 
 .notif-item__title--urgent {
-  color: var(--error);
+  color: var(--error, #e85a5a);
 }
 
 .notif-item__title--warning {
-  color: var(--warning);
+  color: var(--warning, #e8b24c);
 }
 
 .notif-item__title--info {
-  color: var(--accent-bright);
+  color: var(--accent, #4ca8e8);
 }
 
+/* Prototype: .nf .ti — margin-left:auto, 8px, text-muted */
 .notif-item__time {
-  font-size: 10px;
+  margin-left: auto;
+  font-size: 8px;
   letter-spacing: 1px;
   color: var(--text-muted);
   flex-shrink: 0;
-  text-transform: uppercase;
 }
 
+/* Prototype: .nf .tx — 11px, var(--text), line-height 1.4 */
 .notif-item__detail {
-  font-size: 10px;
-  color: var(--text-secondary);
+  font-size: 11px;
+  color: var(--text);
   line-height: 1.4;
 }
 

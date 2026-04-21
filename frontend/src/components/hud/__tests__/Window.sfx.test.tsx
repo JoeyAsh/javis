@@ -180,12 +180,14 @@ function renderWindow(overrides: Partial<{ disabled: boolean }> = {}) {
 describe('Window — HudPanel chrome', () => {
   it('renders HudPanel with corner brackets inside the window', () => {
     const { container } = renderWindow();
-    expect(container.querySelector('.hud-corner-brackets')).toBeInTheDocument();
+    // Corner brackets are individual spans, not wrapped in a .hud-corner-brackets container
+    expect(container.querySelector('.hud-corner-bracket.tl')).toBeInTheDocument();
   });
 
   it('renders the bloom overlay inside the window', () => {
     const { container } = renderWindow();
-    expect(container.querySelector('.hud-bloom')).toBeInTheDocument();
+    // Bloom is a CSS ::after pseudo-element on .hud-panel — verify the triggering class
+    expect(container.querySelector('.hud-panel')).toBeInTheDocument();
   });
 
   it('renders light trace strips inside the window', () => {

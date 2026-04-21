@@ -1,33 +1,7 @@
-/* ====================== HudBloom ====================== */
-
-.hud-bloom {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background:
-    radial-gradient(120% 70% at 50% 0%,   color-mix(in srgb, var(--accent, #4ca8e8) 16%, transparent) 0%, transparent 55%),
-    radial-gradient(120% 70% at 50% 100%, color-mix(in srgb, var(--accent, #4ca8e8) 10%, transparent) 0%, transparent 55%);
-  mix-blend-mode: screen;
-  opacity: 0;
-  transition: opacity .3s ease;
-  z-index: 0;
-}
-
-.hud-panel:hover .hud-bloom {
-  opacity: .55;
-  animation: panelBloom 3s ease-in-out infinite;
-}
-
-.hud-panel--focused .hud-bloom {
-  opacity: 1;
-  animation: panelBloom 2.6s ease-in-out infinite;
-}
-
-/* ====================== Reduced-motion ====================== */
-
-@media (prefers-reduced-motion: reduce) {
-  .hud-bloom {
-    animation: none;
-  }
-}
+/*
+ * HudBloom.css — intentionally empty.
+ *
+ * Bloom is implemented as a ::after pseudo-element on .hud-panel in HudPanel.css.
+ * This file is kept as a stub so the HudBloom.tsx import does not break any
+ * existing code that has not yet been migrated.
+ */

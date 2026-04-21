@@ -16,3 +16,5 @@ export { useLogStream } from './useLogStream';
 export type { UseLogStreamReturn } from './useLogStream';
 export { useTurnTimings } from './useTurnTimings';
 export type { UseTurnTimingsReturn } from './useTurnTimings';
+export { useAudioEngine } from './useAudioEngine';
+export type { UseAudioEngineReturn } from './useAudioEngine';

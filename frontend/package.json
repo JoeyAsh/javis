@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-sounds.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-sounds.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",

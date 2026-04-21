@@ -47,7 +47,7 @@ vi.mock('../../../hooks/useWebSocket', () => ({
 }));
 
 // Import after mocking
-import { MailPanel } from '../MailPanel';
+import { MailPanel } from '../Mail';
 import type { MailMessage } from '../../../types';
 
 // ---------------------------------------------------------------------------

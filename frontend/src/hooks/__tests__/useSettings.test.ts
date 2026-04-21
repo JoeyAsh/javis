@@ -46,7 +46,8 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings());
     expect(result.current.settings.panelOpacity).toBe(1.0);
     expect(result.current.settings.autoSpeakClaude).toBe(true);
-    expect(result.current.settings.pushToTalk).toBe(false);
+    // pushToTalk defaults to true so the PTT button is visible without config
+    expect(result.current.settings.pushToTalk).toBe(true);
     expect(result.current.settings.micDeviceId).toBe('');
   });
 

@@ -181,11 +181,21 @@ export function Window({
     setActiveSnap(null);
   }, [setActiveSnap]);
 
+  const handleDragStartSfx = useCallback(() => {
+    playOneShot('drag_start');
+  }, [playOneShot]);
+
+  const handleDragStopSfx = useCallback(() => {
+    playOneShot('drag_end');
+  }, [playOneShot]);
+
   const { handleRef: dragRef } = useDraggable<HTMLDivElement>({
     onMove: handleDragMove,
     onDrag: handleLiveDrag,
     onPointerMove: handlePointerMoveDuringDrag,
     onDragEnd: handleDragEnd,
+    onDragStart: handleDragStartSfx,
+    onDragStop: handleDragStopSfx,
     getPosition,
     // Free drag is only valid when floating.
     disabled: disabled || !state.maximized,
@@ -204,9 +214,14 @@ export function Window({
     setLiveSize({ w, h });
   }, []);
 
+  const handleResizeEndSfx = useCallback(() => {
+    playOneShot('resize');
+  }, [playOneShot]);
+
   const { handleRef: resizeRef } = useResizable<HTMLDivElement>({
     onResize: handleResize,
     onResizing: handleLiveResize,
+    onResizeEnd: handleResizeEndSfx,
     getSize,
     disabled: disabled || !state.maximized,
     minW: 180,

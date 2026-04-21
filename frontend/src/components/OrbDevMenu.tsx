@@ -1,5 +1,7 @@
 import type { ReactElement } from 'react';
 import type { AppOrbState } from '../types';
+import { useSettings } from '../hooks/useSettings';
+import type { OrbVariant } from '../hooks/useSettings';
 
 export interface OrbDevMenuProps {
   /** Current override — null means "live" (follow real pipeline). */
@@ -28,18 +30,47 @@ const OPTIONS: ReadonlyArray<StateOption> = [
   { key: 'live', label: 'LIVE', title: 'Follow real pipeline state' },
 ];
 
+const VARIANT_OPTIONS: ReadonlyArray<{ key: OrbVariant; label: string }> = [
+  { key: 'classic', label: 'ORB1' },
+  { key: 'hypermodern', label: 'ORB2' },
+];
+
 export function OrbDevMenu({
   override,
   onSet,
   onStop,
 }: OrbDevMenuProps): ReactElement {
   const active: AppOrbState | 'live' = override ?? 'live';
+  const { settings, setOrbVariant } = useSettings();
+  const variant = settings.orbVariant;
+
   return (
     <div
       className="orb-devmenu"
       role="group"
-      aria-label="Orb state override (dev)"
+      aria-label="Orb dev menu"
     >
+      {/* Variant switcher row */}
+      <span className="orb-devmenu__label">VARIANT</span>
+      {VARIANT_OPTIONS.map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          className={`orb-devmenu__btn ${
+            variant === opt.key ? 'orb-devmenu__btn--active' : ''
+          }`.trim()}
+          onClick={() => { setOrbVariant(opt.key); }}
+          aria-pressed={variant === opt.key}
+          title={`Switch to ${opt.key} orb`}
+        >
+          {opt.label}
+        </button>
+      ))}
+
+      {/* Visual separator */}
+      <span className="orb-devmenu__sep" aria-hidden="true" />
+
+      {/* State-override row */}
       <span className="orb-devmenu__label">ORB</span>
       {OPTIONS.map((opt) => {
         const isActive = opt.key === active;
@@ -50,7 +81,7 @@ export function OrbDevMenu({
             className={`orb-devmenu__btn ${
               isActive ? 'orb-devmenu__btn--active' : ''
             }`.trim()}
-            onClick={() => onSet(opt.key === 'live' ? null : opt.key)}
+            onClick={() => { onSet(opt.key === 'live' ? null : opt.key); }}
             aria-pressed={isActive}
             title={opt.title}
           >

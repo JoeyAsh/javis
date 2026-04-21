@@ -13,7 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { UseSettingsReturn } from '../hooks/useSettings';
+import type { UseSettingsReturn, OrbVariant } from '../hooks/useSettings';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -238,9 +238,11 @@ function AudioSection({
 interface DisplaySectionProps {
   panelOpacity: number;
   onPanelOpacityChange: (v: number) => void;
+  orbVariant: OrbVariant;
+  onOrbVariantChange: (v: OrbVariant) => void;
 }
 
-function DisplaySection({ panelOpacity, onPanelOpacityChange }: DisplaySectionProps): ReactElement {
+function DisplaySection({ panelOpacity, onPanelOpacityChange, orbVariant, onOrbVariantChange }: DisplaySectionProps): ReactElement {
   return (
     <div style={SECTION_STYLE}>
       <div
@@ -269,6 +271,19 @@ function DisplaySection({ panelOpacity, onPanelOpacityChange }: DisplaySectionPr
         onChange={(e) => { onPanelOpacityChange(parseFloat(e.target.value)); }}
         style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' }}
       />
+
+      <label style={{ ...LABEL_STYLE, marginTop: 16 }} htmlFor="settings-orb-variant">
+        Orb Style
+      </label>
+      <select
+        id="settings-orb-variant"
+        value={orbVariant}
+        onChange={(e) => { onOrbVariantChange(e.target.value as OrbVariant); }}
+        style={{ ...INPUT_STYLE, cursor: 'pointer' }}
+      >
+        <option value="classic">Classic (Three.js)</option>
+        <option value="hypermodern">Hypermodern (CSS)</option>
+      </select>
     </div>
   );
 }
@@ -280,9 +295,11 @@ function DisplaySection({ panelOpacity, onPanelOpacityChange }: DisplaySectionPr
 interface VoiceSectionProps {
   autoSpeakClaude: boolean;
   onAutoSpeakChange: (v: boolean) => void;
+  heartbeatEnabled: boolean;
+  onHeartbeatChange: (v: boolean) => void;
 }
 
-function VoiceSection({ autoSpeakClaude, onAutoSpeakChange }: VoiceSectionProps): ReactElement {
+function VoiceSection({ autoSpeakClaude, onAutoSpeakChange, heartbeatEnabled, onHeartbeatChange }: VoiceSectionProps): ReactElement {
   return (
     <div style={SECTION_STYLE}>
       <div
@@ -303,6 +320,12 @@ function VoiceSection({ autoSpeakClaude, onAutoSpeakChange }: VoiceSectionProps)
         onChange={onAutoSpeakChange}
         label="Nachrichten automatisch vorlesen"
         description="When OFF, TTS only plays for explicit voice turns. Claude-initiated notifications stay silent."
+      />
+      <Toggle
+        checked={heartbeatEnabled}
+        onChange={onHeartbeatChange}
+        label="Heartbeat idle sound"
+        description="Plays a subtle heartbeat loop after 30 s of idling."
       />
     </div>
   );
@@ -647,7 +670,7 @@ export function SettingsOverlay({ open, onClose, settingsHook }: SettingsOverlay
   const [activeSection, setActiveSection] = useState<SectionId>('audio');
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
-  const { settings, setPanelOpacity, setAutoSpeakClaude, setPushToTalk, setMicDeviceId } =
+  const { settings, setPanelOpacity, setAutoSpeakClaude, setPushToTalk, setMicDeviceId, setOrbVariant, setHeartbeatEnabled } =
     settingsHook;
 
   // Close on Escape
@@ -813,12 +836,16 @@ export function SettingsOverlay({ open, onClose, settingsHook }: SettingsOverlay
               <DisplaySection
                 panelOpacity={settings.panelOpacity}
                 onPanelOpacityChange={setPanelOpacity}
+                orbVariant={settings.orbVariant}
+                onOrbVariantChange={setOrbVariant}
               />
             )}
             {activeSection === 'voice' && (
               <VoiceSection
                 autoSpeakClaude={settings.autoSpeakClaude}
                 onAutoSpeakChange={setAutoSpeakClaude}
+                heartbeatEnabled={settings.heartbeatEnabled}
+                onHeartbeatChange={setHeartbeatEnabled}
               />
             )}
             {activeSection === 'repositories' && <RepositoriesSection />}

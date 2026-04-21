@@ -83,9 +83,9 @@ function generateStars(count: number): StarDatum[] {
       id: i,
       top: `${(rand() * 90).toFixed(2)}%`,
       left: `${(rand() * 100).toFixed(2)}%`,
-      size: 1 + rand() * 1.5,
-      baseOpacity: 0.15 + rand() * 0.3,
-      peakOpacity: 0.5 + rand() * 0.5,
+      size: 1 + rand() * 1,
+      baseOpacity: 0.4 + rand() * 0.3,
+      peakOpacity: 0.8 + rand() * 0.2,
       duration: 2.5 + rand() * 4,
       delay: -(rand() * 8),
     });
@@ -139,6 +139,7 @@ export function Scene({ grid = true, scan = true, stars = true }: SceneProps): R
             height: s.size,
             borderRadius: '50%',
             background: 'rgba(232,244,255,1)',
+            boxShadow: '0 0 2px rgba(255,255,255,0.8)',
             // CSS custom properties for the twinkle keyframe opacity values.
             ['--star-base' as string]: s.baseOpacity,
             ['--star-peak' as string]: s.peakOpacity,

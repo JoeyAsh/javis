@@ -201,7 +201,7 @@ function AppInner(): ReactElement {
             width: 28,
             height: 28,
             zIndex: 40,
-            background: 'var(--surface)',
+            background: 'rgba(13,13,20,0.6)',
             border: '1px solid var(--border)',
             borderRadius: 'var(--r-2)',
             cursor: 'pointer',

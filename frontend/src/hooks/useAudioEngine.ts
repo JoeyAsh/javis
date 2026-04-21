@@ -88,7 +88,8 @@ export function useAudioEngine(
   // ── State-machine refs ────────────────────────────────────────────────────
 
   const bootFiredRef = useRef(false);
-  const prevOrbStateRef = useRef<AppOrbState>('idle');
+  // null = "not yet seen a state" (used to detect first render in resume handler).
+  const prevOrbStateRef = useRef<AppOrbState | null>(null);
   const wakeGuardActiveRef = useRef(false);
 
   // Timer handles.
@@ -139,6 +140,22 @@ export function useAudioEngine(
           bootFiredRef.current = true;
           engine.playOneShot('boot');
         }
+        // Kick the current orb-state's intended loops now that the context is
+        // live. Without this, loops started before the first gesture are silent
+        // (launchLoop bails out when ctx.state === 'suspended').
+        const s = prevOrbStateRef.current;
+        if (s === 'idle' || s === 'follow_up' || s === null) {
+          engine.play('ambient');
+        } else if (s === 'listening') {
+          engine.play('scan');
+          engine.setDucking(true);
+        } else if (s === 'thinking') {
+          engine.play('thinking');
+          engine.play('scan');
+        } else if (s === 'working') {
+          engine.play('working');
+        }
+        // 'speaking' has no loops to replay.
       });
     };
 
@@ -190,6 +207,7 @@ export function useAudioEngine(
     const prev = prevOrbStateRef.current;
     prevOrbStateRef.current = orbState;
 
+    // Skip if state hasn't changed (handles initial render where prev is null).
     if (prev === orbState) return;
 
     // ── Exit handlers for the previous state ─────────────────────────────

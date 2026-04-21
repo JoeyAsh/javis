@@ -9,7 +9,7 @@
 .hud-scene {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: 2;
   pointer-events: none;
   overflow: hidden;
 }
@@ -26,11 +26,11 @@
 
 .hud-scene__layer--grid {
   background-image:
-    linear-gradient(rgba(76,168,232,0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(76,168,232,0.045) 1px, transparent 1px);
+    linear-gradient(rgba(76,168,232,0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76,168,232,0.08) 1px, transparent 1px);
   background-size: 44px 44px;
-  mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
-  -webkit-mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
+  mask-image: radial-gradient(ellipse 100% 80% at 50% 50%, black 30%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 100% 80% at 50% 50%, black 30%, transparent 100%);
   animation: gridDrift 28s linear infinite;
   will-change: background-position;
 }

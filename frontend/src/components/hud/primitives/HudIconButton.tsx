@@ -12,14 +12,14 @@ import '../hud.css';
 import './HudIconButton.css';
 
 export interface HudIconButtonProps {
-  onClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
-  disabled?: boolean;
-  /** Visual active state (e.g. pin toggled on). */
-  active?: boolean;
-  children: ReactNode;
-  className?: string;
-  'aria-label': string;
-  type?: 'button' | 'submit' | 'reset';
+    onClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
+    disabled?: boolean;
+    /** Visual active state (e.g. pin toggled on). */
+    active?: boolean;
+    children: ReactNode;
+    className?: string;
+    'aria-label': string;
+    type?: 'button' | 'submit' | 'reset';
 }
 
 const HOVER_DEBOUNCE_MS = 200;
@@ -28,73 +28,69 @@ const HOVER_DEBOUNCE_MS = 200;
  * Icon-only HUD button with JARVIS styling and automatic SFX.
  */
 export function HudIconButton({
-  onClick,
-  disabled = false,
-  active = false,
-  children,
-  className,
-  'aria-label': ariaLabel,
-  type = 'button',
+    onClick,
+    disabled = false,
+    active = false,
+    children,
+    className,
+    'aria-label': ariaLabel,
+    type = 'button',
 }: HudIconButtonProps): ReactElement {
-  const { playOneShot } = useSfx();
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const { playOneShot } = useSfx();
+    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup: cancel any pending hover timer on unmount to prevent stale fires.
-  useEffect(() => {
-    return () => {
-      if (hoverTimerRef.current !== null) {
-        clearTimeout(hoverTimerRef.current);
-      }
-    };
-  }, []);
+    // Cleanup: cancel any pending hover timer on unmount to prevent stale fires.
+    useEffect(() => {
+        return () => {
+            if (hoverTimerRef.current !== null) {
+                clearTimeout(hoverTimerRef.current);
+            }
+        };
+    }, []);
 
-  const handleClick = useCallback(
-    (e: ReactMouseEvent<HTMLButtonElement>) => {
-      if (disabled) return;
-      playOneShot('click');
-      onClick?.(e);
-    },
-    [disabled, onClick, playOneShot],
-  );
+    const handleClick = useCallback(
+        (e: ReactMouseEvent<HTMLButtonElement>) => {
+            if (disabled) return;
+            playOneShot('click');
+            onClick?.(e);
+        },
+        [disabled, onClick, playOneShot],
+    );
 
-  const handleMouseEnter = useCallback(() => {
-    if (disabled) return;
-    if (hoverTimerRef.current !== null) {
-      clearTimeout(hoverTimerRef.current);
-    }
-    hoverTimerRef.current = setTimeout(() => {
-      hoverTimerRef.current = null;
-      playOneShot('hover');
-    }, HOVER_DEBOUNCE_MS);
-  }, [disabled, playOneShot]);
+    const handleMouseEnter = useCallback(() => {
+        if (disabled) return;
+        if (hoverTimerRef.current !== null) {
+            clearTimeout(hoverTimerRef.current);
+        }
+        hoverTimerRef.current = setTimeout(() => {
+            hoverTimerRef.current = null;
+            playOneShot('hover');
+        }, HOVER_DEBOUNCE_MS);
+    }, [disabled, playOneShot]);
 
-  const handleMouseLeave = useCallback(() => {
-    if (hoverTimerRef.current !== null) {
-      clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
-  }, []);
+    const handleMouseLeave = useCallback(() => {
+        if (hoverTimerRef.current !== null) {
+            clearTimeout(hoverTimerRef.current);
+            hoverTimerRef.current = null;
+        }
+    }, []);
 
-  return (
-    <button
-      type={type}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      aria-pressed={active}
-      className={[
-        'hud-icon-btn',
-        active ? 'hud-icon-btn--active' : '',
-        className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      {children}
-    </button>
-  );
+    return (
+        <button
+            type={type}
+            disabled={disabled}
+            aria-label={ariaLabel}
+            aria-pressed={active}
+            className={['hud-icon-btn', active ? 'hud-icon-btn--active' : '', className]
+                .filter(Boolean)
+                .join(' ')}
+            onClick={handleClick}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+        >
+            {children}
+        </button>
+    );
 }
 
 export default HudIconButton;

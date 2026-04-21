@@ -1,0 +1,177 @@
+/* ================================================================
+   lib-window — draggable window shell.
+   Class prefix: .lib-window
+   All keyframes reference lib.css (imported once via index.ts).
+   ================================================================ */
+
+.lib-window {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    /* Transition geometry on settle; otherwise instant so drag feels live. */
+    transition:
+        box-shadow 0.2s ease,
+        opacity 0.3s ease;
+    /* Panel animation disabled here — Panel inside handles its own winIn. */
+    z-index: 10;
+    outline: none;
+    cursor: default;
+    /* Allow overflow for corner brackets. */
+    overflow: visible;
+}
+
+/* The inner Panel fills the window fully. */
+.lib-window > .lib-panel {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    /* Suppress Panel's own winIn so Window can control entrance timing. */
+    animation: none;
+}
+
+/* ── dragging state ── */
+.lib-window[data-state='dragging'],
+.lib-window[data-state='snap-preview'],
+.lib-window[data-state='swap-preview'] {
+    box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.6),
+        0 0 0 1px var(--accent),
+        0 0 36px 4px color-mix(in srgb, var(--accent) 45%, transparent);
+    z-index: 9000;
+    cursor: grabbing;
+}
+
+/* ── settling state — subtle position snap animation ── */
+.lib-window[data-state='settling'] {
+    transition:
+        left 140ms ease-in-out,
+        top 140ms ease-in-out,
+        width 140ms ease-in-out,
+        height 140ms ease-in-out,
+        box-shadow 0.2s ease;
+}
+
+/* ── focused state ── */
+.lib-window[data-state='focused'] {
+    z-index: 100;
+}
+
+/* ── minimized state ── */
+.lib-window[data-state='minimized'] {
+    overflow: hidden;
+}
+
+.lib-window[data-state='minimized'] .lib-window__body {
+    display: none;
+}
+
+.lib-window[data-state='minimized'] > .lib-panel {
+    height: 26px;
+}
+
+/* ── maximized state ── */
+.lib-window[data-state='maximized'] {
+    position: fixed;
+    inset: 16px;
+    width: auto !important;
+    height: auto !important;
+    z-index: 500;
+}
+
+/* ── drag handle ── */
+.lib-window__hdr-drag {
+    cursor: grab;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.lib-window[data-state='dragging'] .lib-window__hdr-drag,
+.lib-window[data-state='snap-preview'] .lib-window__hdr-drag,
+.lib-window[data-state='swap-preview'] .lib-window__hdr-drag {
+    cursor: grabbing;
+}
+
+/* ── header action buttons ── */
+.lib-window__hdr-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.lib-window__hdr-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+        color 0.15s,
+        border-color 0.15s,
+        box-shadow 0.15s;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.lib-window__hdr-btn:hover {
+    color: var(--text);
+    border-color: var(--border);
+    box-shadow: var(--glow);
+}
+
+.lib-window__hdr-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--glow);
+    border-color: var(--accent);
+}
+
+.lib-window__hdr-btn--close:hover {
+    color: var(--error);
+    border-color: var(--error);
+    box-shadow: 0 0 8px var(--error);
+}
+
+/* ── body ── */
+.lib-window__body {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+.lib-window__body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.lib-window__body::-webkit-scrollbar-thumb {
+    background: var(--border);
+}
+
+/* ── entrance ── */
+@keyframes lib-win-in {
+    0% {
+        opacity: 0;
+        transform: translateY(8px) scale(0.985);
+        clip-path: inset(46% 0 46% 0);
+    }
+    60% {
+        clip-path: inset(0 0 0 0);
+        opacity: 1;
+    }
+    100% {
+        transform: none;
+    }
+}
+
+.lib-window {
+    animation: lib-win-in 0.45s cubic-bezier(0.4, 0, 0.2, 1) both;
+}

@@ -16,13 +16,13 @@ import './HudButton.css';
 export type HudButtonVariant = 'default' | 'ghost' | 'primary';
 
 export interface HudButtonProps {
-  onClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
-  disabled?: boolean;
-  variant?: HudButtonVariant;
-  children: ReactNode;
-  className?: string;
-  'aria-label'?: string;
-  type?: 'button' | 'submit' | 'reset';
+    onClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void;
+    disabled?: boolean;
+    variant?: HudButtonVariant;
+    children: ReactNode;
+    className?: string;
+    'aria-label'?: string;
+    type?: 'button' | 'submit' | 'reset';
 }
 
 const HOVER_DEBOUNCE_MS = 200;
@@ -31,75 +31,71 @@ const HOVER_DEBOUNCE_MS = 200;
  * Reusable HUD button with JARVIS design-system styling and automatic SFX.
  */
 export function HudButton({
-  onClick,
-  disabled = false,
-  variant = 'default',
-  children,
-  className,
-  'aria-label': ariaLabel,
-  type = 'button',
+    onClick,
+    disabled = false,
+    variant = 'default',
+    children,
+    className,
+    'aria-label': ariaLabel,
+    type = 'button',
 }: HudButtonProps): ReactElement {
-  const { playOneShot } = useSfx();
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const { playOneShot } = useSfx();
+    const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup: cancel any pending hover timer on unmount to prevent stale fires.
-  useEffect(() => {
-    return () => {
-      if (hoverTimerRef.current !== null) {
-        clearTimeout(hoverTimerRef.current);
-      }
-    };
-  }, []);
+    // Cleanup: cancel any pending hover timer on unmount to prevent stale fires.
+    useEffect(() => {
+        return () => {
+            if (hoverTimerRef.current !== null) {
+                clearTimeout(hoverTimerRef.current);
+            }
+        };
+    }, []);
 
-  const handleClick = useCallback(
-    (e: ReactMouseEvent<HTMLButtonElement>) => {
-      if (disabled) return;
-      playOneShot('click');
-      onClick?.(e);
-    },
-    [disabled, onClick, playOneShot],
-  );
+    const handleClick = useCallback(
+        (e: ReactMouseEvent<HTMLButtonElement>) => {
+            if (disabled) return;
+            playOneShot('click');
+            onClick?.(e);
+        },
+        [disabled, onClick, playOneShot],
+    );
 
-  const handleMouseEnter = useCallback(() => {
-    if (disabled) return;
-    // Debounce: clear any previous pending hover sound.
-    if (hoverTimerRef.current !== null) {
-      clearTimeout(hoverTimerRef.current);
-    }
-    hoverTimerRef.current = setTimeout(() => {
-      hoverTimerRef.current = null;
-      playOneShot('hover');
-    }, HOVER_DEBOUNCE_MS);
-  }, [disabled, playOneShot]);
+    const handleMouseEnter = useCallback(() => {
+        if (disabled) return;
+        // Debounce: clear any previous pending hover sound.
+        if (hoverTimerRef.current !== null) {
+            clearTimeout(hoverTimerRef.current);
+        }
+        hoverTimerRef.current = setTimeout(() => {
+            hoverTimerRef.current = null;
+            playOneShot('hover');
+        }, HOVER_DEBOUNCE_MS);
+    }, [disabled, playOneShot]);
 
-  const handleMouseLeave = useCallback(() => {
-    // Cancel pending hover sound if the mouse left before debounce fires.
-    if (hoverTimerRef.current !== null) {
-      clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
-  }, []);
+    const handleMouseLeave = useCallback(() => {
+        // Cancel pending hover sound if the mouse left before debounce fires.
+        if (hoverTimerRef.current !== null) {
+            clearTimeout(hoverTimerRef.current);
+            hoverTimerRef.current = null;
+        }
+    }, []);
 
-  const variantClass =
-    variant === 'ghost'
-      ? 'hud-btn--ghost'
-      : variant === 'primary'
-        ? 'hud-btn--primary'
-        : '';
+    const variantClass =
+        variant === 'ghost' ? 'hud-btn--ghost' : variant === 'primary' ? 'hud-btn--primary' : '';
 
-  return (
-    <button
-      type={type}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      className={['hud-btn', variantClass, className].filter(Boolean).join(' ')}
-      onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      {children}
-    </button>
-  );
+    return (
+        <button
+            type={type}
+            disabled={disabled}
+            aria-label={ariaLabel}
+            className={['hud-btn', variantClass, className].filter(Boolean).join(' ')}
+            onClick={handleClick}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+        >
+            {children}
+        </button>
+    );
 }
 
 export default HudButton;

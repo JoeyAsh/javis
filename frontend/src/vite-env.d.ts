@@ -9,6 +9,6 @@
  * actual runtime behaviour.
  */
 interface AnalyserNode {
-  getByteFrequencyData(array: Uint8Array<ArrayBufferLike>): void;
-  getByteTimeDomainData(array: Uint8Array<ArrayBufferLike>): void;
+    getByteFrequencyData(array: Uint8Array<ArrayBufferLike>): void;
+    getByteTimeDomainData(array: Uint8Array<ArrayBufferLike>): void;
 }

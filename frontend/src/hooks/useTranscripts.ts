@@ -6,10 +6,10 @@ import type { TranscriptTurn } from '../types';
 const MAX_TURNS = 50;
 
 export interface UseTranscriptsReturn {
-  /** Ordered oldest → newest. */
-  turns: TranscriptTurn[];
-  /** True once at least one live turn has arrived. */
-  isLive: boolean;
+    /** Ordered oldest → newest. */
+    turns: TranscriptTurn[];
+    /** True once at least one live turn has arrived. */
+    isLive: boolean;
 }
 
 /**
@@ -18,30 +18,30 @@ export interface UseTranscriptsReturn {
  * `isLive === false`.
  */
 export function useTranscripts(): UseTranscriptsReturn {
-  const [turns, setTurns] = useState<TranscriptTurn[]>([]);
-  const [isLive, setIsLive] = useState(false);
-  const counterRef = useRef(0);
+    const [turns, setTurns] = useState<TranscriptTurn[]>([]);
+    const [isLive, setIsLive] = useState(false);
+    const counterRef = useRef(0);
 
-  useEffect(() => {
-    const unsubscribe = subscribeTranscriptStream((payload) => {
-      setIsLive(true);
-      setTurns((prev) => {
-        const next: TranscriptTurn = {
-          id: `live-${Date.now()}-${counterRef.current++}`,
-          role: payload.role,
-          text: payload.text,
-          at: new Date().toISOString(),
-        };
-        const combined = [...prev, next];
-        return combined.length > MAX_TURNS
-          ? combined.slice(combined.length - MAX_TURNS)
-          : combined;
-      });
-    });
-    return unsubscribe;
-  }, []);
+    useEffect(() => {
+        const unsubscribe = subscribeTranscriptStream((payload) => {
+            setIsLive(true);
+            setTurns((prev) => {
+                const next: TranscriptTurn = {
+                    id: `live-${Date.now()}-${counterRef.current++}`,
+                    role: payload.role,
+                    text: payload.text,
+                    at: new Date().toISOString(),
+                };
+                const combined = [...prev, next];
+                return combined.length > MAX_TURNS
+                    ? combined.slice(combined.length - MAX_TURNS)
+                    : combined;
+            });
+        });
+        return unsubscribe;
+    }, []);
 
-  return { turns, isLive };
+    return { turns, isLive };
 }
 
 export default useTranscripts;

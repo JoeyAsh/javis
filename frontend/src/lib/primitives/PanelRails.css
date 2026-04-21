@@ -1,0 +1,32 @@
+/* ================================================================
+   PanelRails — two vertical dashed rails on left and right.
+   ================================================================ */
+
+.lib-panel-rails {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.lib-panel-rails__rail {
+    position: absolute;
+    top: 26px;
+    bottom: 4px;
+    width: 2px;
+    background-image: linear-gradient(to bottom, var(--accent) 0 2px, transparent 2px 10px);
+    background-size: 2px 10px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.lib-panel-rails__rail--l {
+    left: -4px;
+}
+
+.lib-panel-rails__rail--r {
+    right: -4px;
+}
+
+.lib-panel-rails.visible .lib-panel-rails__rail {
+    opacity: 0.7;
+}

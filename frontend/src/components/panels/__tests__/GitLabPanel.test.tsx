@@ -25,10 +25,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // ---------------------------------------------------------------------------
 
 vi.mock('../../../hooks/useGitlabState', () => ({
-  useGitlabState: vi.fn(() => ({
-    data: null,
-    loading: true,
-  })),
+    useGitlabState: vi.fn(() => ({
+        data: null,
+        loading: true,
+    })),
 }));
 
 import { useGitlabState } from '../../../hooks/useGitlabState';
@@ -42,59 +42,63 @@ import type { GitLabStatePayload } from '../../../types';
 const mockUseGitlabState = vi.mocked(useGitlabState);
 
 function setData(payload: GitLabStatePayload | null): void {
-  mockUseGitlabState.mockReturnValue({ data: payload, loading: payload === null, available: true });
+    mockUseGitlabState.mockReturnValue({
+        data: payload,
+        loading: payload === null,
+        available: true,
+    });
 }
 
 const livePayload: GitLabStatePayload = {
-  mrs: [
-    {
-      id: 1,
-      iid: 10,
-      title: 'Add dark mode',
-      source_branch: 'feature/dark-mode',
-      web_url: 'https://gitlab.com/group/project/-/merge_requests/10',
-      author: 'alice',
-      created_at: '2024-01-15T10:00:00Z',
-      draft: false,
-    },
-    {
-      id: 2,
-      iid: 11,
-      title: 'Fix memory leak',
-      source_branch: 'fix/memory',
-      web_url: 'https://gitlab.com/group/project/-/merge_requests/11',
-      author: 'bob',
-      created_at: '2024-01-14T08:00:00Z',
-      draft: true,
-    },
-  ],
-  issues: [
-    {
-      id: 42,
-      iid: 42,
-      title: 'Bug in login form',
-      labels: ['bug', 'p1'],
-      web_url: 'https://gitlab.com/group/project/-/issues/42',
-      author: 'alice',
-      created_at: '2024-01-14T09:00:00Z',
-    },
-  ],
-  pipelines: [
-    {
-      project: 'group/project',
-      status: 'success',
-      web_url: 'https://gitlab.com/group/project/-/pipelines/999',
-      created_at: '2024-01-15T11:00:00Z',
-    },
-  ],
-  error: null,
+    mrs: [
+        {
+            id: 1,
+            iid: 10,
+            title: 'Add dark mode',
+            source_branch: 'feature/dark-mode',
+            web_url: 'https://gitlab.com/group/project/-/merge_requests/10',
+            author: 'alice',
+            created_at: '2024-01-15T10:00:00Z',
+            draft: false,
+        },
+        {
+            id: 2,
+            iid: 11,
+            title: 'Fix memory leak',
+            source_branch: 'fix/memory',
+            web_url: 'https://gitlab.com/group/project/-/merge_requests/11',
+            author: 'bob',
+            created_at: '2024-01-14T08:00:00Z',
+            draft: true,
+        },
+    ],
+    issues: [
+        {
+            id: 42,
+            iid: 42,
+            title: 'Bug in login form',
+            labels: ['bug', 'p1'],
+            web_url: 'https://gitlab.com/group/project/-/issues/42',
+            author: 'alice',
+            created_at: '2024-01-14T09:00:00Z',
+        },
+    ],
+    pipelines: [
+        {
+            project: 'group/project',
+            status: 'success',
+            web_url: 'https://gitlab.com/group/project/-/pipelines/999',
+            created_at: '2024-01-15T11:00:00Z',
+        },
+    ],
+    error: null,
 };
 
 const errorPayload: GitLabStatePayload = {
-  mrs: [],
-  issues: [],
-  pipelines: [],
-  error: 'Unauthorized — check GITLAB_TOKEN',
+    mrs: [],
+    issues: [],
+    pipelines: [],
+    error: 'Unauthorized — check GITLAB_TOKEN',
 };
 
 // ---------------------------------------------------------------------------
@@ -102,11 +106,11 @@ const errorPayload: GitLabStatePayload = {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  mockUseGitlabState.mockReturnValue({ data: null, loading: true, available: true });
+    mockUseGitlabState.mockReturnValue({ data: null, loading: true, available: true });
 });
 
 afterEach(() => {
-  vi.clearAllMocks();
+    vi.clearAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -114,62 +118,62 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('GitLabPanel compact mode', () => {
-  it('shows loading state when data is null', () => {
-    render(<GitLabPanel mode="compact" />);
-    expect(screen.getByText(/Loading GitLab/i)).toBeTruthy();
-  });
+    it('shows loading state when data is null', () => {
+        render(<GitLabPanel mode="compact" />);
+        expect(screen.getByText(/Loading GitLab/i)).toBeTruthy();
+    });
 
-  it('renders MR count from live data', () => {
-    setData(livePayload);
-    render(<GitLabPanel mode="compact" />);
-    // Should show "2" for 2 MRs
-    expect(screen.getByText('2')).toBeTruthy();
-    expect(screen.getByText('MRs')).toBeTruthy();
-  });
+    it('renders MR count from live data', () => {
+        setData(livePayload);
+        render(<GitLabPanel mode="compact" />);
+        // Should show "2" for 2 MRs
+        expect(screen.getByText('2')).toBeTruthy();
+        expect(screen.getByText('MRs')).toBeTruthy();
+    });
 
-  it('renders Issue count from live data', () => {
-    setData(livePayload);
-    render(<GitLabPanel mode="compact" />);
-    expect(screen.getByText('1')).toBeTruthy();
-    expect(screen.getByText('Issues')).toBeTruthy();
-  });
+    it('renders Issue count from live data', () => {
+        setData(livePayload);
+        render(<GitLabPanel mode="compact" />);
+        expect(screen.getByText('1')).toBeTruthy();
+        expect(screen.getByText('Issues')).toBeTruthy();
+    });
 
-  it('renders first pipeline status in compact mode', () => {
-    setData(livePayload);
-    render(<GitLabPanel mode="compact" />);
-    expect(screen.getByText('success')).toBeTruthy();
-  });
+    it('renders first pipeline status in compact mode', () => {
+        setData(livePayload);
+        render(<GitLabPanel mode="compact" />);
+        expect(screen.getByText('success')).toBeTruthy();
+    });
 
-  it('renders "—" when no pipelines configured', () => {
-    setData({ ...livePayload, pipelines: [] });
-    render(<GitLabPanel mode="compact" />);
-    expect(screen.getByText('—')).toBeTruthy();
-  });
+    it('renders "—" when no pipelines configured', () => {
+        setData({ ...livePayload, pipelines: [] });
+        render(<GitLabPanel mode="compact" />);
+        expect(screen.getByText('—')).toBeTruthy();
+    });
 
-  it('shows error badge when data has error and empty lists', () => {
-    setData(errorPayload);
-    render(<GitLabPanel mode="compact" />);
-    expect(screen.getByText(/GitLab error/i)).toBeTruthy();
-  });
+    it('shows error badge when data has error and empty lists', () => {
+        setData(errorPayload);
+        render(<GitLabPanel mode="compact" />);
+        expect(screen.getByText(/GitLab error/i)).toBeTruthy();
+    });
 
-  it('shows 50+ when MR count is at the limit', () => {
-    const bigPayload: GitLabStatePayload = {
-      ...livePayload,
-      mrs: Array.from({ length: 50 }, (_, i) => ({
-        id: i,
-        iid: i,
-        title: `MR #${i}`,
-        source_branch: `branch-${i}`,
-        web_url: '',
-        author: 'alice',
-        created_at: '2024-01-15T10:00:00Z',
-        draft: false,
-      })),
-    };
-    setData(bigPayload);
-    render(<GitLabPanel mode="compact" />);
-    expect(screen.getByText('50+')).toBeTruthy();
-  });
+    it('shows 50+ when MR count is at the limit', () => {
+        const bigPayload: GitLabStatePayload = {
+            ...livePayload,
+            mrs: Array.from({ length: 50 }, (_, i) => ({
+                id: i,
+                iid: i,
+                title: `MR #${i}`,
+                source_branch: `branch-${i}`,
+                web_url: '',
+                author: 'alice',
+                created_at: '2024-01-15T10:00:00Z',
+                draft: false,
+            })),
+        };
+        setData(bigPayload);
+        render(<GitLabPanel mode="compact" />);
+        expect(screen.getByText('50+')).toBeTruthy();
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -177,51 +181,51 @@ describe('GitLabPanel compact mode', () => {
 // ---------------------------------------------------------------------------
 
 describe('GitLabPanel expanded mode', () => {
-  it('shows waiting message when data is null', () => {
-    render(<GitLabPanel mode="expanded" />);
-    expect(screen.getByText(/Waiting for GitLab data/i)).toBeTruthy();
-  });
+    it('shows waiting message when data is null', () => {
+        render(<GitLabPanel mode="expanded" />);
+        expect(screen.getByText(/Waiting for GitLab data/i)).toBeTruthy();
+    });
 
-  it('renders pipeline project name in expanded mode', () => {
-    setData(livePayload);
-    render(<GitLabPanel mode="expanded" />);
-    // PipelineRow splits "group/project" → shows "project" as project name
-    expect(screen.getByText('project')).toBeTruthy();
-  });
+    it('renders pipeline project name in expanded mode', () => {
+        setData(livePayload);
+        render(<GitLabPanel mode="expanded" />);
+        // PipelineRow splits "group/project" → shows "project" as project name
+        expect(screen.getByText('project')).toBeTruthy();
+    });
 
-  it('renders pipeline status pill in expanded mode', () => {
-    setData(livePayload);
-    render(<GitLabPanel mode="expanded" />);
-    // "passed" pill rendered for success status
-    expect(screen.getByText('passed')).toBeTruthy();
-  });
+    it('renders pipeline status pill in expanded mode', () => {
+        setData(livePayload);
+        render(<GitLabPanel mode="expanded" />);
+        // "passed" pill rendered for success status
+        expect(screen.getByText('passed')).toBeTruthy();
+    });
 
-  it('shows error banner when data.error is set', () => {
-    setData({ ...livePayload, error: 'Connection refused' });
-    render(<GitLabPanel mode="expanded" />);
-    expect(screen.getByText('Connection refused')).toBeTruthy();
-  });
+    it('shows error banner when data.error is set', () => {
+        setData({ ...livePayload, error: 'Connection refused' });
+        render(<GitLabPanel mode="expanded" />);
+        expect(screen.getByText('Connection refused')).toBeTruthy();
+    });
 
-  it('shows "No pipelines configured" when pipelines is empty', () => {
-    setData({ ...livePayload, pipelines: [] });
-    render(<GitLabPanel mode="expanded" />);
-    expect(screen.getByText('No pipelines configured')).toBeTruthy();
-  });
+    it('shows "No pipelines configured" when pipelines is empty', () => {
+        setData({ ...livePayload, pipelines: [] });
+        render(<GitLabPanel mode="expanded" />);
+        expect(screen.getByText('No pipelines configured')).toBeTruthy();
+    });
 
-  it('renders at most 3 pipeline rows', () => {
-    const manyPipelines: GitLabStatePayload = {
-      ...livePayload,
-      pipelines: Array.from({ length: 5 }, (_, i) => ({
-        project: `group/project-${i}`,
-        status: 'success' as const,
-        web_url: '',
-        created_at: '2024-01-15T11:00:00Z',
-      })),
-    };
-    setData(manyPipelines);
-    render(<GitLabPanel mode="expanded" />);
-    // Only 3 rows shown (slice(0,3))
-    const rows = screen.getAllByText(/project-[0-4]/);
-    expect(rows.length).toBeLessThanOrEqual(3);
-  });
+    it('renders at most 3 pipeline rows', () => {
+        const manyPipelines: GitLabStatePayload = {
+            ...livePayload,
+            pipelines: Array.from({ length: 5 }, (_, i) => ({
+                project: `group/project-${i}`,
+                status: 'success' as const,
+                web_url: '',
+                created_at: '2024-01-15T11:00:00Z',
+            })),
+        };
+        setData(manyPipelines);
+        render(<GitLabPanel mode="expanded" />);
+        // Only 3 rows shown (slice(0,3))
+        const rows = screen.getAllByText(/project-[0-4]/);
+        expect(rows.length).toBeLessThanOrEqual(3);
+    });
 });

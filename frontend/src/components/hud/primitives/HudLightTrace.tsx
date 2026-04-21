@@ -11,21 +11,18 @@ import '../hud.css';
 import './HudLightTrace.css';
 
 export interface HudLightTraceProps {
-  className?: string;
+    className?: string;
 }
 
 export function HudLightTrace({ className }: HudLightTraceProps): ReactElement {
-  return (
-    <div
-      className={['hud-light-trace', className].filter(Boolean).join(' ')}
-      aria-hidden
-    >
-      <span className="hud-trace hud-trace--top" />
-      <span className="hud-trace hud-trace--bottom" />
-      <span className="hud-trace hud-trace--left" />
-      <span className="hud-trace hud-trace--right" />
-    </div>
-  );
+    return (
+        <div className={['hud-light-trace', className].filter(Boolean).join(' ')} aria-hidden>
+            <span className="hud-trace hud-trace--top" />
+            <span className="hud-trace hud-trace--bottom" />
+            <span className="hud-trace hud-trace--left" />
+            <span className="hud-trace hud-trace--right" />
+        </div>
+    );
 }
 
 export default HudLightTrace;

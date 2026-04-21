@@ -1,0 +1,23 @@
+/* ================================================================
+   lib-slot-ghost — empty slot placeholder marker.
+   Class prefix: .lib-slot-ghost
+   ================================================================ */
+
+.lib-slot-ghost {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px dashed var(--border);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lib-slot-ghost__label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-family: var(--font, 'JetBrains Mono', monospace);
+    user-select: none;
+}

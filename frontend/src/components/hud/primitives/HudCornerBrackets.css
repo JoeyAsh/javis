@@ -1,26 +1,59 @@
 /* ====================== Corner brackets ====================== */
 
 .hud-corner-bracket {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border-color: var(--accent);
-  border-style: solid;
-  opacity: .7;
-  transition: width .3s var(--ease, cubic-bezier(.4,0,.2,1)), height .3s var(--ease, cubic-bezier(.4,0,.2,1)), opacity .25s, border-color .25s;
-  pointer-events: none;
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-color: var(--accent);
+    border-style: solid;
+    opacity: 0.7;
+    transition:
+        width 0.3s var(--ease, cubic-bezier(0.4, 0, 0.2, 1)),
+        height 0.3s var(--ease, cubic-bezier(0.4, 0, 0.2, 1)),
+        opacity 0.25s,
+        border-color 0.25s;
+    pointer-events: none;
 }
 
-.hud-corner-bracket.tl { top: -2px; left: -2px; border-width: 1px 0 0 1px; }
-.hud-corner-bracket.tr { top: -2px; right: -2px; border-width: 1px 1px 0 0; }
-.hud-corner-bracket.bl { bottom: -2px; left: -2px; border-width: 0 0 1px 1px; }
-.hud-corner-bracket.br { bottom: -2px; right: -2px; border-width: 0 1px 1px 0; }
+.hud-corner-bracket.tl {
+    top: -2px;
+    left: -2px;
+    border-width: 1px 0 0 1px;
+}
+.hud-corner-bracket.tr {
+    top: -2px;
+    right: -2px;
+    border-width: 1px 1px 0 0;
+}
+.hud-corner-bracket.bl {
+    bottom: -2px;
+    left: -2px;
+    border-width: 0 0 1px 1px;
+}
+.hud-corner-bracket.br {
+    bottom: -2px;
+    right: -2px;
+    border-width: 0 1px 1px 0;
+}
 
-.hud-panel:hover .hud-corner-bracket { width: 14px; height: 14px; opacity: .85; border-color: var(--accent-bright); }
-.hud-panel--focused .hud-corner-bracket { width: 20px; height: 20px; opacity: 1; border-color: var(--accent-bright); animation: cornerBreath 2.6s ease-in-out infinite; }
+.hud-panel:hover .hud-corner-bracket {
+    width: 14px;
+    height: 14px;
+    opacity: 0.85;
+    border-color: var(--accent-bright);
+}
+.hud-panel--focused .hud-corner-bracket {
+    width: 20px;
+    height: 20px;
+    opacity: 1;
+    border-color: var(--accent-bright);
+    animation: cornerBreath 2.6s ease-in-out infinite;
+}
 
 /* ====================== Reduced-motion ====================== */
 
 @media (prefers-reduced-motion: reduce) {
-  .hud-panel--focused .hud-corner-bracket { animation: none; }
+    .hud-panel--focused .hud-corner-bracket {
+        animation: none;
+    }
 }

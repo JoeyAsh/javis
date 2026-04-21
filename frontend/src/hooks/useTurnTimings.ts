@@ -7,8 +7,8 @@ import type { TurnTimingPayload } from '../types';
 import { subscribeTurnTimingStream } from './useWebSocket';
 
 export interface UseTurnTimingsReturn {
-  /** Last 5 turn-timing records, oldest first. */
-  turns: ReadonlyArray<TurnTimingPayload>;
+    /** Last 5 turn-timing records, oldest first. */
+    turns: ReadonlyArray<TurnTimingPayload>;
 }
 
 const MAX_TURNS = 5;
@@ -19,19 +19,19 @@ const MAX_TURNS = 5;
  * @returns The last 5 `TurnTimingPayload` records (oldest first).
  */
 export function useTurnTimings(): UseTurnTimingsReturn {
-  const [turns, setTurns] = useState<ReadonlyArray<TurnTimingPayload>>([]);
+    const [turns, setTurns] = useState<ReadonlyArray<TurnTimingPayload>>([]);
 
-  useEffect(() => {
-    const unsub = subscribeTurnTimingStream((payload: TurnTimingPayload) => {
-      setTurns((prev) => {
-        const next = [...prev, payload];
-        return next.length > MAX_TURNS ? next.slice(next.length - MAX_TURNS) : next;
-      });
-    });
-    return unsub;
-  }, []);
+    useEffect(() => {
+        const unsub = subscribeTurnTimingStream((payload: TurnTimingPayload) => {
+            setTurns((prev) => {
+                const next = [...prev, payload];
+                return next.length > MAX_TURNS ? next.slice(next.length - MAX_TURNS) : next;
+            });
+        });
+        return unsub;
+    }, []);
 
-  return { turns };
+    return { turns };
 }
 
 export default useTurnTimings;

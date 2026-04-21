@@ -12,60 +12,53 @@
  * otherwise — panels that have no async backend (System, Transcript, Dev, Log,
  * SelfFix) never call `usePanelAvailable` and remain visible always.
  */
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { PanelId } from '../../types';
 
 type AvailabilityMap = Partial<Record<PanelId, boolean>>;
 
 interface PanelAvailabilityValue {
-  availability: AvailabilityMap;
-  report: (id: PanelId, available: boolean) => void;
+    availability: AvailabilityMap;
+    report: (id: PanelId, available: boolean) => void;
 }
 
 const PanelAvailabilityContext = createContext<PanelAvailabilityValue | null>(null);
 
 export interface PanelAvailabilityProviderProps {
-  children: ReactNode;
+    children: ReactNode;
 }
 
 export function PanelAvailabilityProvider({
-  children,
+    children,
 }: PanelAvailabilityProviderProps): ReactElement {
-  const [availability, setAvailability] = useState<AvailabilityMap>({});
+    const [availability, setAvailability] = useState<AvailabilityMap>({});
 
-  const report = useCallback((id: PanelId, available: boolean): void => {
-    setAvailability((prev) => {
-      if (prev[id] === available) return prev;
-      return { ...prev, [id]: available };
-    });
-  }, []);
+    const report = useCallback((id: PanelId, available: boolean): void => {
+        setAvailability((prev) => {
+            if (prev[id] === available) return prev;
+            return { ...prev, [id]: available };
+        });
+    }, []);
 
-  const value = useMemo<PanelAvailabilityValue>(
-    () => ({ availability, report }),
-    [availability, report],
-  );
+    const value = useMemo<PanelAvailabilityValue>(
+        () => ({ availability, report }),
+        [availability, report],
+    );
 
-  return (
-    <PanelAvailabilityContext.Provider value={value}>
-      {children}
-    </PanelAvailabilityContext.Provider>
-  );
+    return (
+        <PanelAvailabilityContext.Provider value={value}>
+            {children}
+        </PanelAvailabilityContext.Provider>
+    );
 }
 
 function usePanelAvailabilityContext(): PanelAvailabilityValue {
-  const ctx = useContext(PanelAvailabilityContext);
-  if (!ctx) {
-    throw new Error('usePanelAvailable must be used inside <PanelAvailabilityProvider>');
-  }
-  return ctx;
+    const ctx = useContext(PanelAvailabilityContext);
+    if (!ctx) {
+        throw new Error('usePanelAvailable must be used inside <PanelAvailabilityProvider>');
+    }
+    return ctx;
 }
 
 /**
@@ -74,11 +67,11 @@ function usePanelAvailabilityContext(): PanelAvailabilityValue {
  * correctly and never happen during render.
  */
 export function usePanelAvailable(id: PanelId, available: boolean): void {
-  const { report } = usePanelAvailabilityContext();
+    const { report } = usePanelAvailabilityContext();
 
-  useEffect(() => {
-    report(id, available);
-  }, [id, available, report]);
+    useEffect(() => {
+        report(id, available);
+    }, [id, available, report]);
 }
 
 /**
@@ -86,11 +79,11 @@ export function usePanelAvailable(id: PanelId, available: boolean): void {
  * A panel with no entry defaults to `true` (available).
  */
 export function useAvailabilityMap(): AvailabilityMap {
-  const { availability } = usePanelAvailabilityContext();
-  return availability;
+    const { availability } = usePanelAvailabilityContext();
+    return availability;
 }
 
 export function isPanelAvailable(map: AvailabilityMap, id: PanelId): boolean {
-  const v = map[id];
-  return v === undefined || v === true;
+    const v = map[id];
+    return v === undefined || v === true;
 }

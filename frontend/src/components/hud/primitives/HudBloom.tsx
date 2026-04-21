@@ -8,11 +8,11 @@
 import type { ReactElement } from 'react';
 
 export interface HudBloomProps {
-  className?: string;
+    className?: string;
 }
 
 export function HudBloom(_props: HudBloomProps): ReactElement {
-  return <></>;
+    return <></>;
 }
 
 export default HudBloom;

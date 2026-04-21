@@ -16,19 +16,19 @@ import type { ReactElement, ReactNode } from 'react';
 import type { SfxEvent } from '../config/audio';
 
 export interface SfxContextValue {
-  playOneShot: (event: SfxEvent) => void;
+    playOneShot: (event: SfxEvent) => void;
 }
 
 /** Fallback: no-op so components don't crash outside a provider in tests. */
 const defaultValue: SfxContextValue = {
-  playOneShot: () => undefined,
+    playOneShot: () => undefined,
 };
 
 export const SfxContext = createContext<SfxContextValue>(defaultValue);
 
 export interface SfxProviderProps {
-  playOneShot: (event: SfxEvent) => void;
-  children: ReactNode;
+    playOneShot: (event: SfxEvent) => void;
+    children: ReactNode;
 }
 
 /**
@@ -36,8 +36,8 @@ export interface SfxProviderProps {
  * `useAudioEngine`. Mount once at the App root.
  */
 export function SfxProvider({ playOneShot, children }: SfxProviderProps): ReactElement {
-  const value: SfxContextValue = { playOneShot };
-  return <SfxContext.Provider value={value}>{children}</SfxContext.Provider>;
+    const value: SfxContextValue = { playOneShot };
+    return <SfxContext.Provider value={value}>{children}</SfxContext.Provider>;
 }
 
 /**
@@ -45,7 +45,7 @@ export function SfxProvider({ playOneShot, children }: SfxProviderProps): ReactE
  * (convenient in unit tests that don't care about SFX).
  */
 export function useSfx(): SfxContextValue {
-  return useContext(SfxContext);
+    return useContext(SfxContext);
 }
 
 export default SfxContext;

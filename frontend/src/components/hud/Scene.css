@@ -9,80 +9,84 @@
  */
 
 .hud-scene {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-  background: radial-gradient(ellipse at 50% 52%, #0a1220 0%, #05080f 45%, #020206 100%);
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 52%, #0a1220 0%, #05080f 45%, #020206 100%);
 }
 
 .hud-scene__layer {
-  position: absolute;
-  inset: 0;
+    position: absolute;
+    inset: 0;
 }
 
 /* Radial bg is baked into .hud-scene itself (see above) */
 .hud-scene__layer--radial-bg {
-  display: none;
+    display: none;
 }
 
 /* Grid — 44×44 px, drifts diagonally, masked ellipse */
 .hud-scene__layer--grid {
-  inset: -4px;
-  background-image:
-    linear-gradient(rgba(76,168,232,0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(76,168,232,0.055) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
-  -webkit-mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
-  animation: gridDrift 28s linear infinite;
-  will-change: background-position;
+    inset: -4px;
+    background-image:
+        linear-gradient(rgba(76, 168, 232, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(76, 168, 232, 0.055) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 65% at 50% 55%, black 10%, transparent 85%);
+    animation: gridDrift 28s linear infinite;
+    will-change: background-position;
 }
 
 /* Scanlines — repeating 3px/1px cyan strip */
 .hud-scene__layer--scanlines {
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 3px,
-    rgba(110,196,255,0.025) 3px,
-    rgba(110,196,255,0.025) 4px
-  );
-  mix-blend-mode: screen;
-  opacity: 0.7;
+    background: repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 3px,
+        rgba(110, 196, 255, 0.025) 3px,
+        rgba(110, 196, 255, 0.025) 4px
+    );
+    mix-blend-mode: screen;
+    opacity: 0.7;
 }
 
 /* Noise — SVG turbulence data-URI, overlay blend */
 .hud-scene__layer--noise {
-  /* background-image set inline (data-URI) */
-  background-size: 200px 200px;
-  opacity: 0.06;
-  mix-blend-mode: overlay;
+    /* background-image set inline (data-URI) */
+    background-size: 200px 200px;
+    opacity: 0.06;
+    mix-blend-mode: overlay;
 }
 
 /* Horizon glow — bottom 38% height, gradient from bottom */
 .hud-scene__layer--horizon {
-  inset: unset;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 38%;
-  background: linear-gradient(to top, rgba(76,168,232,0.08), transparent);
+    inset: unset;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 38%;
+    background: linear-gradient(to top, rgba(76, 168, 232, 0.08), transparent);
 }
 
 /* Stars layer — all individual star spans positioned inline in Scene.tsx */
 .hud-scene__layer--stars {
-  opacity: 0.6;
+    opacity: 0.6;
 }
 
 /* Vignette */
 .hud-scene__layer--vignette {
-  background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.78) 100%);
+    background: radial-gradient(ellipse at center, transparent 38%, rgba(0, 0, 0, 0.78) 100%);
 }
 
 /* Reduced-motion: pause animated layers */
 @media (prefers-reduced-motion: reduce) {
-  .hud-scene__layer--grid  { animation: none !important; }
-  .scene-star              { animation: none !important; }
+    .hud-scene__layer--grid {
+        animation: none !important;
+    }
+    .scene-star {
+        animation: none !important;
+    }
 }

@@ -15,18 +15,18 @@
  * Backend wires this in issue #54.
  */
 export interface Zone {
-  /** Unique entity ID — e.g. "light.living_room", "lr", "kt" */
-  id: string;
-  /** Human-readable display label — e.g. "Living Room", "Kitchen" */
-  label: string;
-  /** Whether the zone is currently on */
-  on: boolean;
-  /** Brightness percentage 0–100 */
-  brightness: number;
-  /** Optional color — hex or CSS named color */
-  color?: string;
-  /** Whether the zone has an active scene applied */
-  active?: boolean;
+    /** Unique entity ID — e.g. "light.living_room", "lr", "kt" */
+    id: string;
+    /** Human-readable display label — e.g. "Living Room", "Kitchen" */
+    label: string;
+    /** Whether the zone is currently on */
+    on: boolean;
+    /** Brightness percentage 0–100 */
+    brightness: number;
+    /** Optional color — hex or CSS named color */
+    color?: string;
+    /** Whether the zone has an active scene applied */
+    active?: boolean;
 }
 
 /**
@@ -34,9 +34,9 @@ export interface Zone {
  * Backend wires these in issue #54.
  */
 export type ZoneAction =
-  | { type: 'toggle' }
-  | { type: 'brightness'; value: number }
-  | { type: 'color'; value: string };
+    | { type: 'toggle' }
+    | { type: 'brightness'; value: number }
+    | { type: 'color'; value: string };
 
 /**
  * Props for the dormant LightsPanel component.
@@ -47,20 +47,20 @@ export type ZoneAction =
  * Backend wires `zones` and `onAction` in issue #54.
  */
 export interface LightsPanelProps {
-  /**
-   * Zones received from Home Assistant via WS backend.
-   * Empty array or undefined → shows placeholder.
-   * Backend wires this in #54.
-   */
-  zones?: Zone[];
-  /**
-   * Optional action dispatcher for turning zones on/off, setting brightness/color.
-   * Backend wires this in #54.
-   */
-  onAction?: (zoneId: string, action: ZoneAction) => void;
-  /**
-   * PanelMode for compact/expanded switching (passed down from WindowManager via
-   * the Window render function). Kept for API compatibility with other panels.
-   */
-  mode?: 'compact' | 'expanded';
+    /**
+     * Zones received from Home Assistant via WS backend.
+     * Empty array or undefined → shows placeholder.
+     * Backend wires this in #54.
+     */
+    zones?: Zone[];
+    /**
+     * Optional action dispatcher for turning zones on/off, setting brightness/color.
+     * Backend wires this in #54.
+     */
+    onAction?: (zoneId: string, action: ZoneAction) => void;
+    /**
+     * PanelMode for compact/expanded switching (passed down from WindowManager via
+     * the Window render function). Kept for API compatibility with other panels.
+     */
+    mode?: 'compact' | 'expanded';
 }

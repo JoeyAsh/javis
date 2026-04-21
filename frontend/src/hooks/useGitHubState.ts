@@ -14,10 +14,10 @@ import type { GitHubStatePayload } from '../types';
 import { subscribeGitHubStateStream } from './useWebSocket';
 
 export interface UseGitHubStateReturn {
-  /** Latest GitHub state payload, or `null` before first message. */
-  data: GitHubStatePayload | null;
-  /** True until the first `github_state` frame is received. */
-  loading: boolean;
+    /** Latest GitHub state payload, or `null` before first message. */
+    data: GitHubStatePayload | null;
+    /** True until the first `github_state` frame is received. */
+    loading: boolean;
 }
 
 /**
@@ -26,16 +26,16 @@ export interface UseGitHubStateReturn {
  * @returns `{ data, loading }` — `data` is null before first message.
  */
 export function useGitHubState(): UseGitHubStateReturn {
-  const [data, setData] = useState<GitHubStatePayload | null>(null);
-  const [loading, setLoading] = useState(true);
+    const [data, setData] = useState<GitHubStatePayload | null>(null);
+    const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const unsubscribe = subscribeGitHubStateStream((payload) => {
-      setData(payload);
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, []);
+    useEffect(() => {
+        const unsubscribe = subscribeGitHubStateStream((payload) => {
+            setData(payload);
+            setLoading(false);
+        });
+        return unsubscribe;
+    }, []);
 
-  return { data, loading };
+    return { data, loading };
 }

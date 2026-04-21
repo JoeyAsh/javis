@@ -40,12 +40,12 @@ const SCENE_STYLE = `
 `;
 
 export interface SceneProps {
-  /** Show the animated grid underlay. */
-  grid?: boolean;
-  /** Show the repeating scanline overlay. */
-  scan?: boolean;
-  /** Show 60 random twinkling stars. */
-  stars?: boolean;
+    /** Show the animated grid underlay. */
+    grid?: boolean;
+    /** Show the repeating scanline overlay. */
+    scan?: boolean;
+    /** Show 60 random twinkling stars. */
+    stars?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,30 +54,30 @@ export interface SceneProps {
 // ---------------------------------------------------------------------------
 
 interface StarDatum {
-  id: number;
-  top: string;
-  left: string;
-  delay: string;
+    id: number;
+    top: string;
+    left: string;
+    delay: string;
 }
 
 function generateStars(count: number): StarDatum[] {
-  // Deterministic LCG so star positions never shift between renders.
-  let seed = 0x6d2b4a1e;
-  const rand = (): number => {
-    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
-    return (seed >>> 0) / 0xffffffff;
-  };
+    // Deterministic LCG so star positions never shift between renders.
+    let seed = 0x6d2b4a1e;
+    const rand = (): number => {
+        seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+        return (seed >>> 0) / 0xffffffff;
+    };
 
-  const stars: StarDatum[] = [];
-  for (let i = 0; i < count; i++) {
-    stars.push({
-      id: i,
-      left: `${(rand() * 100).toFixed(2)}%`,
-      top: `${(rand() * 100).toFixed(2)}%`,
-      delay: `${(rand() * 4).toFixed(2)}s`,
-    });
-  }
-  return stars;
+    const stars: StarDatum[] = [];
+    for (let i = 0; i < count; i++) {
+        stars.push({
+            id: i,
+            left: `${(rand() * 100).toFixed(2)}%`,
+            top: `${(rand() * 100).toFixed(2)}%`,
+            delay: `${(rand() * 4).toFixed(2)}s`,
+        });
+    }
+    return stars;
 }
 
 // Minimal SVG turbulence noise — baseFrequency 0.9 matches prototype.
@@ -89,53 +89,53 @@ const NOISE_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='2
 
 /** Full-screen animated scene background. Mount once at `z-index: 0`. */
 export function Scene({ grid = true, scan = true, stars = true }: SceneProps): ReactElement {
-  const starData = useMemo(() => generateStars(60), []);
+    const starData = useMemo(() => generateStars(60), []);
 
-  return (
-    <>
-      {/* Inject keyframes once — retained for JSDOM test assertions */}
-      <style dangerouslySetInnerHTML={{ __html: SCENE_STYLE }} />
+    return (
+        <>
+            {/* Inject keyframes once — retained for JSDOM test assertions */}
+            <style dangerouslySetInnerHTML={{ __html: SCENE_STYLE }} />
 
-      <div className="hud-scene" aria-hidden>
-        {/* Grid — 44×44 px drifting, ellipse-masked */}
-        {grid && <div className="hud-scene__layer hud-scene__layer--grid" />}
+            <div className="hud-scene" aria-hidden>
+                {/* Grid — 44×44 px drifting, ellipse-masked */}
+                {grid && <div className="hud-scene__layer hud-scene__layer--grid" />}
 
-        {/* Scanlines — 3px/1px repeating, screen blend */}
-        {scan && <div className="hud-scene__layer hud-scene__layer--scanlines" />}
+                {/* Scanlines — 3px/1px repeating, screen blend */}
+                {scan && <div className="hud-scene__layer hud-scene__layer--scanlines" />}
 
-        {/* Noise — SVG turbulence overlay blend */}
-        <div
-          className="hud-scene__layer hud-scene__layer--noise"
-          style={{ backgroundImage: `url("data:image/svg+xml,${NOISE_SVG}")` }}
-        />
+                {/* Noise — SVG turbulence overlay blend */}
+                <div
+                    className="hud-scene__layer hud-scene__layer--noise"
+                    style={{ backgroundImage: `url("data:image/svg+xml,${NOISE_SVG}")` }}
+                />
 
-        {/* Horizon glow — bottom 38% */}
-        <div className="hud-scene__layer hud-scene__layer--horizon" />
+                {/* Horizon glow — bottom 38% */}
+                <div className="hud-scene__layer hud-scene__layer--horizon" />
 
-        {/* Stars — 60 deterministic twinkle dots */}
-        <div className="hud-scene__layer hud-scene__layer--stars">
-          {stars &&
-            starData.map((s) => {
-              const starStyle: CSSProperties = {
-                position: 'absolute',
-                left: s.left,
-                top: s.top,
-                width: 1,
-                height: 1,
-                background: 'var(--text)',
-                borderRadius: '50%',
-                boxShadow: '0 0 4px var(--accent-bright)',
-                animation: `twinkle 4s ease-in-out ${s.delay} infinite`,
-              };
-              return <i key={s.id} className="scene-star" style={starStyle} />;
-            })}
-        </div>
+                {/* Stars — 60 deterministic twinkle dots */}
+                <div className="hud-scene__layer hud-scene__layer--stars">
+                    {stars &&
+                        starData.map((s) => {
+                            const starStyle: CSSProperties = {
+                                position: 'absolute',
+                                left: s.left,
+                                top: s.top,
+                                width: 1,
+                                height: 1,
+                                background: 'var(--text)',
+                                borderRadius: '50%',
+                                boxShadow: '0 0 4px var(--accent-bright)',
+                                animation: `twinkle 4s ease-in-out ${s.delay} infinite`,
+                            };
+                            return <i key={s.id} className="scene-star" style={starStyle} />;
+                        })}
+                </div>
 
-        {/* Vignette */}
-        <div className="hud-scene__layer hud-scene__layer--vignette" />
-      </div>
-    </>
-  );
+                {/* Vignette */}
+                <div className="hud-scene__layer hud-scene__layer--vignette" />
+            </div>
+        </>
+    );
 }
 
 export default Scene;

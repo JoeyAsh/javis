@@ -1,0 +1,30 @@
+/* ================================================================
+   PanelBloom — standalone radial-gradient bloom overlay.
+   Keyframes (panelBloom) live in lib.css.
+   ================================================================ */
+
+.lib-panel-bloom {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: 2px;
+    background:
+        radial-gradient(
+            120% 70% at 50% 0%,
+            color-mix(in srgb, var(--accent) 16%, transparent) 0%,
+            transparent 55%
+        ),
+        radial-gradient(
+            120% 70% at 50% 100%,
+            color-mix(in srgb, var(--accent) 10%, transparent) 0%,
+            transparent 55%
+        );
+    mix-blend-mode: screen;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.lib-panel-bloom.active {
+    opacity: 1;
+    animation: panelBloom 2.6s ease-in-out infinite;
+}

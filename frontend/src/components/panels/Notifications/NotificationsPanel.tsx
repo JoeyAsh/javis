@@ -19,97 +19,95 @@ import './NotificationsPanel.css';
 const AVAILABILITY_TIMEOUT_MS = 10_000;
 
 export interface NotificationsPanelProps {
-  /** Optional override — short-circuits the live subscription. */
-  notifications?: HudNotification[];
-  paused?: boolean;
-  mode?: PanelMode;
+    /** Optional override — short-circuits the live subscription. */
+    notifications?: HudNotification[];
+    paused?: boolean;
+    mode?: PanelMode;
 }
 
 function severityDotColor(sev: NotificationSeverity): string {
-  switch (sev) {
-    case 'urgent':
-      return 'var(--error)';
-    case 'warning':
-      return 'var(--warning)';
-    case 'info':
-      return 'var(--accent-bright)';
-  }
+    switch (sev) {
+        case 'urgent':
+            return 'var(--error)';
+        case 'warning':
+            return 'var(--warning)';
+        case 'info':
+            return 'var(--accent-bright)';
+    }
 }
 
 function severityTitleColor(sev: NotificationSeverity): string {
-  switch (sev) {
-    case 'urgent':
-      return 'var(--error)';
-    case 'warning':
-      return 'var(--warning)';
-    case 'info':
-      return 'var(--accent-bright)';
-  }
+    switch (sev) {
+        case 'urgent':
+            return 'var(--error)';
+        case 'warning':
+            return 'var(--warning)';
+        case 'info':
+            return 'var(--accent-bright)';
+    }
 }
 
 // ---- Compact mode ----
 
 function NotificationsCompact({
-  notifications,
+    notifications,
 }: {
-  notifications: HudNotification[];
+    notifications: HudNotification[];
 }): ReactElement {
-  const top = notifications[0];
-  const remaining = Math.max(0, notifications.length - 1);
+    const top = notifications[0];
+    const remaining = Math.max(0, notifications.length - 1);
 
-  if (!top) {
+    if (!top) {
+        return (
+            <div className="notif-compact">
+                <span className="notif-empty">Keine aktiven Benachrichtigungen</span>
+            </div>
+        );
+    }
+
     return (
-      <div className="notif-compact">
-        <span className="notif-empty">Keine aktiven Benachrichtigungen</span>
-      </div>
+        <div className="notif-compact">
+            <div className="notif-compact__row">
+                <span
+                    aria-hidden
+                    className="notif-compact__dot"
+                    style={{ background: severityDotColor(top.severity) }}
+                />
+                <span
+                    className="notif-compact__title"
+                    style={{ color: severityTitleColor(top.severity) }}
+                >
+                    {top.title}
+                </span>
+                {remaining > 0 && <span className="notif-compact__badge">+{remaining}</span>}
+            </div>
+            <div className="notif-compact__detail">{top.detail}</div>
+        </div>
     );
-  }
-
-  return (
-    <div className="notif-compact">
-      <div className="notif-compact__row">
-        <span
-          aria-hidden
-          className="notif-compact__dot"
-          style={{ background: severityDotColor(top.severity) }}
-        />
-        <span
-          className="notif-compact__title"
-          style={{ color: severityTitleColor(top.severity) }}
-        >
-          {top.title}
-        </span>
-        {remaining > 0 && (
-          <span className="notif-compact__badge">+{remaining}</span>
-        )}
-      </div>
-      <div className="notif-compact__detail">{top.detail}</div>
-    </div>
-  );
 }
 
 // ---- Expanded mode ----
 
 function NotificationsExpanded({
-  notifications,
+    notifications,
 }: {
-  notifications: HudNotification[];
+    notifications: HudNotification[];
 }): ReactElement {
-  if (notifications.length === 0) {
-    return (
-      <div className="notif-panel">
-        <span className="notif-empty">Keine aktiven Benachrichtigungen</span>
-      </div>
-    );
-  }
+    if (notifications.length === 0) {
+        return (
+            <div className="notif-panel">
+                <span className="notif-empty">Keine aktiven Benachrichtigungen</span>
+            </div>
+        );
+    }
 
-  return (
-    <div className="notif-panel">
-      {notifications.map((n) => (
-        <NotificationItem key={n.id} notification={n} />
-      ))}
-    </div>
-  );
+    return (
+        <div className="notif-panel">
+            {notifications.map((n) => (
+                <NotificationItem key={n.id} notification={n} />
+            ))}
+        </div>
+    );
 }
 
 // ---- Props + main export ----
@@ -120,52 +118,52 @@ function NotificationsExpanded({
  * Returns null if no backend payload arrives within AVAILABILITY_TIMEOUT_MS.
  */
 export function NotificationsPanel({
-  notifications,
-  mode = 'expanded',
+    notifications,
+    mode = 'expanded',
 }: NotificationsPanelProps): ReactElement | null {
-  const { notifications: live, isLive } = useNotifications();
-  const [backendAvailable, setBackendAvailable] = useState(true);
-  const availabilityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const { notifications: live, isLive } = useNotifications();
+    const [backendAvailable, setBackendAvailable] = useState(true);
+    const availabilityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  usePanelAvailable('notifications', backendAvailable || isLive);
+    usePanelAvailable('notifications', backendAvailable || isLive);
 
-  useEffect(() => {
-    if (notifications !== undefined) return;
-    availabilityTimerRef.current = setTimeout(() => {
-      setBackendAvailable(false);
-    }, AVAILABILITY_TIMEOUT_MS);
-    return () => {
-      if (availabilityTimerRef.current) clearTimeout(availabilityTimerRef.current);
-    };
-  }, [notifications]);
+    useEffect(() => {
+        if (notifications !== undefined) return;
+        availabilityTimerRef.current = setTimeout(() => {
+            setBackendAvailable(false);
+        }, AVAILABILITY_TIMEOUT_MS);
+        return () => {
+            if (availabilityTimerRef.current) clearTimeout(availabilityTimerRef.current);
+        };
+    }, [notifications]);
 
-  // Once live data arrives, cancel the availability timer.
-  useEffect(() => {
-    if (isLive && availabilityTimerRef.current) {
-      clearTimeout(availabilityTimerRef.current);
-      setBackendAvailable(true);
-    }
-  }, [isLive]);
+    // Once live data arrives, cancel the availability timer.
+    useEffect(() => {
+        if (isLive && availabilityTimerRef.current) {
+            clearTimeout(availabilityTimerRef.current);
+            setBackendAvailable(true);
+        }
+    }, [isLive]);
 
-  // Track previous IDs to detect new arrivals (for info_pop SFX).
-  const prevIdsRef = useRef<Set<string>>(new Set());
-  const source: HudNotification[] = notifications !== undefined ? notifications : live;
+    // Track previous IDs to detect new arrivals (for info_pop SFX).
+    const prevIdsRef = useRef<Set<string>>(new Set());
+    const source: HudNotification[] = notifications !== undefined ? notifications : live;
 
-  useEffect(() => {
-    const currentIds = new Set(source.map((n) => n.id));
-    prevIdsRef.current = currentIds;
-  });
+    useEffect(() => {
+        const currentIds = new Set(source.map((n) => n.id));
+        prevIdsRef.current = currentIds;
+    });
 
-  const displayed = useMemo<HudNotification[]>(() => source, [source]);
+    const displayed = useMemo<HudNotification[]>(() => source, [source]);
 
-  // Backend not available — hide the panel.
-  if (notifications === undefined && !backendAvailable && !isLive) return null;
+    // Backend not available — hide the panel.
+    if (notifications === undefined && !backendAvailable && !isLive) return null;
 
-  return mode === 'compact' ? (
-    <NotificationsCompact notifications={displayed} />
-  ) : (
-    <NotificationsExpanded notifications={displayed} />
-  );
+    return mode === 'compact' ? (
+        <NotificationsCompact notifications={displayed} />
+    ) : (
+        <NotificationsExpanded notifications={displayed} />
+    );
 }
 
 export default NotificationsPanel;

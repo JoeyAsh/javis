@@ -9,34 +9,23 @@ import type { ReactElement, ReactNode } from 'react';
 import './HudList.css';
 
 export interface HudListProps {
-  children: ReactNode;
-  className?: string;
+    children: ReactNode;
+    className?: string;
 }
 
 export interface HudListItemProps {
-  children: ReactNode;
-  className?: string;
+    children: ReactNode;
+    className?: string;
 }
 
 /** Styled `<ul>` wrapper. Children should be `<HudListItem>` elements. */
 export function HudList({ children, className }: HudListProps): ReactElement {
-  return (
-    <ul className={['hud-list', className].filter(Boolean).join(' ')}>
-      {children}
-    </ul>
-  );
+    return <ul className={['hud-list', className].filter(Boolean).join(' ')}>{children}</ul>;
 }
 
 /** Styled `<li>` item. Provide a stable `key` on the call-site. */
-export function HudListItem({
-  children,
-  className,
-}: HudListItemProps): ReactElement {
-  return (
-    <li className={['hud-list-item', className].filter(Boolean).join(' ')}>
-      {children}
-    </li>
-  );
+export function HudListItem({ children, className }: HudListItemProps): ReactElement {
+    return <li className={['hud-list-item', className].filter(Boolean).join(' ')}>{children}</li>;
 }
 
 export default HudList;

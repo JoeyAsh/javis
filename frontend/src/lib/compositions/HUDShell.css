@@ -1,0 +1,38 @@
+/* ================================================================
+   HUDShell — fullscreen root HUD compositor.
+   Ported from handoff App container (lines 1112-1143).
+   ================================================================ */
+
+.hud-shell {
+    position: fixed;
+    inset: 0;
+}
+
+/* Slot wrappers */
+.hud-shell__topbar {
+    position: relative;
+    z-index: 30;
+}
+
+.hud-shell__orb {
+    position: relative;
+    z-index: 0;
+}
+
+.hud-shell__children {
+    position: relative;
+    z-index: 10;
+}
+
+/* Idle-mode: dim panels and fade topbar */
+.hud-shell.idle > .hud-shell__children .lib-panel {
+    opacity: 0.2;
+    filter: blur(1px);
+    pointer-events: none;
+    transition: all 0.35s;
+}
+
+.hud-shell.idle .lib-topbar {
+    opacity: 0.45;
+    transition: opacity 0.35s;
+}

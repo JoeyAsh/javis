@@ -1,0 +1,44 @@
+/* ================================================================
+   lib-swap — swap-target ghost overlay during drag.
+   Class prefix: .lib-swap
+   ================================================================ */
+
+.lib-swap {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9998;
+}
+
+/* Ghost rectangle showing where the swap-target window currently lives */
+.lib-swap__ghost {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px dashed var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    transition:
+        background 0.15s ease,
+        box-shadow 0.15s ease,
+        border-color 0.15s ease;
+    animation: lib-swap-in 0.2s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Hovered (confirmed swap) state */
+.lib-swap__ghost--hovered {
+    border-color: var(--accent-bright);
+    border-style: dashed;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    box-shadow: var(--glow-strong);
+}
+
+/* ── keyframes ── */
+@keyframes lib-swap-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}

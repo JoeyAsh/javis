@@ -1,399 +1,106 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+/* =====================================================================
+   JARVIS Tailwind v4 theme — maps design tokens to utility classes.
+   All color values reference the CSS custom properties set by tokens.css
+   (loaded before this file in main.tsx). The raw hex fallbacks are only
+   used by Tailwind at build time for internal computations (e.g. opacity
+   modifier arithmetic). Runtime colour always comes from var(--*).
+   ===================================================================== */
+
+@theme {
+    /* ------------------------------------------------------------------
+     Colors → bg-*, text-*, border-*, etc.
+     Reference the :root vars so runtime hue-tweak overrides via
+     useTweakApply keep working.
+  ------------------------------------------------------------------ */
+    --color-bg: var(--bg, #050508);
+    --color-surface: var(--surface, #0d0d14);
+    --color-surface-raised: var(--surface-raised, #12121c);
+    --color-border: var(--border, #1a1a2e);
+    --color-border-bright: var(--border-bright, #2a3d4f);
+    --color-accent: var(--accent, #4ca8e8);
+    --color-accent-bright: var(--accent-bright, #6ec4ff);
+    --color-accent-speak: var(--accent-speak, #5ab8f0);
+    --color-accent-dim: var(--accent-dim, #2d6aa1);
+    --color-text: var(--text, #e8f4ff);
+    --color-text-secondary: var(--text-secondary, #6b8fa8);
+    --color-text-muted: var(--text-muted, #2a3d4f);
+    --color-warning: var(--warning, #e8b24c);
+    --color-error: var(--error, #e85a5a);
+    --color-success: var(--success, #4ce8a8);
+
+    /* ------------------------------------------------------------------
+     Font families
+     Set both --font-mono and --font-sans to JetBrains Mono so that
+     font-mono and font-sans (and the default prose font) all resolve
+     to the JARVIS typeface. The UI is entirely monospace.
+  ------------------------------------------------------------------ */
+    --font-sans: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+    /* ------------------------------------------------------------------
+     Border radius — capped at 4 px.
+     Wipe the full built-in scale first with `initial` then define only
+     the three allowed values so devs cannot accidentally use rounded-lg.
+  ------------------------------------------------------------------ */
+    --radius-none: initial;
+    --radius-sm: initial;
+    --radius-md: initial;
+    --radius-lg: initial;
+    --radius-xl: initial;
+    --radius-2xl: initial;
+    --radius-3xl: initial;
+    /* Keep `full` (9999px) — used for circles (orb) and pill badges. */
+
+    --radius-0: 0px;
+    --radius-r-1: 2px;
+    --radius-r-2: 4px;
+
+    /* ------------------------------------------------------------------
+     Spacing — 4 px base grid (matches --s-* tokens).
+     Keep the default --spacing: 0.25rem so p-1=4px, p-2=8px, etc.
+     Also expose the named tokens as explicit spacing values.
+  ------------------------------------------------------------------ */
+    --spacing-s-1: 4px;
+    --spacing-s-2: 8px;
+    --spacing-s-3: 12px;
+    --spacing-s-4: 16px;
+    --spacing-s-5: 24px;
+    --spacing-s-6: 32px;
+    --spacing-s-7: 48px;
+
+    /* ------------------------------------------------------------------
+     Z-index layers — mirrors --z-* tokens.
+  ------------------------------------------------------------------ */
+    --z-index-orb: 0;
+    --z-index-panel: 10;
+    --z-index-status: 20;
+    --z-index-topbar: 30;
+    --z-index-dev: 40;
+    --z-index-modal: 50;
+
+    /* ------------------------------------------------------------------
+     Transition timing
+  ------------------------------------------------------------------ */
+    --ease-hud: cubic-bezier(0.4, 0, 0.2, 1);
+    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+
+    --duration-fast: 120ms;
+    --duration-base: 200ms;
+    --duration-slow: 300ms;
+    --duration-ambient: 1400ms;
+
+    /* ------------------------------------------------------------------
+     Box shadows / glow — raw hex values used here because
+     multi-stop box-shadow cannot compose via var() reliably in
+     Tailwind's theme output at build time.
+  ------------------------------------------------------------------ */
+    --shadow-glow: 0 0 8px #4ca8e8aa;
+    --shadow-glow-strong: 0 0 20px #4ca8e8cc, 0 0 40px #4ca8e844;
+    --shadow-glow-inner: inset 0 0 12px #4ca8e822;
+    --shadow-glow-warn: 0 0 8px #e8b24caa;
+    --shadow-glow-error: 0 0 8px #e85a5aaa;
+}
 
 /* Design tokens are imported in main.tsx before this file. */
-/* Only JARVIS-specific app vars that are NOT in tokens.css live here. */
-
-:root {
-  /* JARVIS-specific: not in handoff design token file */
-
-  /* Danger alias (tokens.css uses --error, app code uses --danger) */
-  --danger: var(--error);
-
-  /* Orb working state */
-  --orb-working: rgba(232, 168, 76, 0.55);
-
-  /* Panel dimensions (app-specific layout vars) */
-  --panel-header-height: 28px;
-  --panel-padding: 14px;
-  --panel-gap: 12px;
-
-  /* Animation */
-  --panel-fade-duration: 300ms;
-}
-
-*,
-*::before,
-*::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html,
-body {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background-color: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-#root {
-  width: 100%;
-  height: 100%;
-}
-
-/* ======================== Panel (inner content) ======================== */
-
-.panel {
-  background: transparent;
-  font-family: var(--font);
-  color: var(--text);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
-
-/* ======================== HUD top bar ======================== */
-/* Shell, content, and chrome styles live in HudTopBar.css (co-located). */
-
-.orb-devmenu {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 6px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-2, 4px);
-  font-family: var(--font);
-}
-.orb-devmenu__label {
-  font-size: 9px;
-  color: var(--text-muted);
-  letter-spacing: 0.15em;
-  padding-right: 4px;
-}
-.orb-devmenu__btn {
-  font-family: var(--font);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  padding: 3px 6px;
-  cursor: pointer;
-  transition: color 140ms, border-color 140ms, background 140ms;
-}
-.orb-devmenu__btn:hover {
-  color: var(--accent);
-  border-color: var(--border);
-}
-.orb-devmenu__btn--active {
-  color: var(--bg);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.orb-devmenu__btn--active:hover {
-  color: var(--bg);
-  background: var(--accent-bright);
-}
-/* STOP / cancel-turn button — visually distinct from the orb-state toggles
-   so it can't be mistaken for a mock-state control. */
-.orb-devmenu__btn--stop {
-  color: var(--danger);
-  border-color: var(--danger);
-  margin-left: 4px;
-  letter-spacing: 0.12em;
-  font-weight: 600;
-}
-.orb-devmenu__btn--stop:hover {
-  color: var(--bg);
-  background: var(--danger);
-  border-color: var(--danger);
-}
-.orb-devmenu__sep {
-  display: inline-block;
-  width: 1px;
-  height: 14px;
-  background: var(--border);
-  margin: 0 4px;
-  vertical-align: middle;
-  opacity: 0.6;
-}
-
-.hud-iconbtn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-2, 4px);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: color 150ms, border-color 150ms, box-shadow 150ms;
-  font-family: var(--font);
-  font-size: 10px;
-  letter-spacing: 1px;
-}
-
-.hud-iconbtn:hover {
-  color: var(--accent-bright);
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
-
-.hud-iconbtn.active {
-  color: var(--accent-speak);
-  border-color: var(--accent-bright);
-  box-shadow: var(--glow-strong);
-}
-
-/* Window structural rules → Window.css (co-located with Window.tsx) */
-
-.truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ======================== Utility ======================== */
-
-.row-flex {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mono-small {
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.list-item {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.list-item:last-child {
-  border-bottom: none;
-}
-
-.accent-line {
-  color: var(--accent);
-}
-
-.bar {
-  position: relative;
-  height: 4px;
-  background: rgba(76, 168, 232, 0.12);
-  overflow: hidden;
-  border-radius: 0;
-}
-
-.bar-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  background: var(--accent);
-  transition: width 600ms ease;
-}
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 6px;
-  font-size: 9px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  color: var(--text-secondary);
-}
-
-.pill.ok   { color: var(--success); border-color: rgba(76,232,138,0.4); }
-.pill.warn { color: var(--warning); border-color: rgba(232,168,76,0.4); }
-.pill.err  { color: var(--danger); border-color: rgba(232,76,76,0.4); }
-.pill.info { color: var(--accent-bright); border-color: rgba(126,200,255,0.4); }
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.2); }
-}
-
-@keyframes ptt-ring {
-  0%   { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
-  100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.8); }
-}
-
-.pulse-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse-dot 1.4s ease-in-out infinite;
-}
-
-/* ======================== Idle mode ======================== */
-
-/* Prototype: .app.idle .panel { opacity:.2; filter:blur(1px); pointer-events:none; transition: all .35s; } */
-.app.idle .hud-panel {
-  opacity: 0.2;
-  filter: blur(1px);
-  pointer-events: none;
-  transition: all .35s;
-}
-
-/* Prototype: .app.idle .topbar { opacity:.45; } */
-.app.idle .hud-topbar {
-  opacity: 0.45;
-  transition: opacity .35s;
-}
-
-/* ======================== Snap preview overlay ======================== */
-
-.snap-overlay {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 9999;
-}
-
-.snap-zone {
-  position: absolute;
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  border: 1px solid var(--accent);
-  box-shadow: var(--glow-strong);
-  border-radius: 2px;
-  transition: all 140ms ease-out;
-  opacity: 0;
-  animation: snap-appear 140ms ease-out forwards;
-}
-
-@keyframes snap-appear {
-  from { opacity: 0; transform: scale(0.985); }
-  to   { opacity: 1; transform: scale(1); }
-}
-
-/* ======================== Home-slot ghost (floating marker) ======================== */
-
-.slot-ghost {
-  pointer-events: auto;
-  background: transparent;
-  border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent);
-  border-radius: var(--r-2, 4px);
-  color: var(--text-muted);
-  font-family: var(--font);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.35;
-  transition: opacity 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
-  z-index: 8;
-  padding: 0;
-}
-
-.slot-ghost:hover,
-.slot-ghost:focus-visible {
-  outline: none;
-  opacity: 0.7;
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
-
-.slot-ghost-label {
-  font-size: 11px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-/* ======================== Swap-drag overlay ======================== */
-
-.swap-overlay {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 9998;
-}
-
-.swap-overlay--active {
-  /* Overlay is visible only while a swap drag is live. */
-}
-
-.swap-ghost {
-  position: absolute;
-  border: 1px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 4%, transparent);
-  border-radius: var(--r-2, 4px);
-  opacity: 0.55;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    opacity 120ms ease-out,
-    box-shadow 120ms ease-out,
-    background 120ms ease-out;
-}
-
-.swap-ghost--hovered {
-  opacity: 1;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  box-shadow: var(--glow-strong);
-}
-
-.swap-ghost-label {
-  font-size: 10px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--accent-bright);
-  font-family: var(--font);
-  opacity: 0.85;
-}
-
-/* ======================== Swap-drag floating preview ======================== */
-
-.swap-drag-preview {
-  /* positional styles set inline; this class only handles visuals */
-  background: var(--surface-raised);
-  backdrop-filter: var(--panel-blur, blur(10px));
-  -webkit-backdrop-filter: var(--panel-blur, blur(10px));
-  border: 1px solid var(--accent);
-  border-radius: var(--r-2, 4px);
-  box-shadow:
-    0 0 0 1px var(--accent),
-    0 0 36px 4px color-mix(in srgb, var(--accent) 45%, transparent),
-    0 10px 40px rgba(0, 0, 0, 0.6);
-  color: var(--text);
-  font-family: var(--font);
-  overflow: hidden;
-}
-
-.swap-drag-preview-inner {
-  height: 100%;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.swap-drag-preview-label {
-  font-size: 12px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--accent-bright);
-}

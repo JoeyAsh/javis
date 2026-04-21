@@ -10,10 +10,10 @@ import type { LogLinePayload } from '../types';
 import { subscribeLogLineStream } from './useWebSocket';
 
 export interface UseLogStreamReturn {
-  /** Ring-buffered log lines, oldest first. Max length = `maxLines`. */
-  lines: ReadonlyArray<LogLinePayload>;
-  /** Clear the in-memory buffer. */
-  clear: () => void;
+    /** Ring-buffered log lines, oldest first. Max length = `maxLines`. */
+    lines: ReadonlyArray<LogLinePayload>;
+    /** Clear the in-memory buffer. */
+    clear: () => void;
 }
 
 /** Maximum log lines kept in memory. Matches config.yaml default. */
@@ -25,30 +25,30 @@ const DEFAULT_MAX_LINES = 500;
  * @param maxLines - Maximum entries to keep (default 500).
  */
 export function useLogStream(maxLines: number = DEFAULT_MAX_LINES): UseLogStreamReturn {
-  const [lines, setLines] = useState<ReadonlyArray<LogLinePayload>>([]);
-  // Keep maxLines in a ref so the listener closure always reads the latest value
-  // without needing to re-subscribe.
-  const maxLinesRef = useRef(maxLines);
-  useEffect(() => {
-    maxLinesRef.current = maxLines;
-  }, [maxLines]);
+    const [lines, setLines] = useState<ReadonlyArray<LogLinePayload>>([]);
+    // Keep maxLines in a ref so the listener closure always reads the latest value
+    // without needing to re-subscribe.
+    const maxLinesRef = useRef(maxLines);
+    useEffect(() => {
+        maxLinesRef.current = maxLines;
+    }, [maxLines]);
 
-  useEffect(() => {
-    const unsub = subscribeLogLineStream((payload: LogLinePayload) => {
-      setLines((prev) => {
-        const next = [...prev, payload];
-        const max = maxLinesRef.current;
-        return next.length > max ? next.slice(next.length - max) : next;
-      });
-    });
-    return unsub;
-  }, []);
+    useEffect(() => {
+        const unsub = subscribeLogLineStream((payload: LogLinePayload) => {
+            setLines((prev) => {
+                const next = [...prev, payload];
+                const max = maxLinesRef.current;
+                return next.length > max ? next.slice(next.length - max) : next;
+            });
+        });
+        return unsub;
+    }, []);
 
-  const clear = (): void => {
-    setLines([]);
-  };
+    const clear = (): void => {
+        setLines([]);
+    };
 
-  return { lines, clear };
+    return { lines, clear };
 }
 
 export default useLogStream;

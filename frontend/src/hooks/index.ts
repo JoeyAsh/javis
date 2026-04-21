@@ -2,7 +2,6 @@ export { useWebSocket, subscribeSystemMetrics, subscribeSpotifyStateStream } fro
 export type { SpotifyStateListener } from './useWebSocket';
 export { useMicStream } from './useMicStream';
 export { useAudioAnalyser } from './useAudioAnalyser';
-export { useOrb } from './useOrb';
 export { useDraggable } from './useDraggable';
 export { useResizable } from './useResizable';
 export { useSwapDrag } from './useSwapDrag';
@@ -11,7 +10,7 @@ export type { SystemMetricsLive, MetricKey, MetricHistories } from './useSystemM
 export { useConversationMode } from './useConversationMode';
 export type { ConversationModeState } from './useConversationMode';
 export { useSettings } from './useSettings';
-export type { JarvisSettings, UseSettingsReturn, OrbVariant } from './useSettings';
+export type { JarvisSettings, UseSettingsReturn } from './useSettings';
 export { useLocation } from './useLocation';
 export type { LocationCoords } from './useLocation';
 export { useTauriWindowSfx } from './useTauriWindowSfx';

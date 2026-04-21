@@ -10,8 +10,8 @@ import { subscribeConversationModeStream } from './useWebSocket';
  * animates smoothly even between sparse backend broadcasts.
  */
 export interface ConversationModeState {
-  active: boolean;
-  secondsRemaining: number;
+    active: boolean;
+    secondsRemaining: number;
 }
 
 const TICK_INTERVAL_MS = 200;
@@ -23,41 +23,41 @@ const TICK_DELTA_SECONDS = TICK_INTERVAL_MS / 1000;
  * animations without waiting for each WS frame.
  */
 export function useConversationMode(): ConversationModeState {
-  const [state, setState] = useState<ConversationModeState>({
-    active: false,
-    secondsRemaining: 0,
-  });
-
-  // Mirror the latest known state in a ref so the interval callback can
-  // read the current seconds without triggering a re-render per tick.
-  const stateRef = useRef<ConversationModeState>(state);
-  stateRef.current = state;
-
-  useEffect(() => {
-    const unsubscribe = subscribeConversationModeStream((payload) => {
-      setState({
-        active: payload.active,
-        secondsRemaining: Math.max(0, payload.seconds_remaining),
-      });
+    const [state, setState] = useState<ConversationModeState>({
+        active: false,
+        secondsRemaining: 0,
     });
-    return unsubscribe;
-  }, []);
 
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const current = stateRef.current;
-      if (!current.active) return;
-      const next = Math.max(0, current.secondsRemaining - TICK_DELTA_SECONDS);
-      setState((prev) =>
-        prev.active && prev.secondsRemaining !== next
-          ? { ...prev, secondsRemaining: next }
-          : prev,
-      );
-    }, TICK_INTERVAL_MS);
-    return () => {
-      window.clearInterval(id);
-    };
-  }, []);
+    // Mirror the latest known state in a ref so the interval callback can
+    // read the current seconds without triggering a re-render per tick.
+    const stateRef = useRef<ConversationModeState>(state);
+    stateRef.current = state;
 
-  return state;
+    useEffect(() => {
+        const unsubscribe = subscribeConversationModeStream((payload) => {
+            setState({
+                active: payload.active,
+                secondsRemaining: Math.max(0, payload.seconds_remaining),
+            });
+        });
+        return unsubscribe;
+    }, []);
+
+    useEffect(() => {
+        const id = window.setInterval(() => {
+            const current = stateRef.current;
+            if (!current.active) return;
+            const next = Math.max(0, current.secondsRemaining - TICK_DELTA_SECONDS);
+            setState((prev) =>
+                prev.active && prev.secondsRemaining !== next
+                    ? { ...prev, secondsRemaining: next }
+                    : prev,
+            );
+        }, TICK_INTERVAL_MS);
+        return () => {
+            window.clearInterval(id);
+        };
+    }, []);
+
+    return state;
 }

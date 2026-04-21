@@ -11,24 +11,24 @@
 import { useEffect, useState } from 'react';
 
 export interface LocationCoords {
-  latitude: number;
-  longitude: number;
+    latitude: number;
+    longitude: number;
 }
 
 interface LocationState {
-  coords: LocationCoords;
-  /** True while the first fetch is pending. */
-  loading: boolean;
-  /** True if the backend returned an error or was unreachable. */
-  error: boolean;
+    coords: LocationCoords;
+    /** True while the first fetch is pending. */
+    loading: boolean;
+    /** True if the backend returned an error or was unreachable. */
+    error: boolean;
 }
 
 /** Berlin fallback — user changes config.yaml; frontend picks it up on next load. */
 const FALLBACK: LocationCoords = { latitude: 52.52, longitude: 13.41 };
 
 interface LocationApiResponse {
-  latitude: number;
-  longitude: number;
+    latitude: number;
+    longitude: number;
 }
 
 /**
@@ -37,46 +37,46 @@ interface LocationApiResponse {
  * always have a usable `coords` value.
  */
 export function useLocation(): LocationState {
-  const [state, setState] = useState<LocationState>({
-    coords: FALLBACK,
-    loading: true,
-    error: false,
-  });
+    const [state, setState] = useState<LocationState>({
+        coords: FALLBACK,
+        loading: true,
+        error: false,
+    });
 
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
+    useEffect(() => {
+        let cancelled = false;
+        const controller = new AbortController();
 
-    async function fetchLocation(): Promise<void> {
-      try {
-        const res = await fetch('http://localhost:8766/api/config/location', {
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as LocationApiResponse;
-        if (!cancelled) {
-          setState({
-            coords: { latitude: data.latitude, longitude: data.longitude },
-            loading: false,
-            error: false,
-          });
+        async function fetchLocation(): Promise<void> {
+            try {
+                const res = await fetch('http://localhost:8766/api/config/location', {
+                    signal: controller.signal,
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = (await res.json()) as LocationApiResponse;
+                if (!cancelled) {
+                    setState({
+                        coords: { latitude: data.latitude, longitude: data.longitude },
+                        loading: false,
+                        error: false,
+                    });
+                }
+            } catch {
+                if (!cancelled) {
+                    setState({ coords: FALLBACK, loading: false, error: true });
+                }
+            }
         }
-      } catch {
-        if (!cancelled) {
-          setState({ coords: FALLBACK, loading: false, error: true });
-        }
-      }
-    }
 
-    void fetchLocation();
+        void fetchLocation();
 
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, []);
+        return () => {
+            cancelled = true;
+            controller.abort();
+        };
+    }, []);
 
-  return state;
+    return state;
 }
 
 export default useLocation;

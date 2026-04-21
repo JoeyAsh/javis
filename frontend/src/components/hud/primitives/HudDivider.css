@@ -1,15 +1,15 @@
 /* ====================== HudDivider ====================== */
 
 .hud-divider {
-  height: 1px;
-  background: var(--border, #1a1a2e);
-  margin: var(--s-2, 8px) 0;
-  border: none;
+    height: 1px;
+    background: var(--border, #1a1a2e);
+    margin: var(--s-2, 8px) 0;
+    border: none;
 }
 
 .hud-divider--vertical {
-  width: 1px;
-  height: auto;
-  margin: 0 var(--s-2, 8px);
-  align-self: stretch;
+    width: 1px;
+    height: auto;
+    margin: 0 var(--s-2, 8px);
+    align-self: stretch;
 }

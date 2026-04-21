@@ -16,9 +16,9 @@ const src = resolve(__dirname, '../../assets/sounds');
 const dest = resolve(__dirname, '../public/sounds');
 
 if (!existsSync(src)) {
-  console.warn('[copy-sounds] WARNING: Source directory not found:', src);
-  console.warn('[copy-sounds] Skipping sound copy. SFX will be unavailable.');
-  process.exit(0);
+    console.warn('[copy-sounds] WARNING: Source directory not found:', src);
+    console.warn('[copy-sounds] Skipping sound copy. SFX will be unavailable.');
+    process.exit(0);
 }
 
 mkdirSync(dest, { recursive: true });

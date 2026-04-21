@@ -1,5 +1,3 @@
-export { OrbCanvas } from './OrbCanvas';
-export { OrbErrorBoundary } from './OrbErrorBoundary';
 export { HudTopBar } from './HudTopBar';
 export { HudWindows } from './hud/HudWindows';
 export { Window } from './hud/Window';

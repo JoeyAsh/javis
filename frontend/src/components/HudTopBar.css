@@ -9,151 +9,156 @@
 /* ====================== Shell ====================== */
 
 .hud-topbar {
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  right: 10px;
-  height: 40px;
-  z-index: var(--z-topbar, 30);
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    height: 40px;
+    z-index: var(--z-topbar, 30);
 
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 10px;
-  gap: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    gap: 8px;
 
-  /* Glass chrome */
-  background: rgba(13, 13, 20, 0.55);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--border, #1a1a2e);
-  border-radius: var(--r-1, 2px);
+    /* Glass chrome */
+    background: rgba(13, 13, 20, 0.55);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border, #1a1a2e);
+    border-radius: var(--r-1, 2px);
 
-  /* Ensure corners/trace sit on top */
-  overflow: visible;
+    /* Ensure corners/trace sit on top */
+    overflow: visible;
 }
 
 /* ====================== Content clusters ====================== */
 
 .hud-topbar__left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 2;
-  font-size: 11px;
-  color: var(--text-secondary, #6b8fa8);
-  letter-spacing: 1px;
-  font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+    font-size: 11px;
+    color: var(--text-secondary, #6b8fa8);
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
 }
 
 .hud-topbar__right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
 }
 
 /* Separator diamonds / dots */
 .hud-topbar__sep {
-  color: var(--text-muted, #2a3d4f);
-  opacity: 0.7;
-  font-size: 11px;
-  user-select: none;
+    color: var(--text-muted, #2a3d4f);
+    opacity: 0.7;
+    font-size: 11px;
+    user-select: none;
 }
 
 /* ====================== LINK · SECURE tag ====================== */
 
 /* Prototype: .infobar .tag — font-size 8px, letter-spacing 2px, accent border */
 .hud-topbar__tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font, 'JetBrains Mono', monospace);
-  font-size: 8px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--accent, #4ca8e8);
-  border: 1px solid var(--accent-dim, #2d6aa1);
-  padding: 2px 6px;
-  user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font, 'JetBrains Mono', monospace);
+    font-size: 8px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent, #4ca8e8);
+    border: 1px solid var(--accent-dim, #2d6aa1);
+    padding: 2px 6px;
+    user-select: none;
 }
 
 .hud-topbar__tag-dot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--success, #4ce8a8);
-  box-shadow: 0 0 5px var(--success, #4ce8a8);
-  animation: topbar-dot-blink 1.4s ease-in-out infinite;
-  flex-shrink: 0;
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--success, #4ce8a8);
+    box-shadow: 0 0 5px var(--success, #4ce8a8);
+    animation: topbar-dot-blink 1.4s ease-in-out infinite;
+    flex-shrink: 0;
 }
 
 @keyframes topbar-dot-blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
 }
 
 /* ====================== Clock & date ====================== */
 
 /* Prototype .infobar .t — var(--text), font-weight 500 */
 .hud-topbar__clock {
-  font-family: var(--font, 'JetBrains Mono', monospace);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 1px;
-  color: var(--text, #e8f4ff);
-  font-weight: 500;
-  user-select: none;
+    font-family: var(--font, 'JetBrains Mono', monospace);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 1px;
+    color: var(--text, #e8f4ff);
+    font-weight: 500;
+    user-select: none;
 }
 
 /* Prototype .infobar .d — var(--text-secondary) */
 .hud-topbar__date {
-  font-family: var(--font, 'JetBrains Mono', monospace);
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: var(--text-secondary, #6b8fa8);
-  user-select: none;
+    font-family: var(--font, 'JetBrains Mono', monospace);
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--text-secondary, #6b8fa8);
+    user-select: none;
 }
 
 /* ====================== Weather ====================== */
 
 /* Prototype .infobar .w — color: var(--text), gap 4px */
 .hud-topbar__weather {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  font-family: var(--font, 'JetBrains Mono', monospace);
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: var(--text, #e8f4ff);
-  user-select: none;
-  transition: color 300ms;
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    font-family: var(--font, 'JetBrains Mono', monospace);
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--text, #e8f4ff);
+    user-select: none;
+    transition: color 300ms;
 }
 
 /* Prototype .infobar .w .g — accent-bright, font-size 13px */
 .hud-topbar__weather-icon {
-  color: var(--accent-bright, #6ec4ff);
-  font-size: 13px;
+    color: var(--accent-bright, #6ec4ff);
+    font-size: 13px;
 }
 
 .hud-topbar__weather--stale {
-  color: var(--text-muted, #2a3d4f);
+    color: var(--text-muted, #2a3d4f);
 }
 
 /* ====================== Coordinates ====================== */
 
 /* Prototype .infobar .d — text-secondary */
 .hud-topbar__coords {
-  font-family: var(--font, 'JetBrains Mono', monospace);
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: var(--text-secondary, #6b8fa8);
-  user-select: none;
+    font-family: var(--font, 'JetBrains Mono', monospace);
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--text-secondary, #6b8fa8);
+    user-select: none;
 }
 
 /* ====================== Center brand ====================== */
@@ -161,40 +166,40 @@
 /* Corner brackets inside the topbar are decorative overlays — pull them out
    of flex flow so they don't participate in space-between distribution. */
 .hud-topbar .hud-corner-brackets {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
 }
 
 /* Brand is a normal flex child that grows to fill the space between the left
    and right clusters, centering its text. Prototype: no position:absolute. */
 .hud-topbar__brand {
-  flex: 1;
-  text-align: center;
-  font-family: var(--font, 'JetBrains Mono', monospace);
-  font-size: 9px;
-  letter-spacing: 8px;
-  text-transform: uppercase;
-  color: var(--text-muted, #2a3d4f);
-  user-select: none;
-  pointer-events: none;
-  white-space: nowrap;
+    flex: 1;
+    text-align: center;
+    font-family: var(--font, 'JetBrains Mono', monospace);
+    font-size: 9px;
+    letter-spacing: 8px;
+    text-transform: uppercase;
+    color: var(--text-muted, #2a3d4f);
+    user-select: none;
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 .hud-topbar__brand-j {
-  color: var(--accent-bright, #6ec4ff);
-  font-weight: 500;
+    color: var(--accent-bright, #6ec4ff);
+    font-weight: 500;
 }
 
 .hud-topbar__brand-mk {
-  color: var(--accent-dim, #2d6aa1);
+    color: var(--accent-dim, #2d6aa1);
 }
 
 /* ====================== Reduced-motion ====================== */
 
 @media (prefers-reduced-motion: reduce) {
-  .hud-topbar__tag-dot {
-    animation: none;
-    opacity: 1;
-  }
+    .hud-topbar__tag-dot {
+        animation: none;
+        opacity: 1;
+    }
 }

@@ -5,19 +5,19 @@ import { useEffect, useState } from 'react';
  * Panels can derive animated mock values from the tick counter.
  */
 export function useMockTicker(intervalMs: number = 2000, paused: boolean = false): number {
-  const [tick, setTick] = useState(0);
+    const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    if (paused) return;
-    const handle = window.setInterval(() => {
-      setTick((t) => (t + 1) % 1_000_000);
-    }, intervalMs);
-    return () => {
-      window.clearInterval(handle);
-    };
-  }, [intervalMs, paused]);
+    useEffect(() => {
+        if (paused) return;
+        const handle = window.setInterval(() => {
+            setTick((t) => (t + 1) % 1_000_000);
+        }, intervalMs);
+        return () => {
+            window.clearInterval(handle);
+        };
+    }, [intervalMs, paused]);
 
-  return tick;
+    return tick;
 }
 
 /**
@@ -25,6 +25,6 @@ export function useMockTicker(intervalMs: number = 2000, paused: boolean = false
  * reshuffle mock values across ticks without hooks needing refs.
  */
 export function seededRand(seed: number): number {
-  const x = Math.sin(seed * 9301 + 49297) * 233280;
-  return x - Math.floor(x);
+    const x = Math.sin(seed * 9301 + 49297) * 233280;
+    return x - Math.floor(x);
 }

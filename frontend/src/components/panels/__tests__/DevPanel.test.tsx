@@ -19,10 +19,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // ---------------------------------------------------------------------------
 
 vi.mock('../../../hooks/useGitHubState', () => ({
-  useGitHubState: vi.fn(() => ({
-    data: null,
-    loading: true,
-  })),
+    useGitHubState: vi.fn(() => ({
+        data: null,
+        loading: true,
+    })),
 }));
 
 import { useGitHubState } from '../../../hooks/useGitHubState';
@@ -36,52 +36,52 @@ import type { GitHubStatePayload } from '../../../types';
 const mockUseGitHubState = vi.mocked(useGitHubState);
 
 function setLiveData(payload: GitHubStatePayload | null): void {
-  mockUseGitHubState.mockReturnValue({ data: payload, loading: payload === null });
+    mockUseGitHubState.mockReturnValue({ data: payload, loading: payload === null });
 }
 
 const livePayload: GitHubStatePayload = {
-  prs: [
-    {
-      id: '1',
-      repo: 'owner/repo',
-      title: 'Fix critical auth bug',
-      author: 'alice',
-      html_url: 'https://github.com/owner/repo/pull/1',
-      updated_at: '2024-01-15T10:00:00Z',
-    },
-    {
-      id: '2',
-      repo: 'owner/repo',
-      title: 'Add dark mode',
-      author: 'bob',
-      html_url: 'https://github.com/owner/repo/pull/2',
-      updated_at: '2024-01-14T10:00:00Z',
-    },
-  ],
-  issues: [
-    {
-      id: '42',
-      repo: 'owner/repo',
-      title: 'Memory leak in poller',
-      html_url: 'https://github.com/owner/repo/issues/42',
-      updated_at: '2024-01-14T08:00:00Z',
-    },
-  ],
-  ci: [
-    {
-      repo: 'owner/repo',
-      status: 'success',
-      ran_at: '2024-01-15T11:00:00Z',
-      html_url: 'https://github.com/owner/repo/actions/runs/999',
-    },
-  ],
-  fetched_at: '2024-01-15T12:00:00Z',
-  stale: false,
+    prs: [
+        {
+            id: '1',
+            repo: 'owner/repo',
+            title: 'Fix critical auth bug',
+            author: 'alice',
+            html_url: 'https://github.com/owner/repo/pull/1',
+            updated_at: '2024-01-15T10:00:00Z',
+        },
+        {
+            id: '2',
+            repo: 'owner/repo',
+            title: 'Add dark mode',
+            author: 'bob',
+            html_url: 'https://github.com/owner/repo/pull/2',
+            updated_at: '2024-01-14T10:00:00Z',
+        },
+    ],
+    issues: [
+        {
+            id: '42',
+            repo: 'owner/repo',
+            title: 'Memory leak in poller',
+            html_url: 'https://github.com/owner/repo/issues/42',
+            updated_at: '2024-01-14T08:00:00Z',
+        },
+    ],
+    ci: [
+        {
+            repo: 'owner/repo',
+            status: 'success',
+            ran_at: '2024-01-15T11:00:00Z',
+            html_url: 'https://github.com/owner/repo/actions/runs/999',
+        },
+    ],
+    fetched_at: '2024-01-15T12:00:00Z',
+    stale: false,
 };
 
 const stalePayload: GitHubStatePayload = {
-  ...livePayload,
-  stale: true,
+    ...livePayload,
+    stale: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -89,12 +89,12 @@ const stalePayload: GitHubStatePayload = {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  // Default: no live data (mock fallback mode).
-  setLiveData(null);
+    // Default: no live data (mock fallback mode).
+    setLiveData(null);
 });
 
 afterEach(() => {
-  vi.clearAllMocks();
+    vi.clearAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -102,56 +102,56 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('DevPanel expanded — live data', () => {
-  it('renders live PR title when github_state is received', () => {
-    setLiveData(livePayload);
-    render(<DevPanel mode="expanded" />);
+    it('renders live PR title when github_state is received', () => {
+        setLiveData(livePayload);
+        render(<DevPanel mode="expanded" />);
 
-    expect(screen.getByText('Fix critical auth bug')).toBeTruthy();
-  });
+        expect(screen.getByText('Fix critical auth bug')).toBeTruthy();
+    });
 
-  it('renders live issue title', () => {
-    setLiveData(livePayload);
-    render(<DevPanel mode="expanded" />);
+    it('renders live issue title', () => {
+        setLiveData(livePayload);
+        render(<DevPanel mode="expanded" />);
 
-    expect(screen.getByText('Memory leak in poller')).toBeTruthy();
-  });
+        expect(screen.getByText('Memory leak in poller')).toBeTruthy();
+    });
 
-  it('renders CI badge status', () => {
-    setLiveData(livePayload);
-    render(<DevPanel mode="expanded" />);
+    it('renders CI badge status', () => {
+        setLiveData(livePayload);
+        render(<DevPanel mode="expanded" />);
 
-    expect(screen.getByText('success')).toBeTruthy();
-  });
+        expect(screen.getByText('success')).toBeTruthy();
+    });
 
-  it('renders [stale] label when payload is stale', () => {
-    setLiveData(stalePayload);
-    render(<DevPanel mode="expanded" />);
+    it('renders [stale] label when payload is stale', () => {
+        setLiveData(stalePayload);
+        render(<DevPanel mode="expanded" />);
 
-    // Multiple section headers can show [stale] simultaneously.
-    expect(screen.getAllByText('[stale]').length).toBeGreaterThan(0);
-  });
+        // Multiple section headers can show [stale] simultaneously.
+        expect(screen.getAllByText('[stale]').length).toBeGreaterThan(0);
+    });
 
-  it('does not render [stale] when payload is fresh', () => {
-    setLiveData(livePayload);
-    render(<DevPanel mode="expanded" />);
+    it('does not render [stale] when payload is fresh', () => {
+        setLiveData(livePayload);
+        render(<DevPanel mode="expanded" />);
 
-    expect(screen.queryByText('[stale]')).toBeNull();
-  });
+        expect(screen.queryByText('[stale]')).toBeNull();
+    });
 
-  it('renders Local Repos section from mock regardless of live data', () => {
-    setLiveData(livePayload);
-    render(<DevPanel mode="expanded" />);
+    it('renders Local Repos section from mock regardless of live data', () => {
+        setLiveData(livePayload);
+        render(<DevPanel mode="expanded" />);
 
-    // devMock always has local repos — check section header exists.
-    expect(screen.getByText('Local Repos')).toBeTruthy();
-  });
+        // devMock always has local repos — check section header exists.
+        expect(screen.getByText('Local Repos')).toBeTruthy();
+    });
 
-  it('renders Docker section from mock regardless of live data', () => {
-    setLiveData(livePayload);
-    render(<DevPanel mode="expanded" />);
+    it('renders Docker section from mock regardless of live data', () => {
+        setLiveData(livePayload);
+        render(<DevPanel mode="expanded" />);
 
-    expect(screen.getByText('Docker')).toBeTruthy();
-  });
+        expect(screen.getByText('Docker')).toBeTruthy();
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -159,20 +159,20 @@ describe('DevPanel expanded — live data', () => {
 // ---------------------------------------------------------------------------
 
 describe('DevPanel expanded — mock fallback', () => {
-  it('renders mock PR data when no live data available', () => {
-    setLiveData(null);
-    const { container } = render(<DevPanel mode="expanded" />);
+    it('renders mock PR data when no live data available', () => {
+        setLiveData(null);
+        const { container } = render(<DevPanel mode="expanded" />);
 
-    // GitHub section header should be present in mock mode.
-    expect(container.textContent).toContain('GitHub');
-  });
+        // GitHub section header should be present in mock mode.
+        expect(container.textContent).toContain('GitHub');
+    });
 
-  it('renders mock CI section when no live data available', () => {
-    setLiveData(null);
-    render(<DevPanel mode="expanded" />);
+    it('renders mock CI section when no live data available', () => {
+        setLiveData(null);
+        render(<DevPanel mode="expanded" />);
 
-    expect(screen.getByText('CI')).toBeTruthy();
-  });
+        expect(screen.getByText('CI')).toBeTruthy();
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -180,29 +180,29 @@ describe('DevPanel expanded — mock fallback', () => {
 // ---------------------------------------------------------------------------
 
 describe('DevPanel compact — live data', () => {
-  it('shows live PR count in compact mode', () => {
-    setLiveData(livePayload);
-    render(<DevPanel mode="compact" />);
+    it('shows live PR count in compact mode', () => {
+        setLiveData(livePayload);
+        render(<DevPanel mode="compact" />);
 
-    // 2 PRs in livePayload.
-    expect(screen.getByText('2')).toBeTruthy();
-    expect(screen.getAllByText('PRs').length).toBeGreaterThan(0);
-  });
+        // 2 PRs in livePayload.
+        expect(screen.getByText('2')).toBeTruthy();
+        expect(screen.getAllByText('PRs').length).toBeGreaterThan(0);
+    });
 
-  it('shows live issue count in compact mode', () => {
-    setLiveData(livePayload);
-    render(<DevPanel mode="compact" />);
+    it('shows live issue count in compact mode', () => {
+        setLiveData(livePayload);
+        render(<DevPanel mode="compact" />);
 
-    expect(screen.getByText('Issues')).toBeTruthy();
-  });
+        expect(screen.getByText('Issues')).toBeTruthy();
+    });
 });
 
 describe('DevPanel compact — mock fallback', () => {
-  it('shows mock PR count when no live data', () => {
-    setLiveData(null);
-    render(<DevPanel mode="compact" />);
+    it('shows mock PR count when no live data', () => {
+        setLiveData(null);
+        render(<DevPanel mode="compact" />);
 
-    // Mock data has PRs — just ensure it doesn't crash.
-    expect(screen.getAllByText('PRs').length).toBeGreaterThan(0);
-  });
+        // Mock data has PRs — just ensure it doesn't crash.
+        expect(screen.getAllByText('PRs').length).toBeGreaterThan(0);
+    });
 });

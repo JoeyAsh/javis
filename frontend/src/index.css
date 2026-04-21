@@ -104,3 +104,40 @@
 }
 
 /* Design tokens are imported in main.tsx before this file. */
+
+/* =====================================================================
+   Scrollbar — JARVIS-themed; webkit + Firefox fallback.
+   ===================================================================== */
+
+html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent-dim) var(--surface);
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--accent-dim);
+    border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+    box-shadow: var(--shadow-glow-inner);
+}
+
+::-webkit-scrollbar-thumb:active {
+    background: var(--accent-bright);
+}
+
+::-webkit-scrollbar-corner {
+    background: var(--surface);
+}

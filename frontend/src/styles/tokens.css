@@ -3,7 +3,8 @@
    ============================================================
    Import this file in any surface to inherit the full system.
    All colors via variables. All type via JetBrains Mono.
-   Border radius capped at 4px. Glow instead of drop-shadow.
+   Border radius: --r-1 (2px) is the design-system max; --r-2 (4px) reserved for rare exceptions.
+   Glow instead of drop-shadow.
    ============================================================ */
 
 /* ---------- Font ---------- */

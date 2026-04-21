@@ -1,0 +1,295 @@
+/* ====================== NowPlayingPanel ====================== */
+
+.nowplaying-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--s-3);
+  font-family: var(--font);
+  overflow: hidden;
+}
+
+/* ---- Track info block (art + meta) ---- */
+
+.nowplaying-track {
+  display: flex;
+  gap: var(--s-3);
+  margin-bottom: var(--s-2);
+}
+
+.nowplaying-art {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border-radius: var(--r-1);
+  box-shadow: var(--glow);
+}
+
+.nowplaying-art-placeholder {
+  width: 56px;
+  height: 56px;
+  background: var(--accent);
+  color: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+  border-radius: var(--r-1);
+  box-shadow: var(--glow);
+}
+
+.nowplaying-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.nowplaying-title {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nowplaying-artist {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nowplaying-album {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Wave strip ---- */
+
+.nowplaying-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  margin-top: var(--s-1);
+}
+
+.nowplaying-wave__bar {
+  width: 3px;
+  background: var(--accent);
+  border-radius: var(--r-0);
+  animation: wave-bar 0.8s ease-in-out infinite alternate;
+  min-height: 2px;
+}
+
+@keyframes wave-bar {
+  from { opacity: 0.4; transform: scaleY(0.3); }
+  to   { opacity: 1;   transform: scaleY(1); }
+}
+
+.nowplaying-wave--paused .nowplaying-wave__bar {
+  animation-play-state: paused;
+  transform: scaleY(0.3);
+  opacity: 0.3;
+}
+
+/* ---- Progress bar ---- */
+
+.nowplaying-progress {
+  margin-bottom: var(--s-1);
+}
+
+.nowplaying-times {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
+
+/* ---- Transport controls ---- */
+
+.nowplaying-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.nowplaying-tbtn {
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: border-color var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease);
+}
+
+.nowplaying-tbtn:hover {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  box-shadow: var(--glow);
+}
+
+.nowplaying-tbtn--primary {
+  width: 34px;
+  height: 34px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-size: 14px;
+}
+
+.nowplaying-tbtn--primary:hover {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+  box-shadow: var(--glow-strong);
+}
+
+.nowplaying-tbtn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.nowplaying-tbtn--primary svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---- Volume row ---- */
+
+.nowplaying-volume {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.nowplaying-vol-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.nowplaying-volume input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ---- Auth / playback states ---- */
+
+.nowplaying-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-4) 0;
+}
+
+.nowplaying-state__label {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+
+.nowplaying-state__btn {
+  padding: 6px var(--s-4);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-1);
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 1px;
+  transition: color var(--dur-base) var(--ease),
+              border-color var(--dur-base) var(--ease),
+              box-shadow var(--dur-base) var(--ease);
+}
+
+.nowplaying-state__btn:hover {
+  color: var(--accent-bright);
+  border-color: var(--accent-bright);
+  box-shadow: var(--glow);
+}
+
+/* ---- Compact mode ---- */
+
+.nowplaying-compact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  font-family: var(--font);
+}
+
+.nowplaying-compact__title {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nowplaying-compact__artist {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nowplaying-compact__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.nowplaying-compact__playbtn {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  color: var(--accent-bright);
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 10px;
+  line-height: 1;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) var(--ease);
+}
+
+.nowplaying-compact__playbtn:hover {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}

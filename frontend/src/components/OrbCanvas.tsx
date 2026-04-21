@@ -74,7 +74,7 @@ export function OrbCanvas({
   const isWorking = orbState === 'working';
 
   return (
-    <div className="fixed inset-0 w-screen h-screen" style={{ zIndex: 0 }}>
+    <div className="fixed inset-0 w-screen h-screen" style={{ zIndex: 1 }}>
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       {/* Amber tint overlay — visible only in `working` state. Uses
           mix-blend-mode: color to tint the canvas particles without

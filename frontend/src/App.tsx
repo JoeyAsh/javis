@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { OldOrb } from './components/hud/OldOrb';
+import { OrbCanvas } from './components/OrbCanvas';
+import { OrbErrorBoundary } from './components/OrbErrorBoundary';
 import { Orb } from './components/hud/Orb';
 import { HudTopBar } from './components/HudTopBar';
 import { OrbDevMenu } from './components/OrbDevMenu';
@@ -91,6 +92,10 @@ function AppInner(): ReactElement {
     orbOverride ?? (followUp.active && orbState === 'listening' ? 'follow_up' : orbState);
 
   // Stream raw PCM audio from the browser mic to the backend via WebSocket.
+  // Only pause when explicitly muted. Keep streaming during TTS so the
+  // backend barge-in monitor can actually see the user interrupt; echo
+  // is handled by browser AEC (echoCancellation: true) plus the
+  // backend's post-TTS grace window.
   useMicStream({ wsRef, paused: muted });
 
   // Feed incoming audio to the audio analyser queue (with per-clip volume and channel).
@@ -145,9 +150,6 @@ function AppInner(): ReactElement {
   // without touching individual panel styles.
   const panelOpacityCssVar = { '--panel-opacity': settingsHook.settings.panelOpacity } as React.CSSProperties;
 
-  // Orb variant swap — #46
-  const orbVariant = settingsHook.settings.orbVariant;
-
   return (
     <SfxProvider playOneShot={sfxPlayOneShot}>
       <div
@@ -157,20 +159,27 @@ function AppInner(): ReactElement {
         {/* Animated scene background — z-index 0 (--z-orb) */}
         <Scene grid scan stars />
 
-        {/*
-         * Orb — swappable via settings.orbVariant.
-         * Both variants occupy the same absolute-centered layout slot.
-         * z-index 0 — sits under panels (z:10) but above the scene (z:0).
-         */}
-        {orbVariant === 'hypermodern' ? (
-          <Orb state={effectiveOrbState === 'follow_up' ? 'idle' : effectiveOrbState} rings particles />
+        {/* Orb — swappable between Classic (Three.js) and Hypermodern (CSS) */}
+        {settingsHook.settings.orbVariant === 'hypermodern' ? (
+          <div
+            className="fixed inset-0 w-screen h-screen"
+            style={{ zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}
+          >
+            <Orb
+              state={effectiveOrbState === 'follow_up' ? 'listening' : effectiveOrbState === 'working' ? 'working' : effectiveOrbState}
+              rings
+              particles
+            />
+          </div>
         ) : (
-          <OldOrb
-            state={effectiveOrbState}
-            analyser={analyser}
-            mockMode={orbOverride}
-            followUp={followUp}
-          />
+          <OrbErrorBoundary>
+            <OrbCanvas
+              orbState={effectiveOrbState}
+              analyser={analyser}
+              mockMode={orbOverride}
+              followUp={followUp}
+            />
+          </OrbErrorBoundary>
         )}
 
         {/* Floating window HUD — z-index 10 */}
@@ -186,12 +195,12 @@ function AppInner(): ReactElement {
           onToggleTweaks={handleToggleTweaks}
         />
 
-        {/* Orb dev menu — forced state override for testing + STOP button */}
+        {/* Orb dev menu — fixed bottom-left corner, dev-only overlay */}
         <div
           style={{
             position: 'fixed',
-            top: 4,
-            right: 240,
+            bottom: 10,
+            left: 10,
             zIndex: 40,
           }}
         >
@@ -202,30 +211,29 @@ function AppInner(): ReactElement {
           />
         </div>
 
-        {/* Mic mute button — top right, nudged left of the top-bar controls */}
+        {/* Mic mute button — inside TopBar right cluster (fixed, sits just left of TopBar controls) */}
         <button
           onClick={() => { setMuted((m) => !m); }}
           aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
+          className="hud-iconbtn"
           style={{
             position: 'fixed',
             top: 4,
-            right: 180,
-            width: 28,
-            height: 28,
-            zIndex: 40,
-            background: 'rgba(13,13,20,0.6)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-2)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: muted ? 'var(--text-muted)' : 'var(--accent)',
-            transition: 'color 200ms, border-color 200ms',
+            right: 100,
+            zIndex: 30,
           }}
         >
           {muted ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <line x1="1" y1="1" x2="23" y2="23" />
               <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
               <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
@@ -233,7 +241,16 @@ function AppInner(): ReactElement {
               <line x1="8" y1="23" x2="16" y2="23" />
             </svg>
           ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               <line x1="12" y1="19" x2="12" y2="23" />
@@ -242,13 +259,13 @@ function AppInner(): ReactElement {
           )}
         </button>
 
-        {/* SFX mute toggle — placed left of the mic mute button */}
+        {/* SFX mute toggle — right of mic mute, inside TopBar right cluster */}
         <div
           style={{
             position: 'fixed',
             top: 4,
-            right: 212,
-            zIndex: 40,
+            right: 132,
+            zIndex: 30,
           }}
         >
           <AudioMuteToggle isMuted={sfxMuted} onToggle={toggleSfxMute} />

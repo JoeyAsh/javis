@@ -310,10 +310,14 @@ export function useAudioEngine(
   // ── Destroy on unmount ────────────────────────────────────────────────────
 
   useEffect(() => {
-    const engine = engineRef.current;
     return () => {
       clearIdleTimer();
-      engine?.destroy();
+      // Destroy current engine and null the ref so the next mount (e.g. React
+      // StrictMode's double-invoke in dev) gets a fresh AudioContext instead
+      // of trying to use the closed one.
+      engineRef.current?.destroy();
+      engineRef.current = null;
+      bootFiredRef.current = false;
     };
   }, [clearIdleTimer]);
 

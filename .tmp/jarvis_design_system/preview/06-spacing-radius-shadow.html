@@ -1,0 +1,50 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Spacing, Radius, Shadow</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  .wrap{padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .lbl{font-size:8px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+  .spaces{display:flex;align-items:flex-end;gap:10px}
+  .sp{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .sp b{display:block;background:var(--accent);box-shadow:var(--glow);border-radius:0}
+  .sp span{font-size:9px;color:var(--text-muted);letter-spacing:1px}
+  .radii{display:flex;gap:12px}
+  .r{width:38px;height:38px;border:1px solid var(--accent);background:rgba(76,168,232,.07)}
+  .r0{border-radius:0}.r1{border-radius:2px}.r2{border-radius:4px}
+  .shadows{display:flex;gap:14px;align-items:center}
+  .sh{width:56px;height:56px;background:#12121c;border:1px solid var(--border)}
+  .sh1{box-shadow:var(--glow)}.sh2{box-shadow:var(--glow-strong)}.sh3{box-shadow:var(--glow-inner)}
+  .lbl2{font-size:8px;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase;margin-top:6px;display:block;text-align:center}
+</style></head>
+<body><div class="wrap">
+  <div>
+    <div class="lbl">spacing scale · 4px base</div>
+    <div class="spaces">
+      <div class="sp"><b style="width:4px;height:32px"></b><span>4</span></div>
+      <div class="sp"><b style="width:8px;height:32px"></b><span>8</span></div>
+      <div class="sp"><b style="width:12px;height:32px"></b><span>12</span></div>
+      <div class="sp"><b style="width:16px;height:32px"></b><span>16</span></div>
+      <div class="sp"><b style="width:24px;height:32px"></b><span>24</span></div>
+      <div class="sp"><b style="width:32px;height:32px"></b><span>32</span></div>
+      <div class="sp"><b style="width:48px;height:32px"></b><span>48</span></div>
+    </div>
+  </div>
+  <div>
+    <div class="lbl">radii · cap at 4px</div>
+    <div class="radii">
+      <div><div class="r r0"></div><span class="lbl2">0</span></div>
+      <div><div class="r r1"></div><span class="lbl2">2 · default</span></div>
+      <div><div class="r r2"></div><span class="lbl2">4 · max</span></div>
+    </div>
+  </div>
+  <div style="grid-column:1/3">
+    <div class="lbl">glow · never drop-shadow</div>
+    <div class="shadows">
+      <div><div class="sh sh1"></div><span class="lbl2">glow</span></div>
+      <div><div class="sh sh2"></div><span class="lbl2">glow-strong</span></div>
+      <div><div class="sh sh3"></div><span class="lbl2">glow-inner</span></div>
+      <div><div class="sh" style="box-shadow:var(--glow-warn);border-color:var(--warning)"></div><span class="lbl2">glow-warn</span></div>
+    </div>
+  </div>
+</div></body></html>

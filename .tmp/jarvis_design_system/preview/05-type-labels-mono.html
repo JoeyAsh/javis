@@ -1,0 +1,36 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Type — Labels &amp; Mono</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  .wrap{padding:22px 26px;display:flex;flex-direction:column;gap:14px}
+  .lbl{font-size:8px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:9px;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase;padding:4px 8px;border:1px solid var(--border);border-radius:2px}
+  .chip.on{color:var(--accent-bright);border-color:var(--accent-dim);box-shadow:var(--glow)}
+  .rowc{display:flex;gap:18px;align-items:center}
+  kbd{font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:2px;color:var(--accent-bright);background:var(--surface-raised)}
+</style></head>
+<body><div class="wrap">
+  <div class="lbl">label — 9px uppercase, 1px track</div>
+  <div class="chips">
+    <span class="chip">CPU</span>
+    <span class="chip">RAM</span>
+    <span class="chip">GPU</span>
+    <span class="chip">CPU TEMP</span>
+    <span class="chip">NET</span>
+    <span class="chip">DISK</span>
+    <span class="chip on">LISTENING</span>
+    <span class="chip on">LIVE</span>
+  </div>
+  <div class="lbl">keycaps</div>
+  <div class="rowc">
+    <kbd>Ctrl</kbd>+<kbd>.</kbd> <span class="lbl">idle toggle</span>
+    <kbd>Space</kbd> <span class="lbl">push to talk</span>
+  </div>
+  <div class="lbl">transcript roles</div>
+  <div class="rowc">
+    <span style="color:var(--accent);font-size:11px;letter-spacing:1px">›</span><span class="lbl">user · right-aligned</span>
+    <span style="color:var(--text);font-size:11px;letter-spacing:1px">J.</span><span class="lbl">jarvis · left-aligned</span>
+  </div>
+</div></body></html>

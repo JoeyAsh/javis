@@ -1,0 +1,36 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>HUD embellishments</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  .wrap{padding:22px 26px;display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .demo{position:relative;height:110px;border:1px solid var(--border);padding:14px;background:rgba(13,13,20,.75);backdrop-filter:blur(12px)}
+  .lbl{font-size:8px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+  .title{font-size:10px;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase}
+  .metric{font-size:22px;color:var(--accent-bright);margin-top:10px;font-variant-numeric:tabular-nums}
+</style></head>
+<body><div class="wrap">
+  <div>
+    <div class="lbl">corner brackets</div>
+    <div class="demo hud-corners">
+      <span class="hud-corners__bl"></span><span class="hud-corners__br"></span>
+      <div class="title">CPU</div>
+      <div class="metric">42<small style="font-size:10px;color:var(--text-muted)">%</small></div>
+    </div>
+  </div>
+  <div>
+    <div class="lbl">scanlines + data-sweep</div>
+    <div class="demo scanlines" style="overflow:hidden">
+      <div class="data-sweep"></div>
+      <div class="title">NET</div>
+      <div class="metric">12.3<small style="font-size:10px;color:var(--text-muted)"> Mb/s</small></div>
+    </div>
+  </div>
+  <div>
+    <div class="lbl">glow-breathe + flicker</div>
+    <div class="demo glow-breathe" style="border-color:var(--accent-dim)">
+      <div class="title flicker">LISTENING…</div>
+      <div class="metric" style="font-size:28px">●</div>
+    </div>
+  </div>
+</div></body></html>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Panel + Top Bar</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  .wrap{padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border);background:rgba(13,13,20,.75);backdrop-filter:blur(12px);padding:6px 10px;border-radius:2px}
+  .infobar{display:flex;gap:8px;align-items:center;font-size:10px;color:var(--text-secondary);letter-spacing:1px}
+  .infobar b{color:var(--accent-bright);font-weight:400}
+  .infobar .sep{color:var(--text-muted)}
+  .icons{display:flex;gap:6px}
+  .iconbtn{width:24px;height:24px;border:1px solid var(--border);border-radius:2px;background:rgba(13,13,20,.6);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .panel-demo{border:1px solid var(--border);background:rgba(13,13,20,.75);backdrop-filter:blur(12px);border-radius:2px;padding:0}
+  .phdr{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase}
+  .phdr .dot{width:6px;height:6px;border-radius:0;background:var(--accent);box-shadow:var(--glow)}
+  .pbody{padding:10px 12px;font-size:11px;color:var(--text);line-height:1.55}
+</style></head>
+<body><div class="wrap">
+  <div class="topbar">
+    <div class="infobar">
+      <b>09:04:17</b><span class="sep">·</span>Mittwoch, 20. April 2026<span class="sep">·</span>☀ 14°C Wien
+    </div>
+    <div class="icons">
+      <span class="iconbtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></span>
+      <span class="iconbtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg></span>
+      <span class="iconbtn active" style="color:var(--accent-bright);box-shadow:var(--glow)"><span style="font-size:8px;letter-spacing:1px">LIVE</span></span>
+    </div>
+  </div>
+  <div class="panel-demo">
+    <div class="phdr"><span class="dot"></span>System · Live</div>
+    <div class="pbody">Panels sit at <code style="color:var(--accent-bright);font-size:10px">rgba(13,13,20,0.75)</code> with 12px backdrop-blur. 1px hairline border. The orb glow bleeds through.</div>
+  </div>
+</div></body></html>

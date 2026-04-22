@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>JARVIS HUD — Mark XLII</title>
+<meta name="viewport" content="width=1440"/>
+<link rel="stylesheet" href="styles.css"/>
+<style>
+  /* Dynamic tweak vars live here */
+  :root { --tweak-hue: 215; --tweak-grid: 48px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="Orb.jsx"></script>
+<script type="text/babel" src="Chrome.jsx"></script>
+<script type="text/babel" src="Window.jsx"></script>
+<script type="text/babel" src="Panels.jsx"></script>
+<script type="text/babel" src="Overlays.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "hue": 215,
+  "grid": 48,
+  "glow": 60,
+  "scan": true,
+  "idleDim": true
+}/*EDITMODE-END*/;
+
+function useTweakApply(t) {
+  React.useEffect(()=>{
+    const root = document.documentElement;
+    root.style.setProperty('--tweak-hue', t.hue);
+    root.style.setProperty('--tweak-grid', t.grid + 'px');
+    // Rebind blue accent to hue
+    const l = 0.72, c = 0.14;
+    root.style.setProperty('--accent', `oklch(${l} ${c} ${t.hue})`);
+    root.style.setProperty('--accent-bright', `oklch(0.84 ${c+0.02} ${t.hue})`);
+    root.style.setProperty('--accent-speak', `oklch(0.76 ${c+0.01} ${t.hue})`);
+    root.style.setProperty('--accent-dim', `oklch(0.52 ${c-0.04} ${t.hue})`);
+    root.style.setProperty('--glow', `0 0 ${6 + t.glow*0.1}px oklch(${l} ${c} ${t.hue} / ${0.4 + t.glow*0.005})`);
+    root.style.setProperty('--glow-strong', `0 0 ${12 + t.glow*0.2}px oklch(${l} ${c} ${t.hue} / ${0.5 + t.glow*0.005}), 0 0 ${28 + t.glow*0.3}px oklch(${l} ${c} ${t.hue} / ${0.25 + t.glow*0.003})`);
+  }, [t]);
+}
+
+const INITIAL_TURNS = [
+  {id:1, role:'jarvis', time:'08:03', text:'Good morning, sir. Coffee is ready in the kitchen; the suit diagnostics completed at 03:14 — all green.'},
+  {id:2, role:'user',   time:'08:04', text:'Any news from Pepper?'},
+  {id:3, role:'jarvis', time:'08:04', text:'Miss Potts moved the 10 a.m. to eleven. She asks that you wear the blue tie.'},
+  {id:4, role:'user',   time:'08:06', text:'Pull up the reactor schematics.'},
+  {id:5, role:'jarvis', time:'08:06', text:'Certainly. The Mark XLII reactor schematics are loaded on workshop display two.'},
+];
+
+const JARVIS_REPLIES = [
+  'Certainly, sir.',
+  'On it. One moment.',
+  'I have the workshop ready.',
+  'Adjusting the environment now.',
+  'Acknowledged. I will keep you posted.',
+  'Miss Potts is online — shall I patch her through?',
+  'Holographic projection primed. Awaiting your gesture.',
+];
+
+function App() {
+  const [state, setState] = React.useState('idle'); // idle | listening | thinking | speaking
+  const [idle, setIdle] = React.useState(false);
+  const [turns, setTurns] = React.useState(INITIAL_TURNS);
+  const [focusedWin, setFocusedWin] = React.useState('system');
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+  const [voice, setVoice] = React.useState('Formal');
+  const [orbHue, setOrbHue] = React.useState(215);
+  const [density, setDensity] = React.useState('Standard');
+  const [scanlines, setScanlines] = React.useState(true);
+
+  useTweakApply(tweaks);
+
+  // Wire edit-mode protocol (Tweaks toggle in toolbar)
+  React.useEffect(()=>{
+    const handler = (ev) => {
+      if (!ev.data) return;
+      if (ev.data.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (ev.data.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({type:'__edit_mode_available'}, '*');
+    return ()=>window.removeEventListener('message', handler);
+  }, []);
+
+  // Persist tweak edits to disk
+  React.useEffect(()=>{
+    window.parent.postMessage({type:'__edit_mode_set_keys', edits: tweaks}, '*');
+  }, [tweaks]);
+
+  // PTT cycle: listening -> thinking -> speaking -> idle
+  const runPTT = () => {
+    if (state !== 'idle') { setState('idle'); return; }
+    setState('listening');
+    const userQ = ['What is my schedule today?', 'Play some AC/DC.', 'Dim the lights in the living room.', 'How is the reactor?'][Math.floor(Math.random()*4)];
+    setTimeout(()=>{
+      setTurns(t => [...t, {id: Date.now(), role:'user', time:new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}), text: userQ}]);
+      setState('thinking');
+      setTimeout(()=>{
+        const reply = JARVIS_REPLIES[Math.floor(Math.random()*JARVIS_REPLIES.length)];
+        setTurns(t => [...t, {id: Date.now()+1, role:'jarvis', time:new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}), text: reply}]);
+        setState('speaking');
+        setTimeout(()=>setState('idle'), 1800);
+      }, 1200);
+    }, 1500);
+  };
+
+  // Space bar = PTT
+  React.useEffect(()=>{
+    const k = (e) => { if (e.code==='Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); runPTT(); } };
+    window.addEventListener('keydown', k); return ()=>window.removeEventListener('keydown', k);
+  }, [state]);
+
+  const dimClass = (idle && tweaks.idleDim) ? ' idle' : '';
+  const scanVisible = tweaks.scan;
+
+  return (
+    <div className={'app'+dimClass}>
+      <Scene />
+      {scanVisible && <div style={{position:'fixed',inset:0,pointerEvents:'none',background:'repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(76,168,232,0.04) 2px, rgba(76,168,232,0.04) 3px)',mixBlendMode:'screen',zIndex:4}}/>}
+
+      <Orb state={state} />
+
+      <TopBar idle={idle} onIdle={()=>setIdle(x=>!x)} onSettings={()=>setSettingsOpen(true)} onTweaks={()=>setTweaksOpen(x=>!x)} />
+
+      <Window id="system"  title="◈ SYSTEM VITALS · live" x={28}   y={68}  w={300} h={280} focused={focusedWin==='system'}  onFocus={setFocusedWin}>
+        <SystemPanel/>
+      </Window>
+
+      <Window id="music" title="♫ NOW PLAYING · spotify" x={28}   y={368}  w={300} h={200} focused={focusedWin==='music'} onFocus={setFocusedWin}>
+        <NowPlayingPanel/>
+      </Window>
+
+      <Window id="lights" title="◉ HOME · lighting" x={28} y={588} w={300} h={170} focused={focusedWin==='lights'} onFocus={setFocusedWin}>
+        <LightsPanel/>
+      </Window>
+
+      <Window id="transcript" title="▸ TRANSCRIPT · session 0428" x={window.innerWidth-368} y={68} w={340} h={440} focused={focusedWin==='transcript'} onFocus={setFocusedWin}>
+        <TranscriptPanel turns={turns}/>
+      </Window>
+
+      <Window id="notif" title="⚐ NOTIFICATIONS" x={window.innerWidth-368} y={528} w={340} h={210} focused={focusedWin==='notif'} onFocus={setFocusedWin}>
+        <NotificationsPanel/>
+      </Window>
+
+      <Window id="agenda" title="◷ TODAY · 4 events" x={window.innerWidth-712} y={68} w={324} h={200} focused={focusedWin==='agenda'} onFocus={setFocusedWin}>
+        <AgendaPanel/>
+      </Window>
+
+      <PTT state={state} onClick={runPTT}/>
+      <StatusTray state={state}/>
+
+      <Settings open={settingsOpen} onClose={()=>setSettingsOpen(false)}
+                voice={voice} setVoice={setVoice}
+                orbHue={orbHue} setOrbHue={setOrbHue}
+                density={density} setDensity={setDensity}
+                scanlines={scanlines} setScanlines={setScanlines}/>
+
+      <Tweaks open={tweaksOpen} tweaks={tweaks} setTweaks={setTweaks}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

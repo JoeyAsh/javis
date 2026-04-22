@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Type — Body &amp; Metric</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  .wrap{padding:22px 26px;display:grid;grid-template-columns:1.3fr 1fr;gap:22px}
+  .lbl{font-size:8px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+  h3{font-size:12px;font-weight:500;color:var(--text);margin:0 0 6px 0}
+  p{font-size:12px;line-height:1.55;color:var(--text);margin:0 0 8px 0}
+  code{color:var(--accent-bright);font-size:11px}
+  .metric{font-size:28px;color:var(--accent-bright);font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .metric small{font-size:10px;color:var(--text-muted);margin-left:4px;letter-spacing:1px}
+  .tiny{font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px}
+</style></head>
+<body><div class="wrap">
+  <div>
+    <div class="lbl">body — 12px / 1.55</div>
+    <h3>Panel title</h3>
+    <p>Body copy sits in cool-white <code>#e8f4ff</code> at 12px with 1.55 line-height. Mono-only. No serif ever. Numbers are always <code>tabular-nums</code>.</p>
+    <p style="color:var(--text-secondary)">Secondary copy uses <code>--text-secondary</code> and drops contrast without losing legibility.</p>
+  </div>
+  <div>
+    <div class="lbl">metric — 28px tabular</div>
+    <div class="metric">42<small>%</small></div>
+    <div class="tiny" style="margin-top:4px">CPU</div>
+    <div class="metric" style="margin-top:14px">12.3<small>Mb/s</small></div>
+    <div class="tiny" style="margin-top:4px">NET · DOWN</div>
+  </div>
+</div></body></html>

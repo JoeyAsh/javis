@@ -3476,10 +3476,18 @@ async def start_ws_server(
     _fish_tts = FishTTSClient()
 
     logger.info("Loading STT engine...")
-    _stt_engine = await create_stt_engine()
+    try:
+        _stt_engine = await create_stt_engine()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"STT engine unavailable — voice input disabled: {exc}")
+        _stt_engine = None
 
     logger.info("Loading wake word detector...")
-    _wake_word_detector = await create_wake_word_detector()
+    try:
+        _wake_word_detector = await create_wake_word_detector()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Wake word detector unavailable — wake word disabled: {exc}")
+        _wake_word_detector = None
 
     # --- OpenClaw health check (fail-fast at startup) ---
     # All LLM traffic now routes through the OpenClaw gateway. If the

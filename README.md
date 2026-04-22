@@ -75,13 +75,40 @@ JARVIS delegates mail/calendar/drive actions to the `gog` CLI via OpenClaw.
 
 ### Required environment variables (remote OpenClaw)
 
-- `JARVIS_OPENCLAW_URL` — full URL of the remote gateway, e.g. `http://192.168.1.118:18789`
-- `JARVIS_OPENCLAW_SSH_HOST` — optional SSH alias (from `~/.ssh/config`) to tunnel through when the gateway is not directly reachable
+Two distinct mechanisms — do not confuse them:
 
-On Windows, set user-scoped env vars via PowerShell:
+- **Python backend** reads `D:\Repos\JARVIS\.env` (via `python-dotenv`). Variable name there: `OPENCLAW_GATEWAY_URL`.
+- **Tauri Controller** is a compiled Rust binary and does **not** read `.env`. It reads OS environment variables only. Variable name there: `JARVIS_OPENCLAW_URL`. When set, it **overrides the hard-coded IP compiled into the binary** — useful when the remote laptop's IP changes and you don't want to rebuild.
+
+Relevant variables:
+
+- `JARVIS_OPENCLAW_URL` — full URL of the remote gateway, e.g. `http://192.168.1.121:18789`. Read only by the Controller. Takes precedence over the hard-coded fallback.
+- `JARVIS_OPENCLAW_SSH_HOST` — optional SSH alias (from `~/.ssh/config`) to tunnel through when the gateway is not directly reachable.
+- `OPENCLAW_GATEWAY_URL` — put in `.env`; read by the Python backend. Leave commented out to default to `http://127.0.0.1:18789` (sensible when the backend reaches the gateway through the Controller's SSH tunnel).
+
+#### Set / update on Windows (user scope)
+
 ```powershell
-[Environment]::SetEnvironmentVariable('JARVIS_OPENCLAW_URL', 'http://192.168.1.118:18789', 'User')
+[Environment]::SetEnvironmentVariable('JARVIS_OPENCLAW_URL', 'http://192.168.1.121:18789', 'User')
 ```
+
+After setting, **fully restart the Controller** (close it, then re-launch the `.exe`) — Tauri reads the environment once at process start.
+
+#### Remove again (Controller falls back to its compiled default)
+
+```powershell
+Remove-ItemProperty -Path 'HKCU:\Environment' -Name 'JARVIS_OPENCLAW_URL' -ErrorAction SilentlyContinue
+```
+
+Then restart the Controller.
+
+#### Verify what the Controller currently uses
+
+```powershell
+[Environment]::GetEnvironmentVariable('JARVIS_OPENCLAW_URL', 'User')
+```
+
+Empty / no output → Controller uses its compiled default URL.
 
 ## Controller App (optional)
 

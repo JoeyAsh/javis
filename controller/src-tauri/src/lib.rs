@@ -132,7 +132,7 @@ fn repo_root() -> Result<PathBuf, String> {
 /// Precedence:
 /// 1. `JARVIS_OPENCLAW_URL` env var (explicit override).
 /// 2. Settings file `target`: `"local"` → `http://127.0.0.1:18789`,
-///    `"remote"` → `http://192.168.1.118:18789`.
+///    `"remote"` → `http://192.168.1.121:18789`.
 /// 3. Hardcoded fallback `http://127.0.0.1:18789`.
 fn openclaw_base_url() -> String {
     if let Ok(v) = std::env::var("JARVIS_OPENCLAW_URL") {
@@ -142,7 +142,7 @@ fn openclaw_base_url() -> String {
     }
     match read_openclaw_target().as_str() {
         "local" => "http://127.0.0.1:18789".into(),
-        "remote" => "http://192.168.1.118:18789".into(),
+        "remote" => "http://192.168.1.121:18789".into(),
         _ => "http://127.0.0.1:18789".into(),
     }
 }
@@ -843,7 +843,7 @@ pub mod commands {
         write_openclaw_target(&target)?;
         let url = match target.as_str() {
             "local" => "http://127.0.0.1:18789".into(),
-            _ => "http://192.168.1.118:18789".into(),
+            _ => "http://192.168.1.121:18789".into(),
         };
         Ok(OpenclawTargetInfo { target, url })
     }

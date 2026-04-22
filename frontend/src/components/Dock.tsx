@@ -14,8 +14,8 @@
  * disabled, only the visual dock is shown without the hold-to-record logic.
  */
 
-import React, { useEffect, useCallback } from 'react';
 import type { ReactElement } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { usePushToTalk } from '../hooks/usePushToTalk';
 import type { AppOrbState } from '../types';
 import './Dock.css';

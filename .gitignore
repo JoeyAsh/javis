@@ -8,6 +8,7 @@ dist/
 build/
 *.egg-info/
 
+
 # Virtual environments
 .venv/
 venv/
@@ -23,8 +24,6 @@ logs/
 *.log
 
 # IDE
-.idea/
-.vscode/
 *.swp
 *.swo
 
@@ -62,6 +61,9 @@ junit.xml
 # MyPy / Ruff / Black caches
 .mypy_cache/
 .ruff_cache/
+
+.vscode/
+.idea/
 
 # Frontend
 frontend/node_modules/

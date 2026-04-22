@@ -296,6 +296,12 @@ async fn ensure_ssh_tunnel() -> Result<(), String> {
         return Ok(());
     }
 
+    // If the gateway is already reachable over LAN, skip SSH tunnel entirely.
+    if check_http_openclaw().await {
+        eprintln!("[ensure_ssh_tunnel] OpenClaw gateway reachable directly — skipping SSH tunnel");
+        return Ok(());
+    }
+
     if !pids_on_port(18789).await.is_empty() {
         return Ok(());
     }

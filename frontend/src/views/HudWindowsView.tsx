@@ -25,9 +25,9 @@ import { GitLabPanel } from '@features/gitlab';
 import { NowPlayingPanel } from '@features/nowplaying';
 import { LogPanel } from '@features/log';
 
-// ── Remaining views (not yet migrated — batch 2c+) ──────────────────────────
-import { DevView } from './DevView';
-import { SelfFixView } from './SelfFixView';
+// ── Batch 2c migrated panels ─────────────────────────────────────────────────
+import { DevPanel } from '@features/dev';
+import { SelfFixPanel } from '@features/selffix';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -87,13 +87,13 @@ const PANELS: ReadonlyArray<PanelSpec> = [
         id: 'dev',
         title: 'Dev Toolkit',
         ix: '⚙',
-        render: (mode) => <DevView mode={mode} />,
+        render: (mode) => <DevPanel mode={mode} />,
     },
     {
         id: 'selffix',
         title: 'Self-Fix',
         ix: '🔧',
-        render: (mode) => <SelfFixView mode={mode} />,
+        render: (mode) => <SelfFixPanel mode={mode} />,
     },
     {
         id: 'gitlab',

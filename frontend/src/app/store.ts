@@ -8,6 +8,7 @@ import systemReducer from '@features/system/systemSlice';
 import nowplayingReducer from '@features/nowplaying/nowplayingSlice';
 import logReducer from '@features/log/logSlice';
 import gitlabReducer from '@features/gitlab/gitlabSlice';
+import lightsReducer from '@features/lights/lightsSlice';
 
 export const rootReducer = combineReducers({
     [baseApi.reducerPath]: baseApi.reducer,
@@ -19,6 +20,7 @@ export const rootReducer = combineReducers({
     nowplaying: nowplayingReducer,
     log: logReducer,
     gitlab: gitlabReducer,
+    lights: lightsReducer,
     // github has no slice — RTK Query cache only.
 });
 

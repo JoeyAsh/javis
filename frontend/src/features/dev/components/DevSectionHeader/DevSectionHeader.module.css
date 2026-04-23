@@ -1,0 +1,33 @@
+.section {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: var(--s-2);
+    margin-bottom: var(--s-2);
+}
+
+.label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    font-family: var(--font);
+}
+
+.stale {
+    margin-left: var(--s-2);
+    font-size: 8px;
+    color: var(--warning);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.right {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-family: var(--font);
+}

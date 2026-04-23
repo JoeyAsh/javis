@@ -1,0 +1,89 @@
+.entry {
+    border-left: 2px solid var(--success);
+    padding-left: 10px;
+    margin-bottom: 8px;
+}
+
+.entryInProgress {
+    border-left-color: var(--warning);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.summary {
+    font-size: 12px;
+    color: var(--success);
+    font-weight: 500;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font);
+}
+
+.summaryInProgress {
+    color: var(--warning);
+}
+
+.time {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-family: var(--font);
+    letter-spacing: 1px;
+}
+
+.detail {
+    font-size: 10px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin-bottom: 6px;
+    font-family: var(--font);
+}
+
+.commitRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 10px;
+}
+
+.sha {
+    font-family: var(--font);
+    color: var(--accent-bright);
+    background: rgba(76, 168, 232, 0.08);
+    padding: 1px 4px;
+    letter-spacing: 1px;
+    font-size: 10px;
+}
+
+.added {
+    color: var(--success);
+    font-family: var(--font);
+}
+
+.removed {
+    color: var(--danger);
+    font-family: var(--font);
+}
+
+.actions {
+    display: flex;
+    gap: 6px;
+}
+
+.btnAccept {
+    width: auto;
+    padding: 0 10px;
+}
+
+.btnDiscard {
+    width: auto;
+    padding: 0 10px;
+    color: var(--danger);
+}

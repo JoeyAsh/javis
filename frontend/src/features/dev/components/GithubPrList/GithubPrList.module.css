@@ -1,0 +1,27 @@
+.row {
+    padding: 4px 0;
+}
+
+.title {
+    font-size: 11px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font);
+}
+
+.meta {
+    font-size: 9px;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font);
+}
+
+.empty {
+    font-size: 10px;
+    color: var(--text-muted);
+    padding-top: 4px;
+    font-family: var(--font);
+}

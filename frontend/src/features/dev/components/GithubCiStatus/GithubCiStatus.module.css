@@ -1,0 +1,20 @@
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.repoName {
+    font-size: 11px;
+    color: var(--text);
+    flex: 1;
+    font-family: var(--font);
+}
+
+.empty {
+    font-size: 10px;
+    color: var(--text-muted);
+    padding-top: 4px;
+    font-family: var(--font);
+}

@@ -1,0 +1,95 @@
+.panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: var(--s-3);
+    font-family: var(--font);
+    overflow-y: auto;
+}
+
+.compact {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-1);
+    padding: var(--s-2) var(--s-3);
+    font-family: var(--font);
+}
+
+.compactRow {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    font-size: 11px;
+}
+
+.compactCount {
+    font-weight: 500;
+}
+
+.compactCountPrs {
+    color: var(--accent-bright);
+}
+
+.compactCountWarn {
+    color: var(--warning);
+}
+
+.compactCountOk {
+    color: var(--success);
+}
+
+.compactLabel {
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-left: 2px;
+}
+
+.compactSub {
+    font-size: 10px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.notifRow {
+    padding: 4px 0;
+}
+
+.notifTitle {
+    font-size: 10px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font);
+}
+
+.notifMeta {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-family: var(--font);
+}
+
+.mockPrRow {
+    padding: 4px 0;
+}
+
+.mockPrTitle {
+    font-size: 11px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font);
+}
+
+.mockPrMeta {
+    font-size: 9px;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font);
+}

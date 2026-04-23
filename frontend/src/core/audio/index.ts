@@ -7,6 +7,6 @@ export { useAudioEngine } from './useAudioEngine';
 export type { UseAudioEngineReturn } from './useAudioEngine';
 export { useTauriWindowSfx } from './useTauriWindowSfx';
 export { useAudioAnalyser } from './useAudioAnalyser';
-export { useMicStream } from './useMicStream';
+// useMicStream moved to @features/conversation — import from there.
 export type { SfxEvent, SfxEntry } from './config';
 export { SFX_CONFIG, DUCK_VOLUME, DUCK_RAMP_MS } from './config';

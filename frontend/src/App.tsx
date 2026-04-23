@@ -1,7 +1,5 @@
 import React, { type ReactElement, lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useAudioAnalyser } from './hooks/useAudioAnalyser';
-import { useConversationMode } from './hooks/useConversationMode';
-import { useMicStream } from './hooks/useMicStream';
 import { useSettings } from './hooks/useSettings';
 import { useWebSocket } from './hooks/useWebSocket';
 import { Hint, HUDShell, CssOrb } from '@ui';
@@ -17,6 +15,10 @@ import { SettingsView } from './views/SettingsView';
 // Phase 1b ✅ — migrated to lib TopBar + StatusDock
 import { JarvisTopBar } from './views/JarvisTopBar';
 import { JarvisDock } from './views/JarvisDock';
+
+// Batch 3a ✅ — orbState + conversation features
+import { useOrbState } from '@features/orbState';
+import { useConversationMode, useMicStream } from '@features/conversation';
 
 /**
  * Main JARVIS application component.
@@ -42,20 +44,20 @@ function AppInner(): ReactElement {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const settingsHook = useSettings();
     const {
-        orbState,
         audioQueue,
         consumeAudio,
-        wsRef,
         registerStopAudio,
         notifyAudioPlaying,
-        connected,
     } = useWebSocket();
     const { isSpeaking, enqueue, stopAll } = useAudioAnalyser();
-    const followUp = useConversationMode();
 
-    // ── Derived state ────────────────────────────────────────────────────────
-    const effectiveOrbState: AppOrbState =
-        followUp.active && orbState === 'listening' ? 'follow_up' : orbState;
+    // Batch 3a — orb state + connection from feature slice
+    const { state: orbState, connected } = useOrbState();
+
+    // Batch 3a — follow-up mode from feature slice
+    // (selectAppOrbState in orbStateSelectors handles 'working' priority;
+    //  the follow_up → listening visual mapping stays in toDisplayOrbState)
+    useConversationMode();
 
     // ── Audio stop callback for barge-in ─────────────────────────────────────
     useEffect(() => {
@@ -74,12 +76,12 @@ function AppInner(): ReactElement {
         playOneShot: sfxPlayOneShot,
         play: sfxPlay,
         stop: sfxStop,
-    } = useAudioEngine(effectiveOrbState, connected, settingsHook.settings.heartbeatEnabled);
+    } = useAudioEngine(orbState, connected, settingsHook.settings.heartbeatEnabled);
 
     useTauriWindowSfx({ playOneShot: sfxPlayOneShot });
 
     // ── Mic streaming ────────────────────────────────────────────────────────
-    useMicStream({ wsRef, paused: muted });
+    useMicStream({ paused: muted });
 
     // ── Audio queue → analyser ───────────────────────────────────────────────
     useEffect(() => {
@@ -119,7 +121,7 @@ function AppInner(): ReactElement {
     } as React.CSSProperties;
 
     // ── Orb selection ──────────────────────────────────────────────────────
-    const displayOrbState = toDisplayOrbState(effectiveOrbState);
+    const displayOrbState = toDisplayOrbState(orbState);
     const useThreeOrb = settingsHook.settings.orbStyle === 'threejs';
     const orbElement = useThreeOrb ? (
         <Suspense key="three" fallback={<CssOrb state={displayOrbState} />}>
@@ -133,7 +135,7 @@ function AppInner(): ReactElement {
         <SfxProvider playOneShot={sfxPlayOneShot} play={sfxPlay} stop={sfxStop}>
             <HUDShell
                 idle={idle}
-                working={effectiveOrbState === 'working'}
+                working={orbState === 'working'}
                 scene={{ grid: true, stars: true }}
                 reactor={!useThreeOrb}
                 viewportCorners
@@ -152,15 +154,14 @@ function AppInner(): ReactElement {
                 }
                 dock={
                     <JarvisDock
-                        orbState={effectiveOrbState}
-                        wsRef={wsRef}
+                        orbState={orbState}
                         pttEnabled={settingsHook.settings.pushToTalk}
                     />
                 }
                 style={shellStyle}
             >
                 {/* Phase 2 ✅ — lib WindowManager with panel renderers */}
-                <HudWindowsView idle={idle} orbState={effectiveOrbState} />
+                <HudWindowsView idle={idle} orbState={orbState} />
 
                 {/* Settings overlay — z-index 50 */}
                 <SettingsView

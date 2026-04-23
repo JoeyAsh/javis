@@ -16,7 +16,7 @@
 
 import type { ReactElement } from 'react';
 import React, { useCallback, useEffect } from 'react';
-import { usePushToTalk } from '../hooks/usePushToTalk';
+import { usePushToTalk } from '@features/conversation';
 import type { AppOrbState } from '../types';
 import './Dock.css';
 
@@ -27,8 +27,6 @@ import './Dock.css';
 export interface DockProps {
     /** Current effective orb state — drives meter animation and label. */
     orbState: AppOrbState;
-    /** Raw WebSocket ref passed through to PTT audio capture. */
-    wsRef: React.RefObject<WebSocket | null>;
     /** When false the PTT button still renders but audio capture is disabled. */
     pttEnabled: boolean;
 }
@@ -52,8 +50,8 @@ const METER_BARS = Array.from({ length: 12 }, (_, i) => i);
 // Component
 // ---------------------------------------------------------------------------
 
-export function Dock({ orbState, wsRef, pttEnabled }: DockProps): ReactElement {
-    const { pttState, handlePressStart, handlePressEnd } = usePushToTalk({ wsRef });
+export function Dock({ orbState, pttEnabled }: DockProps): ReactElement {
+    const { pttState, handlePressStart, handlePressEnd } = usePushToTalk({ enabled: pttEnabled });
 
     const isActive = orbState !== 'idle';
     const isHolding = pttState === 'holding';

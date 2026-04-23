@@ -1,33 +1,6 @@
-/**
- * usePushToTalk — push-to-talk audio capture logic.
- *
- * Extracts the mic capture pipeline from PushToTalkButton so the Dock
- * component can render the full prototype UI while keeping the WebSocket
- * integration in one place.
- *
- * Usage:
- *   const { pttState, handlePressStart, handlePressEnd } = usePushToTalk({ wsRef });
- */
-
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type React from 'react';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export type PttState = 'idle' | 'holding' | 'flash';
-
-export interface UsePushToTalkOptions {
-    /** Raw WebSocket ref — binary PCM frames are sent directly. */
-    wsRef: React.RefObject<WebSocket | null>;
-}
-
-export interface UsePushToTalkReturn {
-    pttState: PttState;
-    handlePressStart: () => void;
-    handlePressEnd: () => void;
-}
+import { wsClient } from '@core/websocket/wsClient';
+import type { UsePushToTalkOptions, UsePushToTalkReturn, PttState } from './usePushToTalk.types';
 
 // ---------------------------------------------------------------------------
 // Audio helpers
@@ -61,7 +34,15 @@ function floatToInt16(float32: Float32Array, sourceSampleRate: number): Int16Arr
 // Hook
 // ---------------------------------------------------------------------------
 
-export function usePushToTalk({ wsRef }: UsePushToTalkOptions): UsePushToTalkReturn {
+/**
+ * Push-to-talk audio capture logic.
+ *
+ * Captures mic audio while holding and sends Int16 PCM frames at 16 kHz
+ * via wsClient.sendBinary. The `enabled` option controls whether the hook
+ * is active (keyboard / pointer events are still bound regardless, but
+ * capture only starts when enabled is true).
+ */
+export function usePushToTalk({ enabled }: UsePushToTalkOptions): UsePushToTalkReturn {
     const [pttState, setPttState] = useState<PttState>('idle');
 
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -71,6 +52,8 @@ export function usePushToTalk({ wsRef }: UsePushToTalkOptions): UsePushToTalkRet
     const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
     const sendingRef = useRef(false);
     const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const enabledRef = useRef(enabled);
+    enabledRef.current = enabled;
 
     // Cleanup on unmount
     useEffect(() => {
@@ -86,6 +69,8 @@ export function usePushToTalk({ wsRef }: UsePushToTalkOptions): UsePushToTalkRet
     }, []);
 
     const startCapture = useCallback(async () => {
+        if (!enabledRef.current) return;
+
         if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -104,11 +89,10 @@ export function usePushToTalk({ wsRef }: UsePushToTalkOptions): UsePushToTalkRet
 
                 processor.onaudioprocess = (event: AudioProcessingEvent) => {
                     if (!sendingRef.current) return;
-                    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
                     const float32 = event.inputBuffer.getChannelData(0);
                     const int16 = floatToInt16(float32, event.inputBuffer.sampleRate);
-                    wsRef.current.send(int16.buffer as ArrayBuffer);
+                    wsClient.sendBinary(int16.buffer as ArrayBuffer);
                 };
 
                 const silentGain = ctx.createGain();
@@ -132,7 +116,7 @@ export function usePushToTalk({ wsRef }: UsePushToTalkOptions): UsePushToTalkRet
         }
 
         sendingRef.current = true;
-    }, [wsRef]);
+    }, []);
 
     const stopCapture = useCallback(() => {
         sendingRef.current = false;

@@ -5,16 +5,15 @@
  * (keyboard Space + pointer hold) from the business-logic layer.
  */
 
-import React, { type ReactElement, useCallback, useEffect } from 'react';
+import { type ReactElement, useCallback, useEffect } from 'react';
 import { PushToTalkButton, StatusDock } from '@ui';
-import { usePushToTalk } from '../hooks/usePushToTalk';
+import { usePushToTalk } from '@features/conversation';
 import type { AppOrbState } from '@common/types';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
 export interface JarvisDockProps {
     orbState: AppOrbState;
-    wsRef: React.RefObject<WebSocket | null>;
     pttEnabled: boolean;
 }
 
@@ -26,8 +25,8 @@ function toDisplayState(state: AppOrbState): AppOrbState {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function JarvisDock({ orbState, wsRef, pttEnabled }: JarvisDockProps): ReactElement {
-    const { pttState, handlePressStart, handlePressEnd } = usePushToTalk({ wsRef });
+export function JarvisDock({ orbState, pttEnabled }: JarvisDockProps): ReactElement {
+    const { pttState, handlePressStart, handlePressEnd } = usePushToTalk({ enabled: pttEnabled });
     const isHolding = pttState === 'holding';
     const isActive = orbState !== 'idle';
 
@@ -88,4 +87,3 @@ export function JarvisDock({ orbState, wsRef, pttEnabled }: JarvisDockProps): Re
 }
 
 export default JarvisDock;
-

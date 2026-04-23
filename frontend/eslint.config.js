@@ -112,6 +112,56 @@ export default tseslint.config(
         },
     },
 
+    // ── Layer boundary rules (warn-only — existing code has violations) ─────
+    {
+        files: ['**/*.{ts,tsx}'],
+        rules: {
+            // Disallow deep cross-feature imports: @features/foo/bar/baz
+            // (only @features/foo/index or @features/foo are allowed).
+            'no-restricted-imports': [
+                'warn',
+                {
+                    patterns: [
+                        {
+                            // Match @features/<name>/<anything>/<anything-else>
+                            // i.e. more than one level deep — only allow @features/<name> or
+                            // @features/<name>/index.
+                            group: ['@features/*/*/**', '@features/*/!(index)'],
+                            message:
+                                'Cross-feature deep imports are not allowed. ' +
+                                'Import from @features/<name> or @features/<name>/index only.',
+                        },
+                        {
+                            // Disallow deep @ui imports except @ui itself and @ui/orb/*
+                            group: ['@ui/**', '!@ui/orb/**'],
+                            message:
+                                'Deep @ui imports are not allowed. ' +
+                                'Use the @ui barrel or @ui/orb/* only.',
+                        },
+                    ],
+                },
+            ],
+            // Warn on direct `new WebSocket(...)` calls outside core/websocket/
+            'no-restricted-syntax': [
+                'warn',
+                {
+                    selector:
+                        "NewExpression[callee.name='WebSocket']:not([callee.object.name='WebSocket'])",
+                    message:
+                        'Do not instantiate WebSocket directly. Use wsClient from @core/websocket.',
+                },
+            ],
+        },
+    },
+
+    // Allow new WebSocket() in core/websocket/wsClient.ts without warning
+    {
+        files: ['**/core/websocket/wsClient.ts'],
+        rules: {
+            'no-restricted-syntax': 'off',
+        },
+    },
+
     // ── Prettier LAST — disables conflicting formatting rules ───────────────
     prettierConfig,
 );

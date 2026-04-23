@@ -1,0 +1,1 @@
+export { isTauriEnvironment } from './windowBridge';

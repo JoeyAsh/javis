@@ -1,29 +1,15 @@
 /**
- * useSettings — Vitest unit tests.
- *
- * Tests cover:
- *   - Loading defaults when localStorage is empty
- *   - Reading persisted values from localStorage on init
- *   - Clamping panelOpacity to [0.5, 1.0]
- *   - All individual setters persist to localStorage
- *   - Safari private-mode: does not throw when localStorage throws
+ * useSettings (feature) — Vitest unit tests.
+ * Ported from src/hooks/__tests__/useSettings.test.ts.
  */
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { useSettings } from '../useSettings';
-
-// ---------------------------------------------------------------------------
-// localStorage mock
-// ---------------------------------------------------------------------------
+import { useSettings } from '../hooks/useSettings';
 
 const localStorageMock: Record<string, string> = {};
 
 beforeEach(() => {
-    // Clear in-memory storage before each test
-    Object.keys(localStorageMock).forEach((k) => {
-        delete localStorageMock[k];
-    });
+    Object.keys(localStorageMock).forEach((k) => { delete localStorageMock[k]; });
 
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(
         (key) => localStorageMock[key] ?? null,
@@ -37,16 +23,11 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe('useSettings', () => {
     it('returns defaults when localStorage is empty', () => {
         const { result } = renderHook(() => useSettings());
         expect(result.current.settings.panelOpacity).toBe(1.0);
         expect(result.current.settings.autoSpeakClaude).toBe(true);
-        // pushToTalk defaults to true so the PTT button is visible without config
         expect(result.current.settings.pushToTalk).toBe(true);
         expect(result.current.settings.micDeviceId).toBe('');
     });
@@ -78,48 +59,36 @@ describe('useSettings', () => {
 
     it('setPanelOpacity updates state and writes to localStorage', () => {
         const { result } = renderHook(() => useSettings());
-        act(() => {
-            result.current.setPanelOpacity(0.75);
-        });
+        act(() => { result.current.setPanelOpacity(0.75); });
         expect(result.current.settings.panelOpacity).toBeCloseTo(0.75);
         expect(localStorageMock['jarvis.panelOpacity']).toBe('0.75');
     });
 
     it('setPanelOpacity clamps value to valid range', () => {
         const { result } = renderHook(() => useSettings());
-        act(() => {
-            result.current.setPanelOpacity(0.0);
-        });
+        act(() => { result.current.setPanelOpacity(0.0); });
         expect(result.current.settings.panelOpacity).toBe(0.5);
-        act(() => {
-            result.current.setPanelOpacity(1.5);
-        });
+        act(() => { result.current.setPanelOpacity(1.5); });
         expect(result.current.settings.panelOpacity).toBe(1.0);
     });
 
     it('setAutoSpeakClaude toggles and persists', () => {
         const { result } = renderHook(() => useSettings());
-        act(() => {
-            result.current.setAutoSpeakClaude(false);
-        });
+        act(() => { result.current.setAutoSpeakClaude(false); });
         expect(result.current.settings.autoSpeakClaude).toBe(false);
         expect(localStorageMock['jarvis.autoSpeakClaude']).toBe('false');
     });
 
     it('setPushToTalk toggles and persists', () => {
         const { result } = renderHook(() => useSettings());
-        act(() => {
-            result.current.setPushToTalk(true);
-        });
+        act(() => { result.current.setPushToTalk(true); });
         expect(result.current.settings.pushToTalk).toBe(true);
         expect(localStorageMock['jarvis.pushToTalk']).toBe('true');
     });
 
     it('setMicDeviceId updates and persists', () => {
         const { result } = renderHook(() => useSettings());
-        act(() => {
-            result.current.setMicDeviceId('my-device-id');
-        });
+        act(() => { result.current.setMicDeviceId('my-device-id'); });
         expect(result.current.settings.micDeviceId).toBe('my-device-id');
         expect(localStorageMock['jarvis.micDeviceId']).toBe('my-device-id');
     });
@@ -129,13 +98,9 @@ describe('useSettings', () => {
             throw new Error('QuotaExceededError');
         });
         const { result } = renderHook(() => useSettings());
-        // Should not throw even if storage is denied
         expect(() => {
-            act(() => {
-                result.current.setPanelOpacity(0.8);
-            });
+            act(() => { result.current.setPanelOpacity(0.8); });
         }).not.toThrow();
-        // State still updates in memory
         expect(result.current.settings.panelOpacity).toBeCloseTo(0.8);
     });
 
@@ -143,8 +108,6 @@ describe('useSettings', () => {
         vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
             throw new Error('SecurityError');
         });
-        expect(() => {
-            renderHook(() => useSettings());
-        }).not.toThrow();
+        expect(() => { renderHook(() => useSettings()); }).not.toThrow();
     });
 });

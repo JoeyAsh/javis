@@ -5,7 +5,9 @@ export { useAudioAnalyser } from './useAudioAnalyser';
 // useConversationMode removed — consume via @features/conversation
 // usePushToTalk removed — consume via @features/conversation
 // useMicStream removed — consume via @features/conversation
-export { useSettings } from './useSettings';
-export type { JarvisSettings, UseSettingsReturn } from './useSettings';
+// useSettings moved to @features/settings — re-exported here for backward compat
+export { useSettings } from '../features/settings/hooks/useSettings';
+export type { JarvisSettings, UseSettingsReturn } from '../features/settings/hooks/useSettings.types';
+export type { OrbStyle } from '../features/settings/types';
 export { useLocation } from './useLocation';
 export type { LocationCoords } from './useLocation';

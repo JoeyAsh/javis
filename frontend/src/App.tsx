@@ -1,6 +1,6 @@
 import React, { type ReactElement, lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useAudioAnalyser } from './hooks/useAudioAnalyser';
-import { useSettings } from './hooks/useSettings';
+import { useSettings } from '@features/settings';
 import { useWebSocket } from './hooks/useWebSocket';
 import { Hint, HUDShell, CssOrb } from '@ui';
 const ThreeOrb = lazy(() => import('./ui/orb/ThreeOrb'));
@@ -10,8 +10,8 @@ import type { AppOrbState } from '@common/types';
 // Phase 2 ✅ — migrated to lib WindowManager + contexts/PanelAvailability
 import { PanelAvailabilityProvider } from './contexts/PanelAvailability';
 import { HudWindowsView } from './views/HudWindowsView';
-// Phase 4 ✅ — migrated to views/SettingsView
-import { SettingsView } from './views/SettingsView';
+// Batch 3b ✅ — migrated to features/settings
+import { SettingsView } from '@features/settings';
 // Phase 1b ✅ — migrated to lib TopBar + StatusDock
 import { JarvisTopBar } from './views/JarvisTopBar';
 import { JarvisDock } from './views/JarvisDock';

@@ -6,3 +6,10 @@ export interface DisplaySectionProps {
     orbStyle: OrbStyle;
     onOrbStyleChange: (v: OrbStyle) => void;
 }
+
+export interface OrbOptionProps {
+    active: boolean;
+    onClick: () => void;
+    title: string;
+    description: string;
+}

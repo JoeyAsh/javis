@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { usePanelAvailable } from '../../../../contexts/PanelAvailability';
+import { usePanelAvailable } from '@app/providers/PanelAvailabilityProvider';
 import { useNotifications } from '../../hooks/useNotifications';
 import { NotificationItem } from '../NotificationItem';
 import type { HudNotification, NotificationSeverity } from '../../types';

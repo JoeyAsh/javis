@@ -1,5 +1,18 @@
 /**
  * Transcript feature types.
- * Re-exported from src/types.ts — originals remain untouched until Batch 5.
  */
-export type { TranscriptPayload, TranscriptTurn, TranscriptRole } from '../../types';
+
+export interface TranscriptPayload {
+    role: 'user' | 'jarvis';
+    text: string;
+}
+
+export type TranscriptRole = 'user' | 'jarvis';
+
+export interface TranscriptTurn {
+    id: string;
+    role: TranscriptRole;
+    text: string;
+    at: string; // ISO
+    salutation?: 'Sir' | 'Johannes';
+}

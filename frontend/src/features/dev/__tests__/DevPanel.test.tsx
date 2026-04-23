@@ -18,8 +18,10 @@
 import { screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@test/renderWithProviders';
-import { installMockWsClient } from '@test/mockWsClient';
+import { installMockWsClient, _mockWsClientImpl } from '@test/mockWsClient';
 import type { GitHubStatePayload } from '@core/websocket/types';
+
+vi.mock('@core/websocket/wsClient', () => ({ wsClient: _mockWsClientImpl }));
 
 // ---------------------------------------------------------------------------
 // Mock the RTK Query hook so we control the live data value.

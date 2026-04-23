@@ -4,10 +4,10 @@ import { useMockTicker, seededRand } from '@common/hooks/useMockTicker';
 import { systemMock } from '../../mock';
 import { useSystem } from '../../hooks/useSystem';
 import type { SystemMetricsLive, MetricHistories } from '../../types';
-import type { SystemMetric } from '../../../../types';
+import type { SystemMetric } from '../../types';
 import { SystemTile } from '../SystemTile';
 import type { SparkTile } from '../SystemTile';
-import type { SystemPanelProps } from './SystemPanel.types';
+import type { SystemPanelProps, SystemCompactProps, SystemExpandedProps } from './SystemPanel.types';
 import styles from './SystemPanel.module.css';
 
 // ---------------------------------------------------------------------------
@@ -85,10 +85,6 @@ function mockToTiles(metrics: SystemMetric[]): SparkTile[] {
 // Compact view
 // ---------------------------------------------------------------------------
 
-interface SystemCompactProps {
-    tiles: SparkTile[];
-}
-
 function SystemCompact({ tiles }: SystemCompactProps): ReactElement {
     const cpu = tiles.find((t) => t.id === 'cpu');
     const ram = tiles.find((t) => t.id === 'ram');
@@ -129,10 +125,6 @@ function SystemCompact({ tiles }: SystemCompactProps): ReactElement {
 // ---------------------------------------------------------------------------
 // Expanded view
 // ---------------------------------------------------------------------------
-
-interface SystemExpandedProps {
-    tiles: SparkTile[];
-}
 
 function SystemExpanded({ tiles }: SystemExpandedProps): ReactElement {
     return (

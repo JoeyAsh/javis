@@ -1,4 +1,4 @@
-import type { PanelMode } from '../../../../types';
+import type { PanelMode } from '@common/types';
 import type { SelfFixEntry } from '../../types';
 
 export interface SelfFixPanelProps {

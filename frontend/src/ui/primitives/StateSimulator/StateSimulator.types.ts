@@ -7,3 +7,14 @@ export interface StateSimulatorProps {
     position?: 'fixed-top' | 'inline';
     className?: string;
 }
+
+export interface SimOption {
+    key: AppOrbState;
+    label: string;
+}
+
+export interface SimButtonProps {
+    option: SimOption;
+    active: boolean;
+    onChange: (state: AppOrbState) => void;
+}

@@ -1,4 +1,4 @@
-import type { SystemMetric } from '../../../../types';
+import type { SystemMetric } from '../../types';
 
 export interface SparkTile {
     id: SystemMetric['id'];

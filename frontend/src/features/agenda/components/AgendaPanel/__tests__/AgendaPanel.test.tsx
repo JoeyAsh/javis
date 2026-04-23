@@ -6,11 +6,13 @@
 import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { installMockWsClient } from '@test/mockWsClient';
+import { installMockWsClient, _mockWsClientImpl } from '@test/mockWsClient';
 import { renderWithProviders } from '@test/renderWithProviders';
 import agendaReducer, { calendarStateReceived } from '../../../agendaSlice';
 import { AgendaPanel } from '../AgendaPanel';
 import type { AgendaEvent } from '../../../types';
+
+vi.mock('@core/websocket/wsClient', () => ({ wsClient: _mockWsClientImpl }));
 
 const ws = installMockWsClient();
 

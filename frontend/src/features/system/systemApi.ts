@@ -1,7 +1,7 @@
 import { baseApi } from '@core/api/baseApi';
 import { wsClient } from '@core/websocket/wsClient';
 import { systemMetricsReceived } from './systemSlice';
-import type { SystemMetricsPayload } from '../../types';
+import type { SystemMetricsPayload } from './types';
 
 export const systemApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({

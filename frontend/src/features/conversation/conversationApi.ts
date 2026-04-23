@@ -1,7 +1,7 @@
 import { baseApi } from '@core/api/baseApi';
 import { wsClient } from '@core/websocket/wsClient';
 import { conversationModeReceived } from './conversationSlice';
-import type { ConversationModePayload } from '../../types';
+import type { ConversationModePayload } from './types';
 
 interface ConversationModeMessage {
     type: string;

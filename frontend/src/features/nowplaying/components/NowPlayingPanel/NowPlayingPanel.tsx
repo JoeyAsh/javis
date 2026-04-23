@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { usePanelAvailable } from '../../../../contexts/PanelAvailability';
+import { usePanelAvailable } from '@app/providers/PanelAvailabilityProvider';
 import { useMockTicker } from '@common/hooks/useMockTicker';
 import { useNowPlaying } from '../../hooks/useNowPlaying';
 import { sendSpotifyCmd } from '../../nowplayingApi';
@@ -10,8 +10,8 @@ import { AuthPrompt } from '../AuthPrompt';
 import { TrackInfo } from '../TrackInfo';
 import { TransportControls } from '../TransportControls';
 import { ProgressBar } from '../ProgressBar';
-import type { SpotifyCmdAction, NowPlayingTrack } from '../../types';
-import type { NowPlayingPanelProps } from './NowPlayingPanel.types';
+import type { SpotifyCmdAction } from '../../types';
+import type { NowPlayingPanelProps, NowPlayingCompactProps, NowPlayingExpandedProps } from './NowPlayingPanel.types';
 import styles from './NowPlayingPanel.module.css';
 
 // ---------------------------------------------------------------------------
@@ -29,11 +29,6 @@ function NoPlaybackState(): ReactElement {
 // ---------------------------------------------------------------------------
 // Compact view
 // ---------------------------------------------------------------------------
-
-interface NowPlayingCompactProps {
-    track: NowPlayingTrack;
-    onCmd: (action: SpotifyCmdAction, value?: number) => void;
-}
 
 function NowPlayingCompact({ track, onCmd }: NowPlayingCompactProps): ReactElement {
     const tick = useMockTicker(1000, !track.playing);
@@ -67,11 +62,6 @@ function NowPlayingCompact({ track, onCmd }: NowPlayingCompactProps): ReactEleme
 // ---------------------------------------------------------------------------
 // Expanded view
 // ---------------------------------------------------------------------------
-
-interface NowPlayingExpandedProps {
-    track: NowPlayingTrack;
-    onCmd: (action: SpotifyCmdAction, value?: number) => void;
-}
 
 function NowPlayingExpanded({ track, onCmd }: NowPlayingExpandedProps): ReactElement {
     return (

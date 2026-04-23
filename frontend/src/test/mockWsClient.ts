@@ -1,34 +1,27 @@
 /**
  * Mock WS client factory for feature-level unit tests.
  *
- * ## How to use
+ * ## Usage
  *
- * Call `installMockWsClient()` at module top-level in your test file.
- * Vitest hoists `vi.mock(...)` calls to the top of the transformed module,
- * so the mock factory must not close over local variables.
- * This module works around that limitation by keeping the registry at module
- * scope in a separate shared-state module (`__mockWsRegistry__`), which is
- * always the same reference regardless of import order.
+ * Add these two lines at the **top** of every test file that needs WS:
  *
  * ```ts
  * import { installMockWsClient } from '@test/mockWsClient';
  *
- * const ws = installMockWsClient(); // must be at module top-level
+ * // vi.mock is hoisted by Vitest — keep at module top-level
+ * vi.mock('@core/websocket/wsClient', () => ({ wsClient: _mockWsClientImpl }));
  *
- * beforeEach(() => ws.reset());
- *
- * it('handles mail_state', () => {
- *     renderWithProviders(<MailPanel />, { reducers: { mail: mailReducer } });
- *     act(() => ws.emit('mail_state', { messages: [], unread_count: 0 }));
- *     // assert...
- * });
+ * const ws = installMockWsClient();
  * ```
+ *
+ * The exported `_mockWsClientImpl` is the singleton fake that Vitest will
+ * substitute for the real `wsClient`. `installMockWsClient()` returns a
+ * control handle with `emit`, `subscribers`, and `reset`.
  */
 import { vi } from 'vitest';
 import type { WsMessageHandler } from '@core/websocket/wsClient';
 
 // Module-scope registry — persists across all test files that share this module.
-// `installMockWsClient` returns a handle to drive and reset it.
 const _registry = new Map<string, Set<WsMessageHandler>>();
 
 export interface MockWsClient {
@@ -44,40 +37,44 @@ export interface MockWsClient {
 }
 
 /**
- * Replaces the `@core/websocket/wsClient` module with a lightweight fake and
- * returns a control handle for tests to drive messages and inspect state.
+ * The fake wsClient implementation that `vi.mock` will expose.
+ * Import this in your test file and pass it to the `vi.mock` factory.
  *
- * Must be called at module top-level so that `vi.mock` is hoisted before any
- * component imports.
+ * Vitest hoists `vi.mock(...)` calls to the top of the transformed module,
+ * so the factory MUST NOT close over local variables declared after the
+ * import block. This object is defined at module scope, so it is always
+ * available when the factory runs.
+ */
+export const _mockWsClientImpl = {
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    send: vi.fn(),
+    sendBinary: vi.fn(),
+    getState: vi.fn(() => 'closed' as const),
+    onStateChange: vi.fn(() => () => undefined),
+    subscribe: vi.fn(<T>(type: string, handler: WsMessageHandler<T>): (() => void) => {
+        if (!_registry.has(type)) {
+            _registry.set(type, new Set());
+        }
+        const castHandler = handler as WsMessageHandler;
+        const handlers = _registry.get(type);
+        if (handlers) handlers.add(castHandler);
+        return () => {
+            _registry.get(type)?.delete(castHandler);
+        };
+    }),
+};
+
+/**
+ * Returns a control handle to drive mock WS messages and reset state in tests.
+ *
+ * Call at module top-level after the `vi.mock` call:
+ * ```ts
+ * vi.mock('@core/websocket/wsClient', () => ({ wsClient: _mockWsClientImpl }));
+ * const ws = installMockWsClient();
+ * ```
  */
 export function installMockWsClient(): MockWsClient {
-    vi.mock('@core/websocket/wsClient', () => {
-        // The factory closes over the module-scope `_registry` — this is safe
-        // because the import `@test/mockWsClient` is evaluated before the
-        // mocked module's subscribers fire.
-        const fakeClient = {
-            connect: vi.fn(),
-            disconnect: vi.fn(),
-            send: vi.fn(),
-            sendBinary: vi.fn(),
-            getState: vi.fn(() => 'closed' as const),
-            onStateChange: vi.fn(() => () => undefined),
-            subscribe: vi.fn(<T>(type: string, handler: WsMessageHandler<T>): (() => void) => {
-                if (!_registry.has(type)) {
-                    _registry.set(type, new Set());
-                }
-                const castHandler = handler as WsMessageHandler;
-                // Non-null: we just ensured the key exists above.
-                const handlers = _registry.get(type);
-                if (handlers) handlers.add(castHandler);
-                return () => {
-                    _registry.get(type)?.delete(castHandler);
-                };
-            }),
-        };
-        return { wsClient: fakeClient };
-    });
-
     return {
         emit<T>(type: string, payload: T): void {
             const handlers = _registry.get(type);
@@ -90,6 +87,21 @@ export function installMockWsClient(): MockWsClient {
         },
         reset(): void {
             _registry.clear();
+            vi.clearAllMocks();
+            // Re-attach subscribe mock after clearAllMocks resets it.
+            _mockWsClientImpl.subscribe.mockImplementation(
+                <T>(type: string, handler: WsMessageHandler<T>): (() => void) => {
+                    if (!_registry.has(type)) {
+                        _registry.set(type, new Set());
+                    }
+                    const castHandler = handler as WsMessageHandler;
+                    const handlers = _registry.get(type);
+                    if (handlers) handlers.add(castHandler);
+                    return () => {
+                        _registry.get(type)?.delete(castHandler);
+                    };
+                },
+            );
         },
     };
 }

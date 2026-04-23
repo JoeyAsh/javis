@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
-import type { TurnTimingPayload } from '../../types';
-import type { TurnTimingSummaryProps } from './TurnTimingSummary.types';
+import type { TurnTimingSummaryProps, PhaseBarProps, TurnCardProps } from './TurnTimingSummary.types';
 import styles from './TurnTimingSummary.module.css';
 
 // Phase colour constants (accent spectrum, no hardcoded hex outside token system)
@@ -16,15 +15,6 @@ const PHASE_COLORS: ReadonlyArray<string> = [
 // ---------------------------------------------------------------------------
 // Phase bar
 // ---------------------------------------------------------------------------
-
-interface PhaseBarProps {
-    label: string;
-    startMs: number | null;
-    endMs: number | null;
-    domainStartMs: number;
-    domainDurationMs: number;
-    color: string;
-}
 
 function PhaseBar({
     label,
@@ -66,12 +56,6 @@ function PhaseBar({
 // ---------------------------------------------------------------------------
 // Turn card
 // ---------------------------------------------------------------------------
-
-interface TurnCardProps {
-    turn: TurnTimingPayload;
-    index: number;
-    domainDurationMs: number;
-}
 
 function TurnCard({ turn, index, domainDurationMs }: TurnCardProps): ReactElement {
     const phases = useMemo(

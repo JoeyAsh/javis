@@ -1,6 +1,6 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
-import type { SystemMetricsPayload } from '../../types';
+import type { SystemMetricsPayload } from './types';
 import type { SystemMetricsLive, MetricHistories, MetricKey } from './types';
 import { METRIC_HISTORY_LENGTH } from './types';
 

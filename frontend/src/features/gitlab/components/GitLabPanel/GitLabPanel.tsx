@@ -1,9 +1,8 @@
 import type { ReactElement } from 'react';
-import { usePanelAvailable } from '../../../../contexts/PanelAvailability';
+import { usePanelAvailable } from '@app/providers/PanelAvailabilityProvider';
 import { useGitlab } from '../../hooks/useGitlab';
-import type { GitLabStatePayload } from '../../types';
 import { PipelineRow } from '../PipelineRow';
-import type { GitLabPanelProps } from './GitLabPanel.types';
+import type { GitLabPanelProps, GitLabCompactProps, GitLabExpandedProps } from './GitLabPanel.types';
 import styles from './GitLabPanel.module.css';
 
 // ---------------------------------------------------------------------------
@@ -36,10 +35,6 @@ function pipelineColor(status: PipelineStatus): string {
 // ---------------------------------------------------------------------------
 // Compact view
 // ---------------------------------------------------------------------------
-
-interface GitLabCompactProps {
-    data: GitLabStatePayload | null;
-}
 
 function GitLabCompact({ data }: GitLabCompactProps): ReactElement {
     if (data === null) {
@@ -104,10 +99,6 @@ function GitLabCompact({ data }: GitLabCompactProps): ReactElement {
 // ---------------------------------------------------------------------------
 // Expanded view
 // ---------------------------------------------------------------------------
-
-interface GitLabExpandedProps {
-    data: GitLabStatePayload | null;
-}
 
 function GitLabExpanded({ data }: GitLabExpandedProps): ReactElement {
     if (data === null) {

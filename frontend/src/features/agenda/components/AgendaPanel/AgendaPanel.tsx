@@ -4,7 +4,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { usePanelAvailable } from '../../../../contexts/PanelAvailability';
+import { usePanelAvailable } from '@app/providers/PanelAvailabilityProvider';
 import { useAgenda } from '../../hooks/useAgenda';
 import { AgendaEventRow } from '../AgendaEventRow';
 import type { AgendaEvent } from '../../types';

@@ -1,6 +1,6 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
-import type { ConversationModePayload } from '../../types';
+import type { ConversationModePayload } from './types';
 
 export interface ConversationState {
     followUpActive: boolean;

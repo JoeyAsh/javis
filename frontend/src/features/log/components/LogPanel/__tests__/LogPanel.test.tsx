@@ -5,9 +5,11 @@
  * Query async onCacheEntryAdded) for deterministic, fast tests.
  */
 import { act, fireEvent, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { installMockWsClient } from '@test/mockWsClient';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { installMockWsClient, _mockWsClientImpl } from '@test/mockWsClient';
 import { renderWithProviders } from '@test/renderWithProviders';
+
+vi.mock('@core/websocket/wsClient', () => ({ wsClient: _mockWsClientImpl }));
 import logReducer, { logLineReceived, turnTimingReceived } from '../../../logSlice';
 import { LogPanel } from '../LogPanel';
 import type { LogLinePayload, TurnTimingPayload } from '../../../types';

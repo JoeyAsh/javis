@@ -1,13 +1,7 @@
 import { type ReactElement } from 'react';
-import type { AppOrbState } from '@common/types';
 import { useClickSfx, useHoverSfx } from '@core/audio';
-import type { StateSimulatorProps } from './StateSimulator.types';
+import type { StateSimulatorProps, SimOption, SimButtonProps } from './StateSimulator.types';
 import './StateSimulator.css';
-
-interface SimOption {
-    key: AppOrbState;
-    label: string;
-}
 
 const SIM_OPTIONS: SimOption[] = [
     { key: 'idle', label: 'IDLE' },
@@ -17,16 +11,16 @@ const SIM_OPTIONS: SimOption[] = [
     { key: 'working', label: 'WORKING' },
 ];
 
-interface SimButtonProps {
-    option: SimOption;
-    active: boolean;
-    onChange: (state: AppOrbState) => void;
-}
-
 function SimButton({ option, active, onChange }: SimButtonProps): ReactElement {
     const hoverSfx = useHoverSfx('button');
     const clickSfx = useClickSfx(() => onChange(option.key));
-    const btnClass = ['lib-sim__btn', active && 'active'].filter(Boolean).join(' ');
+    const btnClass = [
+        'lib-sim__btn',
+        active && 'active',
+        active && option.key === 'working' && 'working',
+    ]
+        .filter(Boolean)
+        .join(' ');
     return (
         <button
             key={option.key}

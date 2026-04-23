@@ -2,7 +2,7 @@ import { render } from '@testing-library/react';
 import { configureStore, combineReducers } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';
 import { baseApi } from '@core/api/baseApi';
-import { PanelAvailabilityProvider } from '../contexts/PanelAvailability';
+import { PanelAvailabilityProvider } from '@app/providers/PanelAvailabilityProvider';
 import type { ReactElement, ReactNode } from 'react';
 import type { RenderWithProvidersOptions } from './renderWithProviders.types';
 

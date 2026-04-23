@@ -1,318 +1,193 @@
 # JARVIS — Frontend
 
-React + TypeScript + Vite + Tailwind CSS + Three.js. Single-page app with a fullscreen particle orb and floating HUD window system. Communicates with the Python backend via WebSocket.
+React 18 + TypeScript (strict) + Vite + Tailwind CSS + Three.js. Single-page app with a fullscreen particle orb and floating HUD window system. Communicates with the Python backend via WebSocket.
 
 ---
 
-## HUD Component Architecture
+## Architecture
 
-### File Tree
+The frontend follows a layered feature-folder structure. Every layer has a barrel file and a path alias.
 
 ```
 frontend/src/
-  styles/tokens.css                         CSS design tokens (imported by index.css)
-  index.css                                 Global styles + CSS variables
-  App.tsx                                   Root — orb variant switch, WS, settings
-  components/
-    hud/
-      hud.css                               Shared keyframes (winIn, etc.)
-      Scene.tsx + Scene.css                 Fullscreen scene container
-      Window.tsx + Window.css               Single draggable/resizable HUD window
-      HudWindows.tsx                        Window registry + swap-drag orchestration
-      WindowManager.tsx                     Window state machine + slot layout
-      SnapOverlay.tsx                       Win11-style snap zone overlay
-      SlotGrid.ts                           Slot geometry computations
-      SwapOverlay.tsx                       Swap-drag target highlight overlay
-      Orb.tsx + orb.css                     Hypermodern CSS orb (5 rings, RAF particles)
-      OldOrb.tsx                            Classic Three.js orb wrapper
-      primitives/
-        HudPanel.tsx + HudPanel.css         Panel shell: corners + trace + bloom + header + body
-        HudCornerBrackets.tsx + HudCornerBrackets.css   Angular L-bracket corner decorations
-        HudLightTrace.tsx + HudLightTrace.css            Circumnavigating perimeter trace
-        HudBloom.tsx + HudBloom.css         Radial bloom overlay (mix-blend-mode: screen)
-        HudButton.tsx + HudButton.css       Styled action button with baked-in SFX
-        HudIconButton.tsx + HudIconButton.css            Icon-only button with baked-in SFX
-        HudDivider.tsx + HudDivider.css     Horizontal separator
-        HudStatusBadge.tsx + HudStatusBadge.css          Pill-style status badge
-        HudList.tsx + HudList.css           Keyed list with stable item transitions
-        HudSideRails.tsx + HudSideRails.css Thin vertical edge rails on panel body
-        HudViewportCorners.tsx + HudViewportCorners.css  Full-viewport corner brackets (NEW — structural-fix agent)
-        Reactor.tsx + Reactor.css           Central reactor animation element (NEW — structural-fix agent)
-        index.ts                            Barrel re-export
-    HudTopBar.tsx + HudTopBar.css           Fixed top bar (weather, time, controls)
-    HudInfoBar.tsx                          Deprecated — content inlined into HudTopBar
-    SettingsOverlay.tsx                     Full-screen settings panel (z: --z-modal)
-    OrbDevMenu.tsx                          Dev override for orb state + STOP button
-    PushToTalkButton.tsx                    PTT button (may be subsumed by Dock.tsx)
-    Dock.tsx + Dock.css                     Bottom dock for minimized panels (NEW — structural-fix agent)
-    HudHint.tsx + HudHint.css               Contextual help tooltip (NEW — structural-fix agent)
-    AudioMuteToggle.tsx                     SFX mute button — persists to localStorage
-    panels/
-      Agenda/                               AgendaPanel modular folder
-      Mail/                                 MailPanel modular folder
-      Transcript/                           TranscriptPanel modular folder
-      System/                               SystemPanel modular folder
-      Notifications/                        NotificationsPanel modular folder
-      NowPlaying/                           NowPlayingPanel modular folder
-      Log/                                  LogPanel modular folder
-      GitLab/                               GitLabPanel modular folder
-      Dev/                                  DevPanel modular folder
-      Lights/                               LightsPanel modular folder (dormant — Sub-14)
-        LightsPanel.tsx
-        ZoneTile.tsx
-        LightsPanel.css
-        index.ts
-        LightsPanel.test.tsx
-      LightsPanel.tsx                       (flat file — superseded by Lights/ folder, retained for backward compat)
-      SelfFixPanel.tsx                      (unchanged per epic #40 constraint)
-      index.ts                              Barrel re-export for all panels
-  lib/
-    audioEngine.ts                          Web Audio API engine class
-    orb.ts                                  Three.js particle orb engine (never modify)
+  App.tsx                 Root — 19 LOC, mounts AppProviders + AppShell
+  app/                    (@app) Application shell: providers, routing, panel registry
+    providers/            StoreProvider, WebSocketProvider, PanelAvailabilityProvider
+    shell/                AppShell, TopBar, Dock, OrbStage, WindowHost
+    store.ts              Redux store
+    panels.ts             Panel registry (PanelSpec list)
+  features/               (@features/*) One folder per domain feature
+    agenda/               Calendar / Agenda
+    conversation/         Follow-up mode + push-to-talk
+    dev/                  GitHub CI, PRs, issues, Docker, local repos
+    gitlab/               GitLab MRs, issues, pipelines
+    lights/               Home Assistant lighting zones
+    log/                  Backend log stream + turn timing
+    mail/                 Gmail integration
+    notifications/        HUD notification queue
+    nowplaying/           Spotify now-playing
+    orbState/             Orb state machine (idle/listening/thinking/speaking/working)
+    selffix/              OpenClaw self-fix audit trail
+    settings/             App settings (opacity, orb style, push-to-talk, etc.)
+    system/               CPU / RAM / GPU / temp metrics
+    transcript/           Conversation transcript
+  core/                   (@core/*) Cross-cutting infrastructure
+    api/                  RTK Query base + REST endpoints (locationApi, weatherApi, githubApi)
+    audio/                Web Audio engine, SfxContext, useAudioEngine, useAudioAnalyser
+    storage/              localStorage persistence helpers
+    tauri/                Tauri IPC bridge (window events, native SFX)
+    websocket/            wsClient singleton, WS message types, commands
+  ui/                     (@ui) Design-system component library — see src/ui/README.md
+    primitives/           Atomic stateless display components
+    compositions/         Multi-primitive compositions (HUDShell, WindowManager, StatusDock…)
+    orb/                  CssOrb + ThreeOrb (lazy-loaded)
+    window/               Window / drag / resize system + slot grid
+    showcase/             Dev-only component gallery (separate Vite entry)
+  common/                 (@common/*) Shared types, hooks, utils
+    types/                OrbState, AppOrbState, PanelId, PanelMode, SlotId, LocationCoords
+    hooks/                useLocation, useMockTicker
+    utils/                cx(), time helpers
+  test/                   (@test/*) Vitest helpers (renderWithProviders, mockWsClient)
+  styles/tokens.css       CSS design tokens (imported by index.css)
+  index.css               Global styles + CSS variables
+```
+
+---
+
+## Path Aliases
+
+| Alias | Resolves to |
+|---|---|
+| `@app` | `src/app/index.ts` |
+| `@app/*` | `src/app/*` |
+| `@features/*` | `src/features/*` |
+| `@core/*` | `src/core/*` |
+| `@ui` | `src/ui/index.ts` |
+| `@ui/*` | `src/ui/*` |
+| `@common/*` | `src/common/*` |
+| `@test/*` | `src/test/*` |
+
+---
+
+## Feature Folder Shape
+
+```
+features/<name>/
+  index.ts                Public barrel — re-exports hook + types
+  types.ts                All TypeScript types for this feature (interfaces defined here)
+  <name>Slice.ts          Redux slice
+  <name>Api.ts            RTK Query endpoint (WS subscription)
   hooks/
-    useSettings.ts                          App settings: panelOpacity, orbVariant, pushToTalk, heartbeat
-    useAudioEngine.ts                       SFX state machine + StrictMode-safe engineRef
-    useLocation.ts                          Geolocation for TopBar weather coords
-    useTauriWindowSfx.ts                    Tauri window-event SFX bridge
-    useOrb.ts                               Returns orbRef + glRef for OldOrb
-    useDraggable.ts                         Pointer-event drag hook
-    useResizable.ts                         Pointer-event resize hook
-    useWebSocket.ts                         WS connection + typed message dispatch
-    useNotifications.ts                     Notification queue state
-    useTranscripts.ts                       Transcript history state
-    useSystemMetrics.ts                     CPU/RAM/GPU polling
-    useGitHubState.ts                       GitHub PR/issue/CI state
-    useGitlabState.ts                       GitLab MR/issue/pipeline state
-    useLogStream.ts                         Log line stream
-    useMicStream.ts                         Raw PCM mic stream to WS
-    useConversationMode.ts                  Follow-up window state + countdown
-    useTurnTimings.ts                       Per-turn latency waterfall
-    useSwapDrag.ts                          Swap-drag state machine
-    useAudioAnalyser.ts                     AudioAnalyser node for orb waveform
-    index.ts                                Barrel re-export
-  hud/
-    SfxContext.tsx                          SfxProvider + useSfx() context hook
+    use<Name>.ts           Main feature hook
+    use<Name>.types.ts     Hook return type
+  components/
+    <Component>/
+      <Component>.tsx
+      <Component>.types.ts
+      <Component>.module.css   (only when Tailwind is insufficient)
+      index.ts
+      __tests__/
+        <Component>.test.tsx
 ```
+
+Rules:
+- `types.ts` at feature root is the canonical home for all feature types. No types in `.tsx` or hook `.ts` files.
+- Slices and API files import from `./types` (relative). Components import from `../../types` (2 up from component dir = feature root).
+- Consumers outside the feature import via `@features/<name>/types` or via the public `index.ts` barrel.
 
 ---
 
-### Panel Shell Composition
+## WebSocket
 
-Every HUD panel is assembled from `HudPanel` which internally composes:
+`core/websocket/wsClient.ts` owns the singleton WS connection. The full typed message union lives in `core/websocket/types.ts` (imported from feature `types.ts` files). RTK Query endpoints subscribe to specific message types via `wsClient.subscribe(type, handler)`.
 
-```
-<HudPanel icon="◉" title="Panel Title" badge="STATUS" actions={[...]} hideDots={false}>
-  ├── <HudCornerBrackets />       Angular L-brackets at each corner
-  ├── <HudLightTrace />           Perimeter-circumnavigating light point
-  ├── <HudBloom />                Radial bloom overlay (mix-blend-mode: screen)
-  ├── <HudSideRails />            Thin vertical edge rails on body
-  ├── .hud-panel__header          Header row
-  │   ├── .ix                     Icon glyph (e.g. "◉")
-  │   ├── .tt                     Title text
-  │   ├── .dots                   Three traffic-light dots (hidden when hideDots=true)
-  │   ├── .badge                  Status badge
-  │   └── .hud-panel__header-actions   Slot for custom action buttons
-  └── .hud-panel__body            Scrollable content area
-      └── {children}
-```
-
-Props contract:
-```typescript
-interface HudPanelProps {
-  icon?: string;           // glyph shown in header left
-  title: string;
-  badge?: string;          // status label in header right
-  actions?: ReactNode;     // extra header-right content
-  hideDots?: boolean;      // suppress traffic-light dots
-  focused?: boolean;       // activates shimmer underline
-  children: ReactNode;
-}
-```
+No component or hook calls `new WebSocket()` directly — that is strictly `wsClient`'s concern.
 
 ---
 
-### Orb Swap Pattern
+## State Management
 
-`App.tsx` conditionally renders the classic or hypermodern orb based on `settings.orbVariant` from `useSettings()`:
-
-```tsx
-// settings.orbVariant: 'classic' | 'hypermodern'  (localStorage: 'jarvis.orbVariant')
-{settings.orbVariant === 'hypermodern' ? (
-  <Orb state={effectiveOrbState} />
-) : (
-  <OrbErrorBoundary>
-    <OrbCanvas orbState={effectiveOrbState} analyser={analyser} mockMode={orbOverride} followUp={followUp} />
-  </OrbErrorBoundary>
-)}
-```
-
-The Settings overlay exposes a Display section with an `orbVariant` dropdown. Default is `'classic'`.
-
----
-
-### HudButton / HudIconButton — Baked-in SFX
-
-Both button primitives fire sound effects automatically without caller involvement:
-
-- **Click**: plays `click_1` via `useSfx().playOneShot('click')`
-- **Hover**: plays `hover_1` via `useSfx().playOneShot('hover')`, debounced 200 ms per element instance to prevent rapid-fire on fast cursor movement
-
-Callers only need to provide `onClick` and the button label/icon. No SFX wiring required at the call site.
-
----
-
-### useSfx() Context Pattern
-
-All components that need to trigger SFX use the context hook:
+Redux Toolkit with RTK Query. Each feature has a slice + an API file that injects endpoints into the base API.
 
 ```typescript
-// In any component under <SfxProvider> (mounted in App.tsx):
-import { useSfx } from '../hud/SfxContext';
-
-function MyComponent() {
-  const { playOneShot } = useSfx();
-  return (
-    <button onClick={() => { playOneShot('confirm'); doSomething(); }}>
-      Confirm
-    </button>
-  );
-}
+// Pattern: feature API subscribes to WS, dispatches slice actions
+const unsub = wsClient.subscribe<{ payload: SomePayload }>('some_type', (msg) =>
+  dispatch(someActionReceived(msg.payload))
+);
 ```
-
-`SfxProvider` is mounted at the App root and wraps `<WindowManagerProvider>`. It holds the `AudioEngine` ref and exposes:
-- `playOneShot(event: SfxEvent): void` — plays a one-shot sound
-- `startLoop(event: SfxEvent): void` — starts a looping sound
-- `stopLoop(event: SfxEvent): void` — stops a loop
-- `muted: boolean` — current mute state
 
 ---
 
-### Asset Pipeline
+## UI Library (@ui)
 
-Sound files are NOT committed to the frontend `public/` directory. They are copied at dev/build time:
-
-```json
-// frontend/package.json
-{
-  "scripts": {
-    "predev": "node scripts/copy-sounds.mjs",
-    "prebuild": "node scripts/copy-sounds.mjs"
-  }
-}
-```
-
-`scripts/copy-sounds.mjs` copies `assets/sounds/**/*.mp3` → `frontend/public/sounds/`. The `frontend/public/sounds/` directory is gitignored. If sounds are missing, run `npm run predev` manually.
-
----
-
-### WindowManager
-
-The `WindowManagerProvider` / `useWindowManager()` system owns all window layout state:
-
-- **Slot grid** (`SlotGrid.ts`): Viewport is divided into named slots (`SlotId`). Each panel has a `homeSlotId` and defaults to being docked in that slot (`maximized: false`).
-- **Docked state**: Panel geometry is derived from the slot rect. No explicit position/size stored.
-- **Floating state** (`maximized: true`): Panel uses `floatingRect` (x, y, w, h). Supports drag (`useDraggable`), resize (`useResizable`), and Win11-style snap (`SnapOverlay`).
-- **Swap-drag**: Header drag with swap intent (separate from maximize-drag) is orchestrated at the `HudWindows` level via `handleSwapStart/Move/Commit/Cancel`.
-- **Persistence**: Window layout persisted to `localStorage['jarvis-hud-windows-v1']` with 200 ms debounce.
-
-**Chrome ownership**: After the Legacy-Kill-Sweep, all visual chrome (border, background, box-shadow, corner decorations, header) is owned entirely by the `HudPanel` primitive. The `.window` CSS class in `index.css` is **purely structural** — it only handles:
-- `position: absolute` / `position: fixed`
-- `z-index` (from window state)
-- `display: flex; flex-direction: column`
-- The `winIn` settle animation on mount
-
-No color, border, background, or shadow properties belong on `.window`. These live in `HudPanel`.
+See `src/ui/README.md` for full details. Key rule: **only import via `@ui`** — never from sub-paths like `@ui/primitives/Panel`.
 
 ---
 
 ## Design System
 
-See `docs/DESIGN.md` for the full token reference, radius cap rules, and brand signature documentation.
+See `docs/DESIGN.md` for the full token reference and brand signature documentation.
 
-Quick reference:
 ```css
 :root {
   --bg:            #050508;
-  --surface:       rgba(13,13,20,0.75);
-  --surface-raised:rgba(22,22,34,0.85);
-  --border:        rgba(64,112,160,0.25);
-  --accent:        #4ca8e8;
-  --accent-bright: #7ec8ff;
-  --accent-speak:  #a8e0ff;
+  --surface:       #0d0d14;
+  --surface-raised:#12121c;
+  --border:        #1a1a2e;
+  --accent:        #4ca8e8;   /* orb idle */
+  --accent-bright: #6ec4ff;   /* orb thinking */
+  --accent-speak:  #5ab8f0;   /* orb speaking */
   --text:          #e8f4ff;
-  --text-secondary:#8ba9c8;
-  --text-muted:    #4a6a88;
-  --glow:          0 0 12px rgba(76,168,232,0.18);
-  --glow-strong:   0 0 24px rgba(76,168,232,0.35);
-  --font:          'JetBrains Mono', ui-monospace, monospace;
-  --r-0: 0px;  --r-1: 2px;  --r-2: 4px;  /* hard cap: never exceed --r-2 */
+  --text-secondary:#6b8fa8;
+  --text-muted:    #2a3d4f;
+  --glow:          0 0 8px #4ca8e8aa;
+  --glow-strong:   0 0 20px #4ca8e8cc, 0 0 40px #4ca8e844;
+  --font:          'JetBrains Mono', monospace;
 }
 ```
 
-Rules: No `border-radius` > 4 px. JetBrains Mono only. All colors via CSS variables. Tailwind for layout/spacing only. Overlay panels: `background: var(--surface)`, `backdrop-filter: var(--panel-blur)`, `border: 1px solid var(--border)`.
+**Non-negotiable rules:**
+- No `border-radius` > 4 px. Sharp HUD aesthetic.
+- JetBrains Mono only (`var(--font)`).
+- All colors via CSS variables. Never hardcode hex in components.
+- Tailwind for layout/spacing. CSS variables for color/shadow/font.
+- CSS Modules only for keyframes, blend-modes, complex gradients.
 
 ---
 
 ## Orb States
 
-| State | Particle color | UI accent |
-|---|---|---|
-| `idle` | `--accent` | `--accent` |
-| `listening` | `--accent` | `--accent` + pulse ring |
-| `thinking` | `--accent-bright` | `--accent-bright` + spin |
-| `speaking` | `--accent-speak` | `--accent-speak` + wave |
-| `working` | `--warning` (amber) | `.is-working` class on root |
-| `follow_up` | `--accent` | muted pulse + countdown ring |
+| State | Visual |
+|---|---|
+| `idle` | `--accent` steady |
+| `listening` | `--accent` + pulse ring |
+| `thinking` | `--accent-bright` + spin |
+| `speaking` | `--accent-speak` + wave |
+| `working` | amber overlay + `is-working` class on root |
+| `follow_up` | muted pulse + countdown ring |
 
-Only interact with `lib/orb.ts` via `orb.setState()`, `orb.setAnalyser()`, `orb.destroy()`. Never modify the orb engine itself.
-
----
-
-## WebSocket Protocol (`ws://localhost:8765`)
-
-```typescript
-type WsMessage =
-  | { type: 'state';      payload: OrbState }
-  | { type: 'transcript'; payload: { role: 'user' | 'jarvis'; text: string } }
-  | { type: 'system';     payload: { cpu: number; mem: number; uptime: string } }
-
-type WsCommand =
-  | { type: 'set_voice'; payload: { profile: string } }
-  | { type: 'reset';     payload: null }
-```
-
-```yaml
-api:
-  ws_port: 8765
-  http_port: 8766
-  cors_origins: ["http://localhost:5173"]
-```
+The Three.js orb engine lives at `src/ui/orb/ThreeOrb/`. Never modify the engine file. Interact only via `orb.setState()`, `orb.setAnalyser()`, `orb.destroy()`.
 
 ---
 
-## Hooks
+## Asset Pipeline
 
-```typescript
-useOrb(canvasRef): { orbRef: RefObject<Orb | null>; glRef: RefObject<WebGLRenderingContext | null> }
-useWebSocket(): { orbState, audioQueue, consumeAudio, wsRef, sendCancelTurn, ... }
-useAudioAnalyser(): { analyser, isSpeaking, enqueue, stopAll }
-useSettings(): { settings, setPanelOpacity, setAutoSpeakClaude, setPushToTalk, setMicDeviceId }
-useConversationMode(): { active, secondsRemaining }
-useDraggable(ref, opts): { isDragging, position }
-useResizable(ref, opts): { isResizing, size }
-```
+Sound files are not committed. They are copied at dev/build time from `assets/sounds/` → `frontend/public/sounds/` via `scripts/copy-sounds.mjs`. Run `npm run predev` manually if sounds are missing.
+
+---
+
+## Build Targets
+
+- main chunk: ~85 kB gzip (hard cap 90 kB)
+- ThreeOrb chunk: ~511 kB (lazy-loaded via `React.lazy`)
+- Showcase: separate Vite entry (`lib-showcase.html`)
 
 ---
 
 ## Vite Dev Proxy
 
 ```typescript
-server: {
-  proxy: {
-    '/voices': 'http://localhost:8766',
-    '/ws': { target: 'ws://localhost:8765', ws: true },
-  }
-}
+'/jarvis-ws' → ws://localhost:8765   (WS)
+'/voices'    → http://localhost:8766
+'/api'       → http://localhost:8766
 ```
-
-> **RPi**: Frontend runs on developer's PC only. RPi runs Python backend. Connect to `ws://<rpi-ip>:8765`.

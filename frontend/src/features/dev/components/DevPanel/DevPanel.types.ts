@@ -1,4 +1,4 @@
-import type { PanelMode } from '../../../../types';
+import type { PanelMode } from '@common/types';
 import type { DevToolkitMock } from '../../types';
 import type { GitHubStatePayload } from '@core/websocket/types';
 

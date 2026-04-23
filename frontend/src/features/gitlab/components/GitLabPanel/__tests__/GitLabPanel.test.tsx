@@ -5,9 +5,11 @@
  * onCacheEntryAdded) for deterministic, fast tests.
  */
 import { act, screen } from '@testing-library/react';
-import { describe, expect, it, beforeEach } from 'vitest';
-import { installMockWsClient } from '@test/mockWsClient';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { installMockWsClient, _mockWsClientImpl } from '@test/mockWsClient';
 import { renderWithProviders } from '@test/renderWithProviders';
+
+vi.mock('@core/websocket/wsClient', () => ({ wsClient: _mockWsClientImpl }));
 import gitlabReducer, { gitlabStateReceived } from '../../../gitlabSlice';
 import { GitLabPanel } from '../GitLabPanel';
 import type { GitLabStatePayload } from '../../../types';

@@ -81,3 +81,15 @@ export interface DevToolkitMock {
     docker: DockerContainer[];
     ci: CIRun[];
 }
+
+/**
+ * Broadcast every `poll_interval_seconds` from the backend GitHub poller.
+ * `stale: true` means the last poll failed and this is cached data.
+ */
+export interface GitHubStatePayload {
+    prs: GithubPRLive[];
+    issues: GithubIssueLive[];
+    ci: GithubCIRunLive[];
+    fetched_at: string; // ISO
+    stale: boolean;
+}

@@ -5,7 +5,7 @@ import type { LogLinePayload } from '../../types';
 import { LogLine } from '../LogLine';
 import { LogFilters } from '../LogFilters';
 import { TurnTimingSummary } from '../TurnTimingSummary';
-import type { LogPanelProps } from './LogPanel.types';
+import type { LogPanelProps, StreamViewProps } from './LogPanel.types';
 import styles from './LogPanel.module.css';
 
 type TabId = 'stream' | 'timeline';
@@ -15,11 +15,6 @@ const VISIBLE_LINES = 100;
 // ---------------------------------------------------------------------------
 // Stream view
 // ---------------------------------------------------------------------------
-
-interface StreamViewProps {
-    lines: ReadonlyArray<LogLinePayload>;
-    onClear: () => void;
-}
 
 function StreamView({ lines, onClear }: StreamViewProps): ReactElement {
     const scrollRef = useRef<HTMLDivElement>(null);

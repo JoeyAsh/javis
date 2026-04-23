@@ -5,8 +5,10 @@
  */
 import { act, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { installMockWsClient } from '@test/mockWsClient';
+import { installMockWsClient, _mockWsClientImpl } from '@test/mockWsClient';
 import { renderWithProviders } from '@test/renderWithProviders';
+
+vi.mock('@core/websocket/wsClient', () => ({ wsClient: _mockWsClientImpl }));
 import notificationsReducer, { notificationReceived } from '../../../notificationsSlice';
 import { NotificationsPanel } from '../NotificationsPanel';
 import type { HudNotification } from '../../../types';

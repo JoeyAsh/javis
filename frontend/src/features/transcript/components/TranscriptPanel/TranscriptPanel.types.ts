@@ -1,5 +1,5 @@
 import type { TranscriptTurn } from '../../types';
-import type { AppOrbState, PanelMode } from '../../../../types';
+import type { AppOrbState, PanelMode } from '@common/types';
 
 export interface TranscriptPanelProps {
     /** Optional prop override for tests / storybook. */

@@ -1,6 +1,6 @@
 import { useEffect, type ReactElement } from 'react';
 import { useClickSfx, useHoverSfx } from '@core/audio';
-import type { TweaksProps, TweaksState } from './Tweaks.types';
+import type { TweaksProps, TweaksState, ToggleRowProps, SwatchButtonProps } from './Tweaks.types';
 import './Tweaks.css';
 
 export const TWEAKS_DEFAULTS: TweaksState = {
@@ -37,12 +37,6 @@ export function useTweakApply(tweaks: TweaksState): void {
 
 const HUE_SWATCHES = [215, 28, 150, 280, 0];
 
-interface ToggleRowProps {
-    label: string;
-    value: boolean;
-    onToggle: () => void;
-}
-
 function ToggleRow({ label, value, onToggle }: ToggleRowProps): ReactElement {
     const hoverSfx = useHoverSfx('button');
     const clickSfx = useClickSfx(onToggle);
@@ -60,12 +54,6 @@ function ToggleRow({ label, value, onToggle }: ToggleRowProps): ReactElement {
             />
         </div>
     );
-}
-
-interface SwatchButtonProps {
-    hue: number;
-    active: boolean;
-    onSelect: () => void;
 }
 
 function SwatchButton({ hue, active, onSelect }: SwatchButtonProps): ReactElement {

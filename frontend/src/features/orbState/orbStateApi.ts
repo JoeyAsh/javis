@@ -7,7 +7,7 @@ import {
     connectionStateChanged,
 } from './orbStateSlice';
 import type { OrbState } from '@common/types';
-import type { ToolCallPayload } from '../../types';
+import type { ToolCallPayload } from './types';
 
 interface StatusMessage {
     type: string;

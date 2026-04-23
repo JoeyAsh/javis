@@ -1,4 +1,4 @@
-import type { SystemMetric } from '../../types';
+import type { SystemMetric } from './types';
 
 const history = (base: number, amp: number, n = 24): number[] => {
     const out: number[] = [];

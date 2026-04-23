@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { useAppSelector } from '@app';
 import { selectMailSendFlashActive } from '../../mailSelectors';
-import { usePanelAvailable } from '../../../../contexts/PanelAvailability';
+import { usePanelAvailable } from '@app/providers/PanelAvailabilityProvider';
 import { useMail } from '../../hooks/useMail';
 import { DraftPreview } from '../DraftPreview';
 import { MailItemRow } from '../MailItemRow';

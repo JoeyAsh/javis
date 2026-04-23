@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { Label, Mono } from '@ui';
-import type { DisplaySectionProps } from './DisplaySection.types';
+import type { DisplaySectionProps, OrbOptionProps } from './DisplaySection.types';
 
 export function DisplaySection({
     panelOpacity,
@@ -47,13 +47,6 @@ export function DisplaySection({
             </div>
         </div>
     );
-}
-
-interface OrbOptionProps {
-    active: boolean;
-    onClick: () => void;
-    title: string;
-    description: string;
 }
 
 function OrbOption({ active, onClick, title, description }: OrbOptionProps): ReactElement {

@@ -5,12 +5,14 @@
  * mailStateReceived) to bypass RTK Query's async onCacheEntryAdded pipeline.
  */
 import { act, screen } from '@testing-library/react';
-import { describe, expect, it, beforeEach } from 'vitest';
-import { installMockWsClient } from '@test/mockWsClient';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { installMockWsClient, _mockWsClientImpl } from '@test/mockWsClient';
 import { renderWithProviders } from '@test/renderWithProviders';
+
+vi.mock('@core/websocket/wsClient', () => ({ wsClient: _mockWsClientImpl }));
 import systemReducer, { systemMetricsReceived } from '../../../systemSlice';
 import { SystemPanel } from '../SystemPanel';
-import type { SystemMetricsPayload } from '../../../../../types';
+import type { SystemMetricsPayload } from '@features/system/types';
 
 const ws = installMockWsClient();
 

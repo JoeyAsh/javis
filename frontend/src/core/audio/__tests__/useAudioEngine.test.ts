@@ -186,7 +186,7 @@ describe('useAudioEngine — first user gesture', () => {
 });
 
 describe('useAudioEngine — orbState loop management', () => {
-    it('orbState=thinking → play("thinking") and play("scan")', async () => {
+    it('orbState=thinking → play("thinking")', async () => {
         await act(async () => {
             const { rerender } = renderHook(
                 ({ orb }: { orb: 'idle' | 'thinking' }) => useAudioEngine(orb, true),
@@ -196,7 +196,6 @@ describe('useAudioEngine — orbState loop management', () => {
         });
 
         expect(spies.play).toHaveBeenCalledWith('thinking');
-        expect(spies.play).toHaveBeenCalledWith('scan');
     });
 
     it('orbState=thinking → stops idle_pulse and heartbeat', async () => {
@@ -271,7 +270,7 @@ describe('useAudioEngine — orbState loop management', () => {
         expect(spies.playOneShot).toHaveBeenCalledWith('speech_start');
     });
 
-    it('transition from idle to thinking triggers scan start', async () => {
+    it('transition from idle to thinking triggers thinking loop start', async () => {
         const { rerender } = renderHook(
             ({ orb }: { orb: 'idle' | 'thinking' }) => useAudioEngine(orb, true),
             { initialProps: { orb: 'idle' as 'idle' | 'thinking' } },
@@ -284,7 +283,7 @@ describe('useAudioEngine — orbState loop management', () => {
         });
 
         const newPlayCalls = spies.play.mock.calls.slice(playCallsBefore);
-        expect(newPlayCalls.some((c) => c[0] === 'scan')).toBe(true);
+        expect(newPlayCalls.some((c) => c[0] === 'thinking')).toBe(true);
     });
 });
 

@@ -1,0 +1,31 @@
+.preview {
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    padding: 6px 8px;
+    margin-bottom: 8px;
+    font-family: var(--font);
+    font-size: 10px;
+}
+
+.label {
+    color: var(--accent-bright);
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+    font-size: 9px;
+}
+
+.to,
+.subject {
+    margin-bottom: 2px;
+    color: var(--text);
+}
+
+.fieldLabel {
+    color: var(--text-secondary);
+}
+
+.body {
+    color: var(--text-secondary);
+    margin-top: 4px;
+    font-size: 10px;
+}

@@ -1,0 +1,25 @@
+.container {
+    display: inline-flex;
+    gap: 3px;
+}
+
+.dot {
+    width: 4px;
+    height: 4px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* blink keyframe is defined globally in src/ui/ui.css */
+.dot1 {
+    animation: blink 1.2s ease-in-out infinite;
+}
+
+.dot2 {
+    animation: blink 1.2s ease-in-out infinite 0.2s;
+}
+
+.dot3 {
+    animation: blink 1.2s ease-in-out infinite 0.4s;
+}

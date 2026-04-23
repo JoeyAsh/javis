@@ -1,0 +1,58 @@
+.row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 120ms;
+    font-family: var(--font);
+}
+
+.row:hover {
+    background: var(--surface-raised);
+}
+
+.time {
+    font-size: 9px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    width: 36px;
+    padding-top: 1px;
+}
+
+.body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.title {
+    font-size: 11px;
+    color: var(--text);
+}
+
+.sub {
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.pill {
+    font-size: 8px;
+    padding: 1px 4px;
+    flex-shrink: 0;
+    letter-spacing: 0.05em;
+    border: 1px solid;
+}
+
+.pillNow {
+    color: var(--error, #e05c5c);
+    border-color: var(--error, #e05c5c);
+}
+
+.pillSoon {
+    color: var(--warning, #e0a85c);
+    border-color: var(--warning, #e0a85c);
+}

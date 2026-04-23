@@ -1,12 +1,9 @@
-// Modular panel folders
-export { AgendaPanel } from './Agenda';
+// Modular panel folders — Batch 2a migrated panels are now in features/
+// MailPanel, AgendaPanel, NotificationsPanel, TranscriptPanel → @features/*/
 export { GitLabPanel } from './GitLab';
-export { MailPanel } from './Mail';
 export { NowPlayingPanel } from './NowPlaying';
 export { SystemPanel } from './System';
 export { DevPanel } from './Dev';
-export { NotificationsPanel } from './Notifications';
-export { TranscriptPanel } from './Transcript';
 export { LogPanel } from './Log';
 
 /* LightsPanel registered but NOT mounted by default — awaiting backend follow-up #54 */

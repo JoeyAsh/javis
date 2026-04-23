@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { StoreProvider } from '@app';
+import { AppProviders } from '@app';
 import './styles/tokens.css';
 import './index.css';
 
@@ -12,8 +12,8 @@ if (!rootElement) {
 
 ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
-        <StoreProvider>
+        <AppProviders>
             <App />
-        </StoreProvider>
+        </AppProviders>
     </React.StrictMode>,
 );

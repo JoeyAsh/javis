@@ -1,0 +1,54 @@
+.panel {
+    padding: 4px 6px;
+    font-family: var(--font);
+}
+
+.compact {
+    padding: 6px 8px;
+    font-family: var(--font);
+}
+
+.stats {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: var(--text);
+}
+
+.count {
+    color: var(--accent-bright);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.vip {
+    color: var(--accent);
+}
+
+.sender {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.empty {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.monoSmall {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.separator {
+    color: var(--text-muted);
+}
+
+.flash {
+    outline: 1px solid var(--accent);
+    transition: outline 300ms;
+}

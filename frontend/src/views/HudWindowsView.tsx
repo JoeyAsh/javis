@@ -13,14 +13,15 @@ import type { SlotId } from '../lib';
 
 import type { AppOrbState, PanelId, PanelMode } from '../types';
 
-// ── Phase 3 ✅ — panel views (migrated or re-exported from views/) ───────────
+// ── Batch 2a migrated panels ─────────────────────────────────────────────────
+import { MailPanel } from '@features/mail';
+import { AgendaPanel } from '@features/agenda';
+import { NotificationsPanel } from '@features/notifications';
+import { TranscriptPanel } from '@features/transcript';
+
+// ── Phase 3 ✅ — remaining panel views (not yet migrated) ────────────────────
 import { SystemView } from './SystemView';
-import { TranscriptView } from './TranscriptView';
-import { AgendaView } from './AgendaView';
 import { NowPlayingView } from './NowPlayingView';
-// Thin re-export wrappers (TODO: rewrite internals)
-import { MailView } from './MailView';
-import { NotificationsView } from './NotificationsView';
 import { DevView } from './DevView';
 import { LogView } from './LogView';
 import { GitLabView } from './GitLabView';
@@ -48,25 +49,25 @@ const PANELS: ReadonlyArray<PanelSpec> = [
         id: 'agenda',
         title: 'Agenda',
         ix: '▦',
-        render: (mode) => <AgendaView mode={mode} />,
+        render: (mode) => <AgendaPanel mode={mode} />,
     },
     {
         id: 'mail',
         title: 'Inbox',
         ix: '✉',
-        render: (mode) => <MailView mode={mode} />,
+        render: (mode) => <MailPanel mode={mode} />,
     },
     {
         id: 'notifications',
         title: 'Proactive',
         ix: '⚡',
-        render: (mode, paused) => <NotificationsView mode={mode} paused={paused} />,
+        render: (mode) => <NotificationsPanel mode={mode} />,
     },
     {
         id: 'transcript',
         title: 'Transcript',
         ix: '▸',
-        render: (mode, _paused, orbState) => <TranscriptView mode={mode} orbState={orbState} />,
+        render: (mode, _paused, orbState) => <TranscriptPanel mode={mode} orbState={orbState} />,
     },
     {
         id: 'nowplaying',
@@ -165,5 +166,3 @@ export function HudWindowsView({
 }
 
 export default HudWindowsView;
-
-

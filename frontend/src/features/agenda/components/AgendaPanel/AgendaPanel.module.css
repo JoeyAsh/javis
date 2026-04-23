@@ -1,0 +1,57 @@
+.panel {
+    padding: 4px 6px;
+    font-family: var(--font);
+}
+
+.compact {
+    padding: 6px 8px;
+    font-family: var(--font);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+}
+
+.label {
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+}
+
+.until {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.title {
+    font-size: 11px;
+    color: var(--text);
+    margin-bottom: 2px;
+}
+
+.meta {
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.empty {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.loading {
+    font-size: 10px;
+    color: var(--text-muted);
+}

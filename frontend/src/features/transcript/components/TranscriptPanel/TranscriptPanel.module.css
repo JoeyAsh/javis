@@ -1,0 +1,43 @@
+.panel {
+    padding: 4px 6px;
+    overflow-y: auto;
+    font-family: var(--font);
+}
+
+.compact {
+    padding: 6px 8px;
+    font-family: var(--font);
+}
+
+.compactHeader {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2px;
+}
+
+.compactRole {
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+}
+
+.compactTime {
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.compactText {
+    font-size: 11px;
+    color: var(--text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.empty {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+}

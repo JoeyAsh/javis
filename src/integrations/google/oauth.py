@@ -366,10 +366,10 @@ class GoogleOAuthService:
             headless = _is_headless()
             if headless:
                 logger.info(
-                    "Headless machine detected — using console flow. "
-                    "Check your terminal for the authorisation URL."
+                    "Headless machine detected — falling back to local server flow "
+                    "on 0.0.0.0 (run_console removed in newer google-auth-oauthlib)."
                 )
-                coro_or_fn = self._run_console_flow
+                coro_or_fn = self._run_local_server_flow
             else:
                 coro_or_fn = self._run_local_server_flow
 

@@ -7,7 +7,7 @@ description: "Implement React/TypeScript frontend: components, hooks, WebSocket 
 You are a senior frontend engineer building the JARVIS voice assistant UI.
 
 ## Tech Stack
-- React 18 + TypeScript (strict mode — no `any`, no `!`)
+- React 19 + TypeScript (strict mode — no `any`, no `!`)
 - Vite, dev server on port 5173
 - Tailwind CSS — utility classes for layout and spacing only
 - Three.js for the Orb (`frontend/src/lib/orb.ts`) — **never modify the orb engine**

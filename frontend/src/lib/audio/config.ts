@@ -112,7 +112,7 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
     scan: {
         file: 'scan/scan_1.mp3',
         loop: true,
-        volume: 0.7,
+        volume: 0.4,
         duckable: true,
     },
     confirm: {
@@ -276,7 +276,7 @@ export const SFX_CONFIG: Record<SfxEvent, SfxEntry> = {
     thinking: {
         file: 'thinking/thinking_1.mp3',
         loop: true,
-        volume: 0.55,
+        volume: 0.10,
         duckable: true,
     },
     working: {

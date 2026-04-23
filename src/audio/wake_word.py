@@ -60,10 +60,20 @@ class WakeWordDetector:
 
                 logger.info("Loading OpenWakeWord model...")
 
+                # Determine inference framework: prefer tflite, fall back to
+                # onnx (tflite-runtime is unavailable on Windows).
+                try:
+                    import tflite_runtime  # noqa: F401
+                    framework = "tflite"
+                except ImportError:
+                    framework = "onnx"
+                logger.debug(f"OpenWakeWord inference framework: {framework}")
+
                 if self.model_path and Path(self.model_path).exists():
                     model = Model(
                         wakeword_models=[self.model_path],
                         vad_threshold=self.vad_threshold,
+                        inference_framework=framework,
                     )
                     logger.info(f"Loaded custom wake word model: {self.model_path}")
                 else:
@@ -73,7 +83,10 @@ class WakeWordDetector:
                             "falling back to built-in 'hey_jarvis'"
                         )
                     # Use built-in "hey_jarvis" model (bundled with openwakeword)
-                    model = Model(vad_threshold=self.vad_threshold)
+                    model = Model(
+                        vad_threshold=self.vad_threshold,
+                        inference_framework=framework,
+                    )
                     logger.info(
                         f"Loaded built-in wake word models: "
                         f"{list(model.models.keys())}"

@@ -1,4 +1,4 @@
-import { type ReactElement, type ReactNode } from 'react';
+import { type ReactElement, type ReactNode, type CSSProperties } from 'react';
 import { Scene } from '../primitives/Scene';
 import { Reactor } from '../primitives/Reactor';
 import { ViewportCorners } from '../primitives/ViewportCorners';
@@ -19,6 +19,7 @@ export interface HUDShellProps {
     working?: boolean;
     children?: ReactNode;
     className?: string;
+    style?: CSSProperties;
 }
 
 export function HUDShell({
@@ -32,13 +33,14 @@ export function HUDShell({
     working = false,
     children,
     className,
+    style,
 }: HUDShellProps): ReactElement {
     const classes = ['hud-shell', idle && 'idle', working && 'is-working', className]
         .filter(Boolean)
         .join(' ');
 
     return (
-        <div className={classes}>
+        <div className={classes} style={style}>
             {/* Background scene layer */}
             <Scene grid={scene?.grid} stars={scene?.stars} scanlines={scene?.scanlines} />
 

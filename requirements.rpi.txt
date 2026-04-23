@@ -2,6 +2,7 @@ anthropic
 faster-whisper
 piper-tts
 openWakeWord
+tflite-runtime
 pyaudio
 sounddevice
 soundfile

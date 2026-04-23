@@ -1,0 +1,169 @@
+/**
+ * HudWindowsView — renders all JARVIS panels inside the lib WindowManager.
+ *
+ * Replaces legacy components/hud/HudWindows.tsx. Uses lib WindowManager
+ * composition (controlled assignments + uncontrolled modes/expandedRects).
+ * Filters panels by PanelAvailability context.
+ */
+
+import { useCallback, useMemo, useState } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { WindowManager, type ManagedWindow, type PanelContentRenderProps } from '../lib';
+import type { SlotId } from '../lib';
+
+import type { AppOrbState, PanelId, PanelMode } from '../types';
+
+// ── Phase 3 ✅ — panel views (migrated or re-exported from views/) ───────────
+import { SystemView } from './SystemView';
+import { TranscriptView } from './TranscriptView';
+import { AgendaView } from './AgendaView';
+import { NowPlayingView } from './NowPlayingView';
+// Thin re-export wrappers (TODO: rewrite internals)
+import { MailView } from './MailView';
+import { NotificationsView } from './NotificationsView';
+import { DevView } from './DevView';
+import { LogView } from './LogView';
+import { GitLabView } from './GitLabView';
+import { SelfFixView } from './SelfFixView';
+
+// ── Props ────────────────────────────────────────────────────────────────────
+
+export interface HudWindowsViewProps {
+    idle: boolean;
+    paused?: boolean;
+    orbState?: AppOrbState;
+}
+
+// ── Panel spec ───────────────────────────────────────────────────────────────
+
+interface PanelSpec {
+    id: PanelId;
+    title: string;
+    ix: string;
+    render: (mode: PanelMode, paused: boolean, orbState: AppOrbState) => ReactNode;
+}
+
+const PANELS: ReadonlyArray<PanelSpec> = [
+    {
+        id: 'agenda',
+        title: 'Agenda',
+        ix: '▦',
+        render: (mode) => <AgendaView mode={mode} />,
+    },
+    {
+        id: 'mail',
+        title: 'Inbox',
+        ix: '✉',
+        render: (mode) => <MailView mode={mode} />,
+    },
+    {
+        id: 'notifications',
+        title: 'Proactive',
+        ix: '⚡',
+        render: (mode, paused) => <NotificationsView mode={mode} paused={paused} />,
+    },
+    {
+        id: 'transcript',
+        title: 'Transcript',
+        ix: '▸',
+        render: (mode, _paused, orbState) => <TranscriptView mode={mode} orbState={orbState} />,
+    },
+    {
+        id: 'nowplaying',
+        title: 'Now Playing',
+        ix: '♫',
+        render: (mode) => <NowPlayingView mode={mode} />,
+    },
+    {
+        id: 'system',
+        title: 'System',
+        ix: '◈',
+        render: (mode, paused) => <SystemView mode={mode} paused={paused} />,
+    },
+    {
+        id: 'dev',
+        title: 'Dev Toolkit',
+        ix: '⚙',
+        render: (mode) => <DevView mode={mode} />,
+    },
+    {
+        id: 'selffix',
+        title: 'Self-Fix',
+        ix: '🔧',
+        render: (mode) => <SelfFixView mode={mode} />,
+    },
+    {
+        id: 'gitlab',
+        title: 'GitLab',
+        ix: '⬡',
+        render: (mode) => <GitLabView mode={mode} />,
+    },
+    {
+        id: 'log',
+        title: 'Console',
+        ix: '≡',
+        render: (mode) => <LogView mode={mode} />,
+    },
+];
+
+// ── Default slot assignments ─────────────────────────────────────────────────
+
+const DEFAULT_ASSIGNMENTS: Record<string, SlotId> = {
+    agenda: 'L1',
+    mail: 'L2',
+    notifications: 'L3',
+    nowplaying: 'R1',
+    system: 'R3',
+    transcript: 'B1',
+    dev: 'B2',
+    gitlab: 'B3',
+    selffix: 'B3',
+    log: 'B3',
+};
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+export function HudWindowsView({
+    idle,
+    paused = false,
+    orbState = 'idle',
+}: HudWindowsViewProps): ReactElement {
+    const effectivePaused = paused || idle;
+
+    const [assignments, setAssignments] = useState<Record<string, SlotId>>(DEFAULT_ASSIGNMENTS);
+    const [focusedId, setFocusedId] = useState<string | null>(null);
+
+    const handleAssignmentsChange = useCallback((next: Record<string, SlotId>) => {
+        setAssignments(next);
+    }, []);
+
+    const handleFocusChange = useCallback((id: string | null) => {
+        setFocusedId(id);
+    }, []);
+
+    const managedWindows: ManagedWindow[] = useMemo(() => {
+        return PANELS
+            .map((spec): ManagedWindow => ({
+                id: spec.id,
+                title: spec.title,
+                ix: spec.ix,
+                itemRenderer: ({ mode }: PanelContentRenderProps) =>
+                    spec.render(mode as PanelMode, effectivePaused, orbState),
+            }));
+    }, [effectivePaused, orbState]);
+
+    return (
+        <WindowManager
+            windows={managedWindows}
+            assignments={assignments}
+            onAssignmentsChange={handleAssignmentsChange}
+            homeAssignments={DEFAULT_ASSIGNMENTS}
+            focusedId={focusedId}
+            onFocusChange={handleFocusChange}
+        />
+    );
+}
+
+export default HudWindowsView;
+
+

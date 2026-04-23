@@ -3081,7 +3081,7 @@ async def notify_wife_handler(request: web.Request) -> web.Response:
     to all connected WebSocket clients on the ``notification`` channel.
     """
     import uuid  # noqa: PLC0415
-    from utils.config_loader import get_config as _get_cfg  # noqa: PLC0415
+    from utils.config_loader import get_config as _gcfg  # noqa: PLC0415
 
     utterance_id = str(uuid.uuid4())
 
@@ -3109,7 +3109,7 @@ async def notify_wife_handler(request: web.Request) -> web.Response:
         ]
 
     # --- Config ---------------------------------------------------------------
-    cfg = _get_cfg()
+    cfg = _gcfg()
     cfg_wife: dict[str, Any] = (cfg.get_section("notifications") or {}).get("wife", {})
     allowed_sender = str(cfg_wife.get("sender_id", "+41765005527"))
     enabled = bool(cfg_wife.get("enabled", True))
@@ -3273,6 +3273,36 @@ async def _cache_stats_log_loop(interval_seconds: float) -> None:
             f"{stats.get('backchannel_misses', 0)}m "
             f"sleep={stats.get('sleep_match_hits', 0)} "
             f"overall_hit_rate={hit_rate:.1%}"
+        )
+
+
+# ── Default location fallback (Berlin) ─────────────────────────────────────
+_DEFAULT_LATITUDE = 52.52
+_DEFAULT_LONGITUDE = 13.41
+
+
+async def config_location_handler(request: web.Request) -> web.Response:
+    """GET /api/config/location — return latitude/longitude from config.yaml.
+
+    Returns:
+        JSON ``{latitude: float, longitude: float}``
+    """
+    try:
+        from ruamel.yaml import YAML  # noqa: PLC0415
+
+        yaml = YAML()
+        yaml.preserve_quotes = True
+        with _CONFIG_YAML_PATH.open("r", encoding="utf-8") as fh:
+            data = yaml.load(fh)
+
+        loc = (data or {}).get("location") or {}
+        latitude = float(loc.get("latitude", _DEFAULT_LATITUDE))
+        longitude = float(loc.get("longitude", _DEFAULT_LONGITUDE))
+
+        return web.json_response({"latitude": latitude, "longitude": longitude})
+    except Exception as exc:  # noqa: BLE001
+        return web.json_response(
+            {"latitude": _DEFAULT_LATITUDE, "longitude": _DEFAULT_LONGITUDE},
         )
 
 
@@ -3576,6 +3606,7 @@ async def start_ws_server(
     http_app.router.add_get("/api/config/repos", config_repos_get_handler)
     http_app.router.add_post("/api/config/repos", config_repos_post_handler)
     http_app.router.add_get("/api/metrics/voice", voice_metrics_handler)
+    http_app.router.add_get("/api/config/location", config_location_handler)
 
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)

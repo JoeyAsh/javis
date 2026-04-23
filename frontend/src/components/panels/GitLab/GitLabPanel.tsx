@@ -168,14 +168,24 @@ function GitLabExpanded({ data }: { data: GitLabStatePayload | null }): ReactEle
  * Expanded mode: full lists with titles, labels, branches, and relative times.
  * Returns null if no backend payload arrives within the availability timeout.
  */
-export function GitLabPanel({ mode = 'expanded' }: GitLabPanelProps): ReactElement | null {
+export function GitLabPanel({ mode = 'expanded' }: GitLabPanelProps): ReactElement {
     const { data, available } = useGitlabState();
 
     // Report availability up to HudWindows.
     usePanelAvailable('gitlab', available || data !== null);
 
-    // Backend not available — hide the panel.
-    if (!available && data === null) return null;
+    // Backend not available — show fallback message.
+    if (!available && data === null) {
+        return mode === 'compact' ? (
+            <div className="gitlab-compact">
+                <span className="gitlab-loading">GitLab momentan nicht erreichbar</span>
+            </div>
+        ) : (
+            <div className="gitlab-panel">
+                <span className="gitlab-loading">GitLab momentan nicht erreichbar</span>
+            </div>
+        );
+    }
 
     return mode === 'compact' ? <GitLabCompact data={data} /> : <GitLabExpanded data={data} />;
 }

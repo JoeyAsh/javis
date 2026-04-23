@@ -3,6 +3,10 @@ jarvis:
   wake_word: "hey jarvis"
   language: "auto"
 
+location:
+  latitude: 48.7758
+  longitude: 9.1829
+
 audio:
   input_device_index: null
   sample_rate: 16000
@@ -36,7 +40,7 @@ claude:
   max_history_turns: 10
 
 agents:
-  orchestrator_model: "claude-opus-4-5"
+  orchestrator_model: "claude-opus-4-7"
   subagent_model: "claude-sonnet-4-6"
   orchestrator_max_tokens: 150
   chat_max_tokens: 300

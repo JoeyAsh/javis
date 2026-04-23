@@ -106,7 +106,7 @@ export interface MailPanelProps {
  * Shows empty-state when backend is live but inbox is empty.
  * Hides (returns null) when no backend payload arrives within AVAILABILITY_TIMEOUT_MS.
  */
-export function MailPanel({ mode = 'expanded' }: MailPanelProps): ReactElement | null {
+export function MailPanel({ mode = 'expanded' }: MailPanelProps): ReactElement {
     const [messages, setMessages] = useState<MailMessage[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [draft, setDraft] = useState<EmailDraftPreviewPayload | null>(null);
@@ -155,8 +155,14 @@ export function MailPanel({ mode = 'expanded' }: MailPanelProps): ReactElement |
         };
     }, []);
 
-    // Backend not available within timeout — hide the panel entirely.
-    if (!backendAvailable && !hasLiveData) return null;
+    // Backend not available within timeout — show fallback message.
+    if (!backendAvailable && !hasLiveData) {
+        return (
+            <div className="mail-panel">
+                <span className="mail-empty">Postfach momentan nicht erreichbar</span>
+            </div>
+        );
+    }
 
     const flashStyle = sendFlash
         ? { outline: '1px solid var(--accent)', transition: 'outline 300ms' }

@@ -1,0 +1,50 @@
+/* AgendaView — layout styles */
+
+.av-expanded,
+.av-compact {
+    padding: 4px 6px;
+}
+
+.av-compact__hdr {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.av-compact__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+}
+
+.av-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 120ms;
+}
+
+.av-row:hover {
+    background: var(--surface-raised);
+}
+
+.av-row__time {
+    flex-shrink: 0;
+    width: 36px;
+    padding-top: 1px;
+}
+
+.av-row__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+

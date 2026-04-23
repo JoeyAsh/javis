@@ -120,7 +120,7 @@ function NotificationsExpanded({
 export function NotificationsPanel({
     notifications,
     mode = 'expanded',
-}: NotificationsPanelProps): ReactElement | null {
+}: NotificationsPanelProps): ReactElement {
     const { notifications: live, isLive } = useNotifications();
     const [backendAvailable, setBackendAvailable] = useState(true);
     const availabilityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -156,8 +156,14 @@ export function NotificationsPanel({
 
     const displayed = useMemo<HudNotification[]>(() => source, [source]);
 
-    // Backend not available — hide the panel.
-    if (notifications === undefined && !backendAvailable && !isLive) return null;
+    // Backend not available — show fallback message.
+    if (notifications === undefined && !backendAvailable && !isLive) {
+        return (
+            <div className="notif-panel">
+                <span className="notif-empty">Benachrichtigungen momentan nicht verfügbar</span>
+            </div>
+        );
+    }
 
     return mode === 'compact' ? (
         <NotificationsCompact notifications={displayed} />

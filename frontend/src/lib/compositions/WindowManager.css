@@ -4,8 +4,14 @@
    ================================================================ */
 
 .lib-wm {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
+    position: fixed;
+    inset: 0;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Re-enable pointer events only on Window children, not overlays. */
+.lib-wm > .lib-window {
+    pointer-events: auto;
 }

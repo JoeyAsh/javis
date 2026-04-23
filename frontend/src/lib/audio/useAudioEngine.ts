@@ -155,7 +155,7 @@ export function useAudioEngine(
                     engine.setDucking(true);
                 } else if (s === 'thinking') {
                     engine.play('thinking');
-                    engine.play('scan');
+                    // engine.play('scan');
                 } else if (s === 'working') {
                     engine.play('working');
                 }
@@ -257,7 +257,7 @@ export function useAudioEngine(
         } else if (orbState === 'thinking') {
             stopIdleLoops();
             engine.play('thinking');
-            engine.play('scan');
+            // engine.play('scan');
         } else if (orbState === 'working') {
             stopIdleLoops();
             engine.stop('thinking');

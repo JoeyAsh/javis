@@ -7,6 +7,7 @@
  *   jarvis.pushToTalk        boolean         (default false)
  *   jarvis.micDeviceId       string          (default '')
  *   jarvis.heartbeatEnabled  boolean         (default false)
+ *   jarvis.orbStyle          'css'|'threejs' (default 'css')
  *
  * All writes are wrapped in a try/catch to handle Safari private-mode and
  * other storage-denied environments gracefully.
@@ -14,12 +15,15 @@
 
 import { useCallback, useState } from 'react';
 
+export type OrbStyle = 'css' | 'threejs';
+
 export interface JarvisSettings {
     panelOpacity: number;
     autoSpeakClaude: boolean;
     pushToTalk: boolean;
     micDeviceId: string;
     heartbeatEnabled: boolean;
+    orbStyle: OrbStyle;
 }
 
 const DEFAULTS: JarvisSettings = {
@@ -28,6 +32,7 @@ const DEFAULTS: JarvisSettings = {
     pushToTalk: true,
     micDeviceId: '',
     heartbeatEnabled: false,
+    orbStyle: 'css',
 };
 
 function safeGet(key: string): string | null {
@@ -52,6 +57,7 @@ function loadSettings(): JarvisSettings {
     const pttRaw = safeGet('jarvis.pushToTalk');
     const micRaw = safeGet('jarvis.micDeviceId');
     const heartbeatRaw = safeGet('jarvis.heartbeatEnabled');
+    const orbStyleRaw = safeGet('jarvis.orbStyle');
 
     const panelOpacity =
         opacityRaw !== null
@@ -63,8 +69,10 @@ function loadSettings(): JarvisSettings {
     const micDeviceId = micRaw ?? DEFAULTS.micDeviceId;
     const heartbeatEnabled =
         heartbeatRaw !== null ? heartbeatRaw === 'true' : DEFAULTS.heartbeatEnabled;
+    const orbStyle: OrbStyle =
+        orbStyleRaw === 'threejs' ? 'threejs' : DEFAULTS.orbStyle;
 
-    return { panelOpacity, autoSpeakClaude, pushToTalk, micDeviceId, heartbeatEnabled };
+    return { panelOpacity, autoSpeakClaude, pushToTalk, micDeviceId, heartbeatEnabled, orbStyle };
 }
 
 export interface UseSettingsReturn {
@@ -74,6 +82,7 @@ export interface UseSettingsReturn {
     setPushToTalk: (v: boolean) => void;
     setMicDeviceId: (v: string) => void;
     setHeartbeatEnabled: (v: boolean) => void;
+    setOrbStyle: (v: OrbStyle) => void;
 }
 
 /**
@@ -109,6 +118,11 @@ export function useSettings(): UseSettingsReturn {
         setSettings((prev) => ({ ...prev, heartbeatEnabled: v }));
     }, []);
 
+    const setOrbStyle = useCallback((v: OrbStyle) => {
+        safeSet('jarvis.orbStyle', v);
+        setSettings((prev) => ({ ...prev, orbStyle: v }));
+    }, []);
+
     return {
         settings,
         setPanelOpacity,
@@ -116,6 +130,7 @@ export function useSettings(): UseSettingsReturn {
         setPushToTalk,
         setMicDeviceId,
         setHeartbeatEnabled,
+        setOrbStyle,
     };
 }
 

@@ -58,12 +58,14 @@ function makeSettingsHook(overrides: Partial<UseSettingsReturn> = {}): UseSettin
             pushToTalk: false,
             micDeviceId: '',
             heartbeatEnabled: false,
+            orbStyle: 'css',
         },
         setPanelOpacity: vi.fn(),
         setAutoSpeakClaude: vi.fn(),
         setPushToTalk: vi.fn(),
         setMicDeviceId: vi.fn(),
         setHeartbeatEnabled: vi.fn(),
+        setOrbStyle: vi.fn(),
         ...overrides,
     };
 }

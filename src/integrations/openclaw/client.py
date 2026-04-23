@@ -89,6 +89,8 @@ def _cli_subprocess_env() -> dict[str, str]:
     env = dict(os.environ)
     env.pop("OPENCLAW_GATEWAY_URL", None)
     env.pop("OPENCLAW_GATEWAY_PORT", None)
+    # Allow plaintext WS to private LAN addresses (trusted network).
+    env.setdefault("OPENCLAW_ALLOW_INSECURE_PRIVATE_WS", "1")
     return env
 
 
@@ -505,6 +507,18 @@ class OpenClawClient:
             try:
                 data = json.loads(stdout.decode())
 
+                if data is None:
+                    logger.warning(
+                        "OpenClaw CLI returned null — agent may have failed silently"
+                    )
+                    return AgentResponse(
+                        text="",
+                        session_id=session,
+                        thinking_used=False,
+                        tool_calls=[],
+                        error="OpenClaw returned null response",
+                    )
+
                 # New envelope — prefer `meta.finalAssistantVisibleText`
                 # (already post-processed / visible to user); fall back to
                 # concatenated payload texts.
@@ -528,7 +542,7 @@ class OpenClawClient:
                             )
 
                 # Legacy fallback for older CLIs / mocks.
-                if not text:
+                if not text and isinstance(data, dict):
                     text = data.get("response") or data.get("text") or ""
 
                 return AgentResponse(

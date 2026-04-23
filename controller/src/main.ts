@@ -9,6 +9,8 @@ interface StatusInfo {
 interface OpenclawTargetInfo {
   target: string;
   url: string;
+  ssh_host: string;
+  remote_url: string;
 }
 
 // ── DOM refs — Backend (JARVIS backend service) ───────────────────────────────
@@ -37,6 +39,18 @@ const btnOpenclawRestart   = document.getElementById("btn-openclaw-restart")   a
 const toggleLocal          = document.getElementById("toggle-local")           as HTMLButtonElement;
 const toggleRemote         = document.getElementById("toggle-remote")          as HTMLButtonElement;
 const openclawTargetUrl    = document.getElementById("openclaw-target-url")    as HTMLDivElement;
+
+// ── DOM refs — OpenClaw advanced fields ──────────────────────────────────────
+const inputSshHost         = document.getElementById("openclaw-ssh-host")      as HTMLInputElement;
+const inputRemoteUrl       = document.getElementById("openclaw-remote-url")    as HTMLInputElement;
+const btnSaveSshHost       = document.getElementById("btn-save-ssh-host")      as HTMLButtonElement;
+const btnSaveRemoteUrl     = document.getElementById("btn-save-remote-url")    as HTMLButtonElement;
+
+// ── DOM refs — Tunnel ────────────────────────────────────────────────────────
+const tunnelDot            = document.getElementById("tunnel-dot")             as HTMLSpanElement;
+const tunnelStateText      = document.getElementById("tunnel-state-text")      as HTMLSpanElement;
+const btnTunnelStart       = document.getElementById("btn-tunnel-start")       as HTMLButtonElement;
+const btnTunnelStop        = document.getElementById("btn-tunnel-stop")        as HTMLButtonElement;
 
 // ── DOM refs — links ─────────────────────────────────────────────────────────
 const btnLinkJarvis   = document.getElementById("btn-link-jarvis")   as HTMLButtonElement;
@@ -140,6 +154,48 @@ function applyOpenclawStatus(info: StatusInfo): void {
   btnLinkOpenclaw.disabled    = !info.http_ok;
 }
 
+function applyOpenclawTarget(info: OpenclawTargetInfo): void {
+  const isLocal = info.target === "local";
+  toggleLocal.classList.toggle("active", isLocal);
+  toggleRemote.classList.toggle("active", !isLocal);
+  openclawTargetUrl.textContent = `Target: ${info.url}`;
+
+  // Populate fields only when they aren't focused (don't clobber live typing)
+  if (document.activeElement !== inputSshHost) {
+    inputSshHost.value = info.ssh_host;
+  }
+  if (document.activeElement !== inputRemoteUrl) {
+    inputRemoteUrl.value = info.remote_url;
+  }
+
+  // SSH host + remote URL fields are only useful when target is remote
+  const remoteOnly = isLocal;
+  inputSshHost.disabled    = remoteOnly;
+  inputRemoteUrl.disabled  = remoteOnly;
+  btnSaveSshHost.disabled  = remoteOnly;
+  btnSaveRemoteUrl.disabled = remoteOnly;
+}
+
+function applyTunnelStatus(info: StatusInfo): void {
+  const state = info.state.toLowerCase().trim();
+  tunnelStateText.textContent = state;
+
+  if (state === "active") {
+    tunnelDot.className = "dot active";
+    btnTunnelStart.disabled = true;
+    btnTunnelStop.disabled  = false;
+  } else if (state === "inactive") {
+    tunnelDot.className = "dot inactive";
+    btnTunnelStart.disabled = false;
+    btnTunnelStop.disabled  = true;
+  } else {
+    // "n/a" or any unknown state (e.g. Linux host without SSH tunnel support)
+    tunnelDot.className = "dot unknown";
+    btnTunnelStart.disabled = true;
+    btnTunnelStop.disabled  = true;
+  }
+}
+
 // ── Polling ───────────────────────────────────────────────────────────────────
 async function pollAll(): Promise<void> {
   await Promise.allSettled([
@@ -183,6 +239,18 @@ async function pollAll(): Promise<void> {
         btnOpenclawRestart.disabled = true;
         btnLinkOpenclaw.disabled    = true;
         console.error("openclaw status poll failed:", e);
+      }
+    })(),
+    (async () => {
+      try {
+        const info = await invoke<StatusInfo>("tunnel_status");
+        applyTunnelStatus(info);
+      } catch (e) {
+        tunnelStateText.textContent = "n/a";
+        tunnelDot.className = "dot unknown";
+        btnTunnelStart.disabled = true;
+        btnTunnelStop.disabled  = true;
+        console.error("tunnel status poll failed:", e);
       }
     })(),
   ]);
@@ -339,13 +407,6 @@ btnLinkOpenclaw.addEventListener("click", async () => {
 });
 
 // ── OpenClaw target toggle ────────────────────────────────────────────────────
-function applyOpenclawTarget(info: OpenclawTargetInfo): void {
-  const isLocal = info.target === "local";
-  toggleLocal.classList.toggle("active", isLocal);
-  toggleRemote.classList.toggle("active", !isLocal);
-  openclawTargetUrl.textContent = `Target: ${info.url}`;
-}
-
 async function initOpenclawTargetToggle(): Promise<void> {
   try {
     const info = await invoke<OpenclawTargetInfo>("get_openclaw_target");
@@ -374,6 +435,68 @@ async function handleTargetSelect(target: "local" | "remote"): Promise<void> {
 
 toggleLocal.addEventListener("click", () => handleTargetSelect("local"));
 toggleRemote.addEventListener("click", () => handleTargetSelect("remote"));
+
+// ── OpenClaw advanced field handlers ─────────────────────────────────────────
+btnSaveSshHost.addEventListener("click", async () => {
+  const value = inputSshHost.value.trim();
+  if (value === "") {
+    showToast("openclaw · SSH host must not be empty", true);
+    return;
+  }
+  try {
+    const info = await invoke<OpenclawTargetInfo>("set_openclaw_ssh_host", { sshHost: value });
+    applyOpenclawTarget(info);
+    showToast(`openclaw · SSH host saved: ${value}`);
+  } catch (e) {
+    const msg = typeof e === "string" ? e : String(e);
+    showToast(`openclaw · save SSH host failed: ${msg}`, true);
+  }
+});
+
+btnSaveRemoteUrl.addEventListener("click", async () => {
+  const value = inputRemoteUrl.value.trim();
+  if (value === "") {
+    showToast("openclaw · remote URL must not be empty", true);
+    return;
+  }
+  if (!value.startsWith("http://") && !value.startsWith("https://")) {
+    showToast("openclaw · remote URL must start with http:// or https://", true);
+    return;
+  }
+  try {
+    const info = await invoke<OpenclawTargetInfo>("set_openclaw_remote_url", { remoteUrl: value });
+    applyOpenclawTarget(info);
+    showToast(`openclaw · remote URL saved: ${value}`);
+  } catch (e) {
+    const msg = typeof e === "string" ? e : String(e);
+    showToast(`openclaw · save remote URL failed: ${msg}`, true);
+  }
+});
+
+// ── Tunnel button handlers ────────────────────────────────────────────────────
+btnTunnelStart.addEventListener("click", async () => {
+  btnTunnelStart.disabled = true;
+  try {
+    await invoke<string>("start_tunnel");
+    showToast(`tunnel · started · ${timestamp()}`);
+  } catch (e) {
+    const msg = typeof e === "string" ? e : String(e);
+    showToast(`tunnel · start failed: ${msg}`, true);
+  }
+  await pollAll();
+});
+
+btnTunnelStop.addEventListener("click", async () => {
+  btnTunnelStop.disabled = true;
+  try {
+    await invoke<string>("stop_tunnel");
+    showToast(`tunnel · stopped · ${timestamp()}`);
+  } catch (e) {
+    const msg = typeof e === "string" ? e : String(e);
+    showToast(`tunnel · stop failed: ${msg}`, true);
+  }
+  await pollAll();
+});
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 initOpenclawTargetToggle();

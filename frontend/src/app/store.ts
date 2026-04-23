@@ -4,6 +4,10 @@ import mailReducer from '@features/mail/mailSlice';
 import agendaReducer from '@features/agenda/agendaSlice';
 import notificationsReducer from '@features/notifications/notificationsSlice';
 import transcriptReducer from '@features/transcript/transcriptSlice';
+import systemReducer from '@features/system/systemSlice';
+import nowplayingReducer from '@features/nowplaying/nowplayingSlice';
+import logReducer from '@features/log/logSlice';
+import gitlabReducer from '@features/gitlab/gitlabSlice';
 
 export const rootReducer = combineReducers({
     [baseApi.reducerPath]: baseApi.reducer,
@@ -11,6 +15,11 @@ export const rootReducer = combineReducers({
     agenda: agendaReducer,
     notifications: notificationsReducer,
     transcript: transcriptReducer,
+    system: systemReducer,
+    nowplaying: nowplayingReducer,
+    log: logReducer,
+    gitlab: gitlabReducer,
+    // github has no slice — RTK Query cache only.
 });
 
 export const store = configureStore({

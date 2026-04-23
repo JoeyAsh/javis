@@ -1,0 +1,86 @@
+.track {
+    display: flex;
+    gap: var(--s-3);
+    margin-bottom: var(--s-2);
+}
+
+.art {
+    width: 54px;
+    height: 54px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border-radius: var(--r-1);
+    box-shadow: var(--glow);
+}
+
+.artPlaceholder {
+    width: 54px;
+    height: 54px;
+    flex-shrink: 0;
+    border-radius: var(--r-1);
+    background: linear-gradient(135deg, #1a3a5c, #4ca8e8 55%, #6ec4ff);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: var(--bg, #050508);
+    font-size: 11px;
+    letter-spacing: 1px;
+    box-shadow: var(--glow);
+    text-align: center;
+}
+
+.artPlaceholder::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        transparent 0 4px,
+        rgba(255, 255, 255, 0.06) 4px 5px
+    );
+}
+
+.artPlaceholder::before {
+    content: '';
+    position: absolute;
+    inset: 20%;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 50%;
+}
+
+.meta {
+    min-width: 0;
+    flex: 1;
+}
+
+.title {
+    font-size: 12px;
+    color: var(--text);
+    margin-bottom: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font);
+}
+
+.artist {
+    font-size: 10px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font);
+}
+
+.album {
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font);
+}

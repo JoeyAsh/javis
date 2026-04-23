@@ -2,17 +2,13 @@ export { useWebSocket, subscribeSystemMetrics, subscribeSpotifyStateStream } fro
 export type { SpotifyStateListener } from './useWebSocket';
 export { useMicStream } from './useMicStream';
 export { useAudioAnalyser } from './useAudioAnalyser';
-export { useSystemMetrics } from './useSystemMetrics';
-export type { SystemMetricsLive, MetricKey, MetricHistories } from './useSystemMetrics';
+// useSystemMetrics removed — consume via @features/system useSystem() hook
 export { useConversationMode } from './useConversationMode';
 export type { ConversationModeState } from './useConversationMode';
 export { useSettings } from './useSettings';
 export type { JarvisSettings, UseSettingsReturn } from './useSettings';
 export { useLocation } from './useLocation';
 export type { LocationCoords } from './useLocation';
-export { useLogStream } from './useLogStream';
-export type { UseLogStreamReturn } from './useLogStream';
-export { useTurnTimings } from './useTurnTimings';
-export type { UseTurnTimingsReturn } from './useTurnTimings';
+// useLogStream / useTurnTimings removed — consume via @features/log useLog() hook
 export { usePushToTalk } from './usePushToTalk';
 export type { UsePushToTalkOptions, UsePushToTalkReturn, PttState } from './usePushToTalk';

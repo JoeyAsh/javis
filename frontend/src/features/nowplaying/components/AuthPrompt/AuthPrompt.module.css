@@ -1,0 +1,37 @@
+.state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-2);
+    padding: var(--s-4) 0;
+}
+
+.label {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    font-family: var(--font);
+}
+
+.btn {
+    padding: 6px var(--s-4);
+    background: transparent;
+    border: 1px solid var(--accent);
+    border-radius: var(--r-1);
+    color: var(--accent);
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 11px;
+    letter-spacing: 1px;
+    transition:
+        color var(--dur-base) var(--ease),
+        border-color var(--dur-base) var(--ease),
+        box-shadow var(--dur-base) var(--ease);
+}
+
+.btn:hover {
+    color: var(--accent-bright);
+    border-color: var(--accent-bright);
+    box-shadow: var(--glow);
+}

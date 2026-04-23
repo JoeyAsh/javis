@@ -19,12 +19,14 @@ import { AgendaPanel } from '@features/agenda';
 import { NotificationsPanel } from '@features/notifications';
 import { TranscriptPanel } from '@features/transcript';
 
-// ── Phase 3 ✅ — remaining panel views (not yet migrated) ────────────────────
-import { SystemView } from './SystemView';
-import { NowPlayingView } from './NowPlayingView';
+// ── Batch 2b migrated panels ─────────────────────────────────────────────────
+import { SystemPanel } from '@features/system';
+import { GitLabPanel } from '@features/gitlab';
+import { NowPlayingPanel } from '@features/nowplaying';
+import { LogPanel } from '@features/log';
+
+// ── Remaining views (not yet migrated — batch 2c+) ──────────────────────────
 import { DevView } from './DevView';
-import { LogView } from './LogView';
-import { GitLabView } from './GitLabView';
 import { SelfFixView } from './SelfFixView';
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -73,13 +75,13 @@ const PANELS: ReadonlyArray<PanelSpec> = [
         id: 'nowplaying',
         title: 'Now Playing',
         ix: '♫',
-        render: (mode) => <NowPlayingView mode={mode} />,
+        render: (mode) => <NowPlayingPanel mode={mode} />,
     },
     {
         id: 'system',
         title: 'System',
         ix: '◈',
-        render: (mode, paused) => <SystemView mode={mode} paused={paused} />,
+        render: (mode, paused) => <SystemPanel mode={mode} paused={paused} />,
     },
     {
         id: 'dev',
@@ -97,13 +99,13 @@ const PANELS: ReadonlyArray<PanelSpec> = [
         id: 'gitlab',
         title: 'GitLab',
         ix: '⬡',
-        render: (mode) => <GitLabView mode={mode} />,
+        render: (mode) => <GitLabPanel mode={mode} />,
     },
     {
         id: 'log',
         title: 'Console',
         ix: '≡',
-        render: (mode) => <LogView mode={mode} />,
+        render: (mode) => <LogPanel mode={mode} />,
     },
 ];
 

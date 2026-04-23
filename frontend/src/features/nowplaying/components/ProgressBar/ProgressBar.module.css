@@ -1,0 +1,30 @@
+.progress {
+    margin-top: 8px;
+    margin-bottom: var(--s-1);
+}
+
+.bar {
+    height: 2px;
+    background: var(--border);
+    overflow: hidden;
+    position: relative;
+    margin: 4px 0;
+}
+
+.barFill {
+    height: 100%;
+    background: var(--accent);
+    box-shadow: var(--glow);
+    transition: width 120ms linear;
+}
+
+.times {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    margin-top: 3px;
+    font-family: var(--font);
+    font-variant-numeric: tabular-nums;
+}

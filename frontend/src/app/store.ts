@@ -1,5 +1,6 @@
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import { baseApi } from '@core/api/baseApi';
+import { weatherApi } from '@core/api/weatherApi';
 import mailReducer from '@features/mail/mailSlice';
 import agendaReducer from '@features/agenda/agendaSlice';
 import notificationsReducer from '@features/notifications/notificationsSlice';
@@ -11,9 +12,11 @@ import gitlabReducer from '@features/gitlab/gitlabSlice';
 import lightsReducer from '@features/lights/lightsSlice';
 import orbStateReducer from '@features/orbState/orbStateSlice';
 import conversationReducer from '@features/conversation/conversationSlice';
+import audioPlaybackReducer from '@core/audio/audioPlaybackSlice';
 
 export const rootReducer = combineReducers({
     [baseApi.reducerPath]: baseApi.reducer,
+    [weatherApi.reducerPath]: weatherApi.reducer,
     mail: mailReducer,
     agenda: agendaReducer,
     notifications: notificationsReducer,
@@ -25,12 +28,14 @@ export const rootReducer = combineReducers({
     lights: lightsReducer,
     orbState: orbStateReducer,
     conversation: conversationReducer,
+    audioPlayback: audioPlaybackReducer,
     // github has no slice — RTK Query cache only.
 });
 
 export const store = configureStore({
     reducer: rootReducer,
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(baseApi.middleware),
+    middleware: (getDefaultMiddleware) =>
+        getDefaultMiddleware().concat(baseApi.middleware, weatherApi.middleware),
     devTools: import.meta.env.DEV,
 });
 

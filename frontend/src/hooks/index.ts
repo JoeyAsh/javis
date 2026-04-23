@@ -1,10 +1,20 @@
-export { useWebSocket, subscribeSystemMetrics, subscribeSpotifyStateStream } from './useWebSocket';
-export type { SpotifyStateListener } from './useWebSocket';
+/**
+ * @deprecated Legacy hooks barrel — consumers should import from their
+ * canonical locations directly.
+ *
+ * Shims kept for backward compatibility:
+ *   useAudioAnalyser → @core/audio
+ *   useSettings → @features/settings
+ *   useLocation → @common/hooks/useLocation
+ *
+ * useWebSocket is no longer re-exported here.
+ * Its functionality has been migrated to:
+ *   - @core/audio (audioPlaybackApi, useAudioPlayback)
+ *   - @features/orbState (orbStateApi)
+ *   - @core/websocket/commands (sendTranscript, sendCancelTurn)
+ */
+
 export { useAudioAnalyser } from './useAudioAnalyser';
-// useSystemMetrics removed — consume via @features/system useSystem() hook
-// useConversationMode removed — consume via @features/conversation
-// usePushToTalk removed — consume via @features/conversation
-// useMicStream removed — consume via @features/conversation
 // useSettings moved to @features/settings — re-exported here for backward compat
 export { useSettings } from '../features/settings/hooks/useSettings';
 export type { JarvisSettings, UseSettingsReturn } from '../features/settings/hooks/useSettings.types';

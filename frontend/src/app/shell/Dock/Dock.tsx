@@ -1,36 +1,25 @@
 /**
- * JarvisDock — bottom-center dock composed from lib StatusDock + PTT logic.
+ * Dock — bottom-center dock composed from the ui StatusDock + PTT logic.
  *
- * Wraps the lib StatusDock composition and wires the push-to-talk hook
- * (keyboard Space + pointer hold) from the business-logic layer.
+ * Wires push-to-talk (keyboard Space + pointer hold) from @features/conversation.
  */
 
 import { type ReactElement, useCallback, useEffect } from 'react';
 import { PushToTalkButton, StatusDock } from '@ui';
 import { usePushToTalk } from '@features/conversation';
 import type { AppOrbState } from '@common/types';
+import type { DockProps } from './Dock.types';
 
-// ── Props ────────────────────────────────────────────────────────────────────
-
-export interface JarvisDockProps {
-    orbState: AppOrbState;
-    pttEnabled: boolean;
-}
-
-/** Map follow_up → listening for dock display (mic stays open but subtler). */
 function toDisplayState(state: AppOrbState): AppOrbState {
     if (state === 'follow_up') return 'listening';
     return state;
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
-
-export function JarvisDock({ orbState, pttEnabled }: JarvisDockProps): ReactElement {
+export function Dock({ orbState, pttEnabled }: DockProps): ReactElement {
     const { pttState, handlePressStart, handlePressEnd } = usePushToTalk({ enabled: pttEnabled });
     const isHolding = pttState === 'holding';
     const isActive = orbState !== 'idle';
 
-    // Space bar → hold PTT while pressed
     useEffect(() => {
         if (!pttEnabled) return;
 
@@ -86,4 +75,4 @@ export function JarvisDock({ orbState, pttEnabled }: JarvisDockProps): ReactElem
     );
 }
 
-export default JarvisDock;
+export default Dock;

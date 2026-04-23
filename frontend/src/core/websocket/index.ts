@@ -1,6 +1,7 @@
 export { wsClient } from './wsClient';
 export type { WsClient, WsReadyState, WsMessageHandler } from './wsClient';
 export { createStreamingQueryHandler } from './streamingQuery';
+export { sendTranscript, sendCancelTurn, sendSpotifyCmd } from './commands';
 export type {
     WsIncoming,
     WsOutgoing,

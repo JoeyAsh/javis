@@ -1,0 +1,108 @@
+/* CSS Module justified: @keyframes cannot be expressed in Tailwind utility classes. */
+/* All color values use CSS variables per design system rules. */
+
+.left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--accent);
+}
+
+.tagDot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: topbar-pulse 2s ease-in-out infinite;
+}
+
+@keyframes topbar-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.sep {
+    color: var(--text-muted);
+    font-size: 6px;
+    user-select: none;
+}
+
+.clock {
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    font-size: 11px;
+}
+
+.date {
+    color: var(--text-secondary);
+}
+
+.weather {
+    color: var(--text-secondary);
+}
+
+.weatherStale {
+    opacity: 0.4;
+}
+
+.weatherIcon {
+    margin-right: 4px;
+}
+
+.coords {
+    color: var(--text-muted);
+    font-size: 9px;
+}
+
+.brand {
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.brandJ {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.brandMk {
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+}
+
+.right {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.iconBtn {
+    padding: 5px 6px !important;
+    min-width: unset;
+    border-color: transparent !important;
+}
+
+.iconBtn:hover {
+    border-color: var(--border) !important;
+}
+
+.iconBtnActive {
+    color: var(--accent) !important;
+    border-color: var(--accent) !important;
+}

@@ -4,3 +4,14 @@ export { WebSocketProvider } from './WebSocketProvider';
 export type { WebSocketProviderProps } from './WebSocketProvider.types';
 export { AppProviders } from './AppProviders';
 export type { AppProvidersProps } from './AppProviders.types';
+export {
+    PanelAvailabilityProvider,
+    usePanelAvailable,
+    useAvailabilityMap,
+    isPanelAvailable,
+} from './PanelAvailabilityProvider';
+export type {
+    PanelAvailabilityProviderProps,
+    AvailabilityMap,
+    PanelAvailabilityContextValue,
+} from './PanelAvailabilityProvider';

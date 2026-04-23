@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { AgendaEvent, CalendarStatePayload, PanelMode } from '../../../types';
 import { subscribeCalendarStateStream } from '../../../hooks/useWebSocket';
-import { usePanelAvailable } from '../../hud/PanelAvailability';
+import { usePanelAvailable } from '../../../contexts/PanelAvailability';
 import { AgendaEventRow } from './AgendaEventRow';
 import './AgendaPanel.css';
 

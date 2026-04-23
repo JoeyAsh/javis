@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Label, Mono, Pill } from '../lib';
-import { useSfx } from '../lib/audio/SfxContext';
+import { useSfx } from '@core/audio';
 import type { AgendaEvent, CalendarStatePayload, PanelMode } from '../types';
 import { subscribeCalendarStateStream } from '../hooks/useWebSocket';
 import { usePanelAvailable } from '../contexts/PanelAvailability';

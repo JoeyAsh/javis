@@ -6,9 +6,9 @@
  */
 
 import React, { type ReactElement, useCallback, useEffect } from 'react';
-import { PushToTalkButton, StatusDock, type OrbState } from '../lib';
+import { PushToTalkButton, StatusDock } from '@ui';
 import { usePushToTalk } from '../hooks/usePushToTalk';
-import type { AppOrbState } from '../types';
+import type { AppOrbState } from '@common/types';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -18,8 +18,8 @@ export interface JarvisDockProps {
     pttEnabled: boolean;
 }
 
-/** Map AppOrbState → lib OrbState (lib doesn't know follow_up). */
-function toLibOrbState(state: AppOrbState): OrbState {
+/** Map follow_up → listening for dock display (mic stays open but subtler). */
+function toDisplayState(state: AppOrbState): AppOrbState {
     if (state === 'follow_up') return 'listening';
     return state;
 }
@@ -74,7 +74,7 @@ export function JarvisDock({ orbState, wsRef, pttEnabled }: JarvisDockProps): Re
 
     return (
         <StatusDock
-            state={toLibOrbState(orbState)}
+            state={toDisplayState(orbState)}
             onPTT={pttEnabled ? handlePTT : undefined}
             ptt={
                 <PushToTalkButton

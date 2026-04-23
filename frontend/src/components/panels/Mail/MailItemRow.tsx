@@ -3,7 +3,7 @@
  * Matches prototype `.ev` pattern for MailPanel.
  */
 import type { ReactElement } from 'react';
-import { useSfx } from '../../../lib/audio/SfxContext';
+import { useSfx } from '@core/audio';
 import type { MailMessage } from '../../../types';
 import './MailPanel.css';
 

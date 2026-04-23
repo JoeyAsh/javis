@@ -13,5 +13,4 @@ export type PanelId =
 
 export type PanelMode = 'compact' | 'expanded';
 
-// Re-export SlotId from lib/layout until Sub-Call 2 moves it to @ui.
-export type { SlotId } from '../../lib/layout/SlotGrid';
+export type { SlotId } from '@ui/window/slotGrid';

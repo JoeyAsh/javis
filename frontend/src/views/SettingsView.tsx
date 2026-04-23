@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Button, GlassCard, Label, Mono } from '../lib';
-import { useSfx } from '../lib/audio/SfxContext';
+import { useSfx } from '@core/audio';
 import type { UseSettingsReturn, OrbStyle } from '../hooks/useSettings';
 import './SettingsView.css';
 

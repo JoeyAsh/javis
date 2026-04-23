@@ -19,7 +19,7 @@
 import type { ReactElement } from 'react';
 import { useGitlabState } from '../../../hooks/useGitlabState';
 import type { GitLabStatePayload, PanelMode } from '../../../types';
-import { usePanelAvailable } from '../../hud/PanelAvailability';
+import { usePanelAvailable } from '../../../contexts/PanelAvailability';
 import { PipelineRow } from './PipelineRow';
 import './GitLabPanel.css';
 

@@ -2,9 +2,6 @@ export { useWebSocket, subscribeSystemMetrics, subscribeSpotifyStateStream } fro
 export type { SpotifyStateListener } from './useWebSocket';
 export { useMicStream } from './useMicStream';
 export { useAudioAnalyser } from './useAudioAnalyser';
-export { useDraggable } from './useDraggable';
-export { useResizable } from './useResizable';
-export { useSwapDrag } from './useSwapDrag';
 export { useSystemMetrics } from './useSystemMetrics';
 export type { SystemMetricsLive, MetricKey, MetricHistories } from './useSystemMetrics';
 export { useConversationMode } from './useConversationMode';

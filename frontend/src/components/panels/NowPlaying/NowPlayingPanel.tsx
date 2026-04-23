@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import { usePanelAvailable } from '../../hud/PanelAvailability';
+import { usePanelAvailable } from '../../../contexts/PanelAvailability';
 import { useMockTicker } from '../../../mock/useMockTicker';
 import { sendSpotifyCmdStream, subscribeSpotifyStateStream } from '../../../hooks/useWebSocket';
 import type {

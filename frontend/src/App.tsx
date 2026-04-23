@@ -4,12 +4,10 @@ import { useConversationMode } from './hooks/useConversationMode';
 import { useMicStream } from './hooks/useMicStream';
 import { useSettings } from './hooks/useSettings';
 import { useWebSocket } from './hooks/useWebSocket';
-import { Hint, HUDShell, Orb, type OrbState } from './lib';
-const ThreeOrb = lazy(() => import('./views/ThreeOrb'));
-import { SfxProvider } from './lib/audio/SfxContext';
-import { useAudioEngine } from './lib/audio/useAudioEngine';
-import { useTauriWindowSfx } from './lib/audio/useTauriWindowSfx';
-import type { AppOrbState } from './types';
+import { Hint, HUDShell, CssOrb } from '@ui';
+const ThreeOrb = lazy(() => import('./ui/orb/ThreeOrb'));
+import { SfxProvider, useAudioEngine, useTauriWindowSfx } from '@core/audio';
+import type { AppOrbState } from '@common/types';
 
 // Phase 2 ✅ — migrated to lib WindowManager + contexts/PanelAvailability
 import { PanelAvailabilityProvider } from './contexts/PanelAvailability';
@@ -32,8 +30,8 @@ export function App(): ReactElement {
     );
 }
 
-/** Map AppOrbState → lib OrbState (lib doesn't know follow_up). */
-function toLibOrbState(state: AppOrbState): OrbState {
+/** Map AppOrbState → display state (follow_up renders as listening visually). */
+function toDisplayOrbState(state: AppOrbState): AppOrbState {
     if (state === 'follow_up') return 'listening';
     return state;
 }
@@ -121,14 +119,14 @@ function AppInner(): ReactElement {
     } as React.CSSProperties;
 
     // ── Orb selection ──────────────────────────────────────────────────────
-    const libOrbState = toLibOrbState(effectiveOrbState);
+    const displayOrbState = toDisplayOrbState(effectiveOrbState);
     const useThreeOrb = settingsHook.settings.orbStyle === 'threejs';
     const orbElement = useThreeOrb ? (
-        <Suspense key="three" fallback={<Orb state={libOrbState} />}>
-            <ThreeOrb state={libOrbState} />
+        <Suspense key="three" fallback={<CssOrb state={displayOrbState} />}>
+            <ThreeOrb state={displayOrbState} />
         </Suspense>
     ) : (
-        <Orb key="css" state={libOrbState} />
+        <CssOrb key="css" state={displayOrbState} />
     );
 
     return (

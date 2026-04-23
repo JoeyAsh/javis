@@ -31,7 +31,7 @@ const spies = {
 
 let mockIsMuted = false;
 
-vi.mock('../audioEngine', () => {
+vi.mock('@core/audio/audioEngine', () => {
     class AudioEngine {
         resumeContext(...args: Parameters<typeof spies.resumeContext>) {
             return spies.resumeContext(...args);
@@ -82,7 +82,7 @@ vi.mock('../audioEngine', () => {
 });
 
 import { useAudioEngine } from '../useAudioEngine';
-import { __resetAudioEngineSingleton } from '../audioEngine';
+import { __resetAudioEngineSingleton } from '@core/audio';
 
 // ---------------------------------------------------------------------------
 // matchMedia mock

@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { useNotifications } from '../../../hooks/useNotifications';
 import type { HudNotification, NotificationSeverity, PanelMode } from '../../../types';
-import { usePanelAvailable } from '../../hud/PanelAvailability';
+import { usePanelAvailable } from '../../../contexts/PanelAvailability';
 import { NotificationItem } from './NotificationItem';
 import './NotificationsPanel.css';
 

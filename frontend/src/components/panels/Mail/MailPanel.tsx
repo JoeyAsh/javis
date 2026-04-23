@@ -12,7 +12,7 @@ import {
     subscribeMailStateStream,
 } from '../../../hooks/useWebSocket';
 import type { EmailDraftPreviewPayload, MailMessage, PanelMode } from '../../../types';
-import { usePanelAvailable } from '../../hud/PanelAvailability';
+import { usePanelAvailable } from '../../../contexts/PanelAvailability';
 import { MailItemRow } from './MailItemRow';
 import './MailPanel.css';
 

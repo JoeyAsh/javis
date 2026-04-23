@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { UseSettingsReturn } from '../hooks/useSettings';
-import { useSfx } from '../lib/audio/SfxContext';
+import { useSfx } from '@core/audio';
 
 // ---------------------------------------------------------------------------
 // Types

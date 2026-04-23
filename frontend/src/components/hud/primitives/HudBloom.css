@@ -1,7 +1,0 @@
-/*
- * HudBloom.css — intentionally empty.
- *
- * Bloom is implemented as a ::after pseudo-element on .hud-panel in HudPanel.css.
- * This file is kept as a stub so the HudBloom.tsx import does not break any
- * existing code that has not yet been migrated.
- */

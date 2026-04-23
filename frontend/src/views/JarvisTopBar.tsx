@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Crosshair, Mic, MicOff, RotateCcw, Settings, Volume2, VolumeX } from 'lucide-react';
 import { Button, Icon, TopBar } from '../lib';
-import { useLocation } from '../hooks/useLocation';
+import { useLocation } from '@common/hooks/useLocation';
 import './JarvisTopBar.css';
 
 // ── Constants ────────────────────────────────────────────────────────────────

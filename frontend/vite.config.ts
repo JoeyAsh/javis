@@ -62,6 +62,10 @@ export default defineConfig({
                 target: 'http://localhost:8766',
                 changeOrigin: true,
             },
+            '/api': {
+                target: 'http://localhost:8766',
+                changeOrigin: true,
+            },
         },
     },
     build: {

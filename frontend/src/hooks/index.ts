@@ -10,4 +10,4 @@ export { useSettings } from '../features/settings/hooks/useSettings';
 export type { JarvisSettings, UseSettingsReturn } from '../features/settings/hooks/useSettings.types';
 export type { OrbStyle } from '../features/settings/types';
 export { useLocation } from './useLocation';
-export type { LocationCoords } from './useLocation';
+export type { LocationCoords } from '@common/types/location';

@@ -1,13 +1,5 @@
 import { useMemo, type CSSProperties, type ReactElement } from 'react';
-import type { StarFieldProps } from './StarField.types';
-import './StarField.css';
-
-interface StarData {
-    id: number;
-    left: string;
-    top: string;
-    delay: string;
-}
+import type { StarFieldProps, StarData } from './StarField.types';
 
 export function StarField({ count = 60, className }: StarFieldProps): ReactElement {
     const stars = useMemo<StarData[]>(() => {

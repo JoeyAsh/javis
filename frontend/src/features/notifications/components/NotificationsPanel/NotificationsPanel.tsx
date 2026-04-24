@@ -6,99 +6,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { usePanelAvailable } from '@app/providers/PanelAvailabilityProvider';
 import { useNotifications } from '../../hooks/useNotifications';
-import { NotificationItem } from '../NotificationItem';
-import type { HudNotification, NotificationSeverity } from '../../types';
+import { NotificationsCompact } from './NotificationsCompact';
+import { NotificationsExpanded } from './NotificationsExpanded';
+import type { HudNotification } from '../../types';
 import type { NotificationsPanelProps } from './NotificationsPanel.types';
 import styles from './NotificationsPanel.module.css';
 
 const AVAILABILITY_TIMEOUT_MS = 10_000;
-
-function severityDotStyle(sev: NotificationSeverity): string {
-    switch (sev) {
-        case 'urgent':
-            return 'var(--error, #e05c5c)';
-        case 'warning':
-            return 'var(--warning, #e0a85c)';
-        case 'info':
-            return 'var(--accent-bright)';
-    }
-}
-
-function severityTitleStyle(sev: NotificationSeverity): string {
-    switch (sev) {
-        case 'urgent':
-            return 'var(--error, #e05c5c)';
-        case 'warning':
-            return 'var(--warning, #e0a85c)';
-        case 'info':
-            return 'var(--accent-bright)';
-    }
-}
-
-// ---- Compact mode ----
-
-function NotificationsCompact({
-    notifications,
-}: {
-    notifications: HudNotification[];
-}): ReactElement {
-    const top = notifications[0];
-    const remaining = Math.max(0, notifications.length - 1);
-
-    if (!top) {
-        return (
-            <div className={styles.compact}>
-                <span className={styles.empty}>Keine aktiven Benachrichtigungen</span>
-            </div>
-        );
-    }
-
-    return (
-        <div className={styles.compact}>
-            <div className={styles.compactRow}>
-                <span
-                    aria-hidden
-                    className={styles.dot}
-                    style={{ background: severityDotStyle(top.severity) }}
-                />
-                <span
-                    className={styles.compactTitle}
-                    style={{ color: severityTitleStyle(top.severity) }}
-                >
-                    {top.title}
-                </span>
-                {remaining > 0 && <span className={styles.badge}>+{remaining}</span>}
-            </div>
-            <div className={styles.compactDetail}>{top.detail}</div>
-        </div>
-    );
-}
-
-// ---- Expanded mode ----
-
-function NotificationsExpanded({
-    notifications,
-}: {
-    notifications: HudNotification[];
-}): ReactElement {
-    if (notifications.length === 0) {
-        return (
-            <div className={styles.panel}>
-                <span className={styles.empty}>Keine aktiven Benachrichtigungen</span>
-            </div>
-        );
-    }
-
-    return (
-        <div className={styles.panel}>
-            {notifications.map((n) => (
-                <NotificationItem key={n.id} notification={n} />
-            ))}
-        </div>
-    );
-}
-
-// ---- Main export ----
 
 /**
  * NotificationsPanel body — severity-coloured notification rows.

@@ -13,7 +13,6 @@ import type { ResizeDir, ResizeState } from '../hooks/useResizable';
 import { useClickSfx, useHoverSfx } from '@core/audio';
 import { useSfx } from '@core/audio';
 import type { WindowProps, WindowState } from './Window.types';
-import './Window.css';
 
 const DOUBLE_CLICK_MS = 300;
 

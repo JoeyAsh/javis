@@ -3,7 +3,6 @@ import { WaveformMeter } from '../../primitives/WaveformMeter';
 import { PushToTalkButton } from '../../primitives/PushToTalkButton';
 import { StatusLabel } from '../../primitives/StatusLabel';
 import type { StatusDockProps } from './StatusDock.types';
-import './StatusDock.css';
 
 export function StatusDock({ state, onPTT, ptt, className }: StatusDockProps): ReactElement {
     const isActive = state !== 'idle';

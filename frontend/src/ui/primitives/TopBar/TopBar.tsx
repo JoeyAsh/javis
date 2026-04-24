@@ -1,6 +1,5 @@
 import { type ReactElement } from 'react';
 import type { TopBarProps } from './TopBar.types';
-import './TopBar.css';
 
 export function TopBar({ left, center, right, className }: TopBarProps): ReactElement {
     return (

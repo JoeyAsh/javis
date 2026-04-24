@@ -1,6 +1,5 @@
 import { type ReactElement } from 'react';
 import type { PanelBloomProps } from './PanelBloom.types';
-import './PanelBloom.css';
 
 export function PanelBloom({ active = false, className }: PanelBloomProps): ReactElement {
     return (

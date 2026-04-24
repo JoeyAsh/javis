@@ -16,57 +16,32 @@ export function PanelsSection(): ReactElement {
 
             {/* TopBar smoke test — rendered live at page top via fixed positioning */}
             <div className="flex flex-col gap-2">
-                <span
-                    className="text-[9px] uppercase tracking-[2px] font-mono"
-                    style={{ color: 'var(--text-secondary)' }}
-                >
+                <span className="text-[9px] uppercase tracking-[2px] font-mono text-text-secondary">
                     TOPBAR
                 </span>
                 <TopBar
                     left={
-                        <span
-                            style={{
-                                fontSize: 11,
-                                color: 'var(--text-secondary)',
-                                letterSpacing: 1,
-                            }}
-                        >
-                            <span style={{ color: 'var(--text)' }}>09:04:17</span>
+                        <span className="text-[11px] text-text-secondary tracking-[1px]">
+                            <span className="text-text">09:04:17</span>
                             &nbsp;·&nbsp;
                             <span>MONTAG, 21. APRIL 2026</span>
                             &nbsp;·&nbsp;
-                            <span style={{ color: 'var(--accent)' }}>● LINK · SECURE</span>
+                            <span className="text-[var(--accent)]">● LINK · SECURE</span>
                         </span>
                     }
                     center={
-                        <span
-                            style={{
-                                fontSize: 9,
-                                letterSpacing: 8,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                        <span className="text-[9px] tracking-[8px] text-text-muted uppercase font-mono">
                             J&nbsp;A&nbsp;R&nbsp;V&nbsp;I&nbsp;S&nbsp;/&nbsp;
-                            <b style={{ color: 'var(--accent-bright)', fontWeight: 500 }}>
-                                MK XLII
-                            </b>
+                            <b className="text-[var(--accent-bright)] font-medium">MK XLII</b>
                         </span>
                     }
                     right={
-                        <span
-                            style={{
-                                fontSize: 8,
-                                letterSpacing: 2,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                        <span className="text-[8px] tracking-[2px] text-text-muted uppercase font-mono">
                             N 48.21 · E 16.37
                         </span>
                     }
                 />
-                <p className="text-[9px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-[9px] font-mono text-text-muted">
                     TopBar is fixed-position (top:10, left:10, right:10) — see page top for chrome
                     animation
                 </p>
@@ -74,30 +49,13 @@ export function PanelsSection(): ReactElement {
 
             {/* Panel demos — fixed sizes to match handoff Sys panel dimensions */}
             <div className="flex flex-col gap-2">
-                <span
-                    className="text-[9px] uppercase tracking-[2px] font-mono"
-                    style={{ color: 'var(--text-secondary)' }}
-                >
+                <span className="text-[9px] uppercase tracking-[2px] font-mono text-text-secondary">
                     PANEL SHELLS
                 </span>
-                <div
-                    style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: 24,
-                        alignItems: 'flex-start',
-                    }}
-                >
+                <div className="flex flex-wrap gap-6 items-start">
                     {/* Panel at rest */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span
-                            style={{
-                                fontSize: 8,
-                                letterSpacing: 1,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[8px] tracking-[1px] text-text-muted uppercase font-mono">
                             AT REST
                         </span>
                         <Panel
@@ -106,22 +64,15 @@ export function PanelsSection(): ReactElement {
                             focused={focusedId === 'rest'}
                             onFocus={() => setFocusedId('rest')}
                         >
-                            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                            <span className="text-[10px] text-text-secondary">
                                 Hover to see brackets grow · click to focus
                             </span>
                         </Panel>
                     </div>
 
                     {/* Panel focused */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span
-                            style={{
-                                fontSize: 8,
-                                letterSpacing: 1,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[8px] tracking-[1px] text-text-muted uppercase font-mono">
                             FOCUSED
                         </span>
                         <Panel
@@ -130,22 +81,15 @@ export function PanelsSection(): ReactElement {
                             focused={focusedId === 'focused' || focusedId === null}
                             onFocus={() => setFocusedId('focused')}
                         >
-                            <span style={{ fontSize: 10, color: 'var(--text)' }}>
+                            <span className="text-[10px] text-text">
                                 Accent border · shimmer · bloom · cornerBreath active
                             </span>
                         </Panel>
                     </div>
 
                     {/* Panel with full header slots */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span
-                            style={{
-                                fontSize: 8,
-                                letterSpacing: 1,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[8px] tracking-[1px] text-text-muted uppercase font-mono">
                             FULL HEADER
                         </span>
                         <Panel
@@ -156,47 +100,18 @@ export function PanelsSection(): ReactElement {
                             focused={focusedId === 'vitals'}
                             onFocus={() => setFocusedId('vitals')}
                         >
-                            <div
-                                style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(2, 1fr)',
-                                    gap: 10,
-                                }}
-                            >
+                            <div className="grid grid-cols-2 gap-2.5">
                                 {['CPU', 'RAM', 'GPU', 'TEMP', 'NET', 'DISK'].map((label) => (
                                     <div
                                         key={label}
-                                        style={{
-                                            border: '1px solid var(--border)',
-                                            padding: '6px 8px',
-                                        }}
+                                        className="border border-[var(--border)] px-2 py-1.5"
                                     >
-                                        <div
-                                            style={{
-                                                fontSize: 9,
-                                                color: 'var(--text-secondary)',
-                                                letterSpacing: 1,
-                                                textTransform: 'uppercase',
-                                            }}
-                                        >
+                                        <div className="text-[9px] text-text-secondary tracking-[1px] uppercase">
                                             {label}
                                         </div>
-                                        <div
-                                            style={{
-                                                fontSize: 13,
-                                                color: 'var(--accent-bright)',
-                                                fontVariantNumeric: 'tabular-nums',
-                                            }}
-                                        >
+                                        <div className="text-[13px] text-[var(--accent-bright)] font-mono tabular-nums">
                                             42
-                                            <small
-                                                style={{
-                                                    fontSize: 9,
-                                                    color: 'var(--text-muted)',
-                                                }}
-                                            >
-                                                %
-                                            </small>
+                                            <small className="text-[9px] text-text-muted">%</small>
                                         </div>
                                     </div>
                                 ))}
@@ -205,15 +120,8 @@ export function PanelsSection(): ReactElement {
                     </div>
 
                     {/* Tall narrow panel */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span
-                            style={{
-                                fontSize: 8,
-                                letterSpacing: 1,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[8px] tracking-[1px] text-text-muted uppercase font-mono">
                             TALL NARROW
                         </span>
                         <Panel
@@ -224,34 +132,17 @@ export function PanelsSection(): ReactElement {
                             focused={focusedId === 'transcript'}
                             onFocus={() => setFocusedId('transcript')}
                         >
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {['User', 'JARVIS', 'User'].map((role, i) => (
+                            <div className="flex flex-col gap-2">
+                                {(['User', 'JARVIS', 'User'] as const).map((role, i) => (
                                     <div
                                         key={i}
-                                        style={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: role === 'User' ? 'flex-end' : 'flex-start',
-                                        }}
+                                        className={`flex flex-col ${role === 'User' ? 'items-end' : 'items-start'}`}
                                     >
-                                        <span
-                                            style={{
-                                                fontSize: 8,
-                                                color: 'var(--text-muted)',
-                                                letterSpacing: 1,
-                                                textTransform: 'uppercase',
-                                            }}
-                                        >
+                                        <span className="text-[8px] text-text-muted tracking-[1px] uppercase font-mono">
                                             {role}
                                         </span>
                                         <span
-                                            style={{
-                                                fontSize: 10,
-                                                color:
-                                                    role === 'User'
-                                                        ? 'var(--text-secondary)'
-                                                        : 'var(--text)',
-                                            }}
+                                            className={`text-[10px] ${role === 'JARVIS' ? 'text-text' : 'text-text-secondary'}`}
                                         >
                                             {role === 'JARVIS'
                                                 ? 'Understood. Executing…'
@@ -264,15 +155,8 @@ export function PanelsSection(): ReactElement {
                     </div>
 
                     {/* Wide short panel */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span
-                            style={{
-                                fontSize: 8,
-                                letterSpacing: 1,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-[8px] tracking-[1px] text-text-muted uppercase font-mono">
                             WIDE SHORT
                         </span>
                         <Panel
@@ -282,48 +166,21 @@ export function PanelsSection(): ReactElement {
                             focused={focusedId === 'nowplaying'}
                             onFocus={() => setFocusedId('nowplaying')}
                         >
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 12,
-                                    height: '100%',
-                                }}
-                            >
+                            <div className="flex items-center gap-3 h-full">
                                 <div
+                                    className="w-12 h-12 shrink-0 flex items-center justify-center text-[10px] text-[var(--bg)] font-bold tracking-[1px] shadow-[var(--glow)]"
                                     style={{
-                                        width: 48,
-                                        height: 48,
                                         background:
                                             'linear-gradient(135deg, #1a3a5c, #4ca8e8 55%, #6ec4ff)',
-                                        flexShrink: 0,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: 10,
-                                        color: 'var(--bg)',
-                                        fontWeight: 700,
-                                        letterSpacing: 1,
-                                        boxShadow: 'var(--glow)',
                                     }}
                                 >
                                     AC/DC
                                 </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div
-                                        style={{
-                                            fontSize: 12,
-                                            color: 'var(--text)',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
-                                        }}
-                                    >
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[12px] text-text truncate">
                                         Thunderstruck
                                     </div>
-                                    <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
-                                        AC/DC
-                                    </div>
+                                    <div className="text-[10px] text-text-secondary">AC/DC</div>
                                 </div>
                             </div>
                         </Panel>

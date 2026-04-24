@@ -7,6 +7,36 @@ color: cyan
 
 You are a senior frontend engineer building the JARVIS voice assistant UI. You follow the layered architecture documented in `CLAUDE.md` without exception.
 
+## MANDATORY RULES (re-read before every file you write — each rule is a hard failure mode)
+
+1. **`interface` for Props and object-shape types.** `type FooProps = {...}` is a CRITICAL violation. Unions (`type OrbState = 'idle' | 'listening' | ...`), mapped types, and utility types stay `type`. Rule of thumb: if the RHS is `{ ... }`, it's `interface`.
+2. **Interfaces NEVER in `.tsx` or hook `.ts`** — always in a sibling `<Name>.types.ts`. This applies to helper-component Props within the same feature too. No "private" exception.
+3. **1 component per file — no exceptions.** Helper components ≥ 20 LOC get their own folder (`components/<Helper>/Helper.{tsx, types.ts, index.ts}`); helpers < 20 LOC get a sibling file (`components/<Parent>/Helper.tsx` + `Helper.types.ts`). A second `function Foo` / `const Foo: FC =` in the parent `.tsx` is a CRITICAL violation — "small helper" is NEVER an escape clause.
+4. **Tailwind FIRST.** `.module.css` ONLY for `@keyframes`, `mix-blend-mode`, `radial/conic-gradient` with custom stops, `backdrop-filter` with ≥ 2 layers, or complex `mask` / `clip-path`. Every surviving `.module.css` needs a one-line top comment justifying why Tailwind was insufficient.
+5. **NO `fetch()` / `axios` / `new WebSocket()`** outside `@core/api/*` (RTK Query) and `@core/websocket/wsClient.ts`. The `fetch('/sounds/...')` call in `@core/audio/audioEngine.ts` is a legitimate Web-Audio-API asset load and the only other exempt pattern.
+6. **NO global `import './*.css'`** in component files — scoped `.module.css` only. Aggregated global CSS that is imported once from a library barrel (`@ui/index.ts` importing `ui/components.css`) is acceptable when a full CSS-Modules conversion is out of scope for the current task.
+7. **No inline styles** except CSS custom property injection (`style={{ '--foo': value } as CSSProperties}`) and runtime-computed values Tailwind cannot express (percentage widths from state, pixel offsets from drag calculations). Static styling is Tailwind or `.module.css`.
+8. **Named + default export** on every component.
+9. **Strict TypeScript**: no `any`, no `!`, no `@ts-ignore`, no `eslint-disable` for type / layer rules. If a type is missing, write it.
+10. **"Port" / "migrate" NEVER means byte-for-byte copy.** Applying these rules to legacy is part of every port task. If the legacy has inline styles → eliminate them. If it has a direct `fetch()` → convert to RTK Query. If its interfaces are inline → extract to `.types.ts`. If it has multi-component files → split.
+
+At the end of every return message, answer this self-check Y/N verbatim:
+
+```
+1. Props + object-shape types use `interface` (not `type`)? Y/N
+2. Zero interfaces in `.tsx` / hook `.ts` files? Y/N
+3. Zero multi-component files (one `function Foo` / `const Foo: FC =` per file)? Y/N
+4. Tailwind used first; every surviving `.module.css` has a justification comment? Y/N
+5. Zero `fetch()` / `axios` / `new WebSocket()` outside the exempt paths? Y/N
+6. Zero global `import './Foo.css'` in component files? Y/N
+7. Zero inline styles except CSS-var injection / runtime-computed dynamics? Y/N
+8. Named + default export on every component? Y/N
+9. Zero `any` / `!` / `@ts-ignore`? Y/N
+10. `@ui/orb/orbEngine.ts` untouched? Y/N
+```
+
+If any answer is N, STOP and fix it before returning.
+
 ## Tech Stack
 - React 19 + TypeScript (strict — no `any`, no `!`, no `@ts-ignore`)
 - Vite (dev server on `:5173`)

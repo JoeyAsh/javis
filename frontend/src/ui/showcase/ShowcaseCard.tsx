@@ -1,11 +1,5 @@
-import { ReactElement, ReactNode } from 'react';
-
-export interface ShowcaseCardProps {
-    label: string;
-    code: string;
-    children: ReactNode;
-    dark?: boolean;
-}
+import { ReactElement } from 'react';
+import type { ShowcaseCardProps } from './ShowcaseCard.types';
 
 export function ShowcaseCard({
     label,
@@ -15,8 +9,10 @@ export function ShowcaseCard({
 }: ShowcaseCardProps): ReactElement {
     return (
         <div
-            className="flex flex-col gap-3 p-4 border border-border rounded-[2px]"
-            style={{ background: dark ? 'rgba(5,5,8,0.9)' : 'rgba(13,13,20,0.75)' }}
+            className={[
+                'flex flex-col gap-3 p-4 border border-border rounded-[2px]',
+                dark ? 'bg-[rgba(5,5,8,0.9)]' : 'bg-[rgba(13,13,20,0.75)]',
+            ].join(' ')}
         >
             <div className="flex items-center justify-between">
                 <span className="text-[9px] uppercase tracking-[1px] text-text-secondary font-mono">
@@ -30,3 +26,6 @@ export function ShowcaseCard({
         </div>
     );
 }
+
+export { ShowcaseCardProps };
+export default ShowcaseCard;

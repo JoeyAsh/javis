@@ -2,7 +2,6 @@ import { type ReactElement } from 'react';
 import { Mic } from 'lucide-react';
 import { useClickSfx, useHoverSfx } from '@core/audio';
 import type { PushToTalkButtonProps } from './PushToTalkButton.types';
-import './PushToTalkButton.css';
 
 export function PushToTalkButton({
     active = false,

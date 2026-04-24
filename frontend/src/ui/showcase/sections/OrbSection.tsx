@@ -33,13 +33,7 @@ export function OrbSection(): ReactElement {
                     {ALL_STATES.map((s) => (
                         <div key={s} className="flex flex-col items-center gap-2">
                             <div
-                                className="border border-border overflow-hidden"
-                                style={{
-                                    position: 'relative',
-                                    width: 300,
-                                    height: 300,
-                                    background: '#050508',
-                                }}
+                                className="border border-border overflow-hidden relative w-[300px] h-[300px] bg-[#050508]"
                             >
                                 <CssOrb state={s} particles />
                             </div>
@@ -85,11 +79,9 @@ export function OrbSection(): ReactElement {
 
                 {/* Orb stage — position:relative so anchor-only orb-wrap centers within */}
                 <div
-                    className="overflow-hidden border border-border"
+                    className="overflow-hidden border border-border relative h-[960px] bg-[rgba(5,5,8,0.95)]"
                     style={{
-                        position: 'relative',
-                        background: 'rgba(5,5,8,0.95)',
-                        height: '960px',
+                        /* multi-layer grid gradient — not expressible in Tailwind */
                         backgroundImage:
                             'linear-gradient(rgba(76,168,232,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(76,168,232,0.04) 1px, transparent 1px)',
                         backgroundSize: '44px 44px',

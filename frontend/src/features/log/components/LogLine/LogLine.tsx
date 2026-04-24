@@ -21,45 +21,23 @@ export const LogLine = memo(function LogLine({ entry }: LogLineProps): ReactElem
     const isCritical = entry.level === 'ERROR' || entry.level === 'CRITICAL';
 
     return (
-        <div
-            style={{
-                display: 'flex',
-                gap: 6,
-                padding: '1px 6px',
-                fontFamily: 'var(--font)',
-                fontSize: 10,
-                lineHeight: 1.5,
-                borderBottom: '1px solid rgba(26,26,46,0.4)',
-                contain: 'content',
-            }}
-        >
-            <span style={{ color: 'var(--text-muted)', flexShrink: 0, userSelect: 'none' }}>
+        <div className="flex gap-[6px] py-[1px] px-[6px] font-mono text-[10px] leading-[1.5] border-b border-[rgba(26,26,46,0.4)] [contain:content]">
+            <span className="text-[var(--text-muted)] shrink-0 select-none">
                 {ts}
             </span>
             <span
+                className="shrink-0 w-[52px] select-none"
                 style={{
                     color,
-                    flexShrink: 0,
-                    width: 52,
                     fontWeight: isCritical ? 700 : 400,
-                    userSelect: 'none',
-                }}
+                } as React.CSSProperties}
             >
                 {entry.level}
             </span>
-            <span
-                style={{
-                    color: 'var(--text-muted)',
-                    flexShrink: 0,
-                    maxWidth: 80,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                }}
-            >
+            <span className="text-[var(--text-muted)] shrink-0 max-w-[80px] overflow-hidden text-ellipsis whitespace-nowrap">
                 {entry.module}
             </span>
-            <span style={{ color: 'var(--text)', wordBreak: 'break-word', flex: 1 }}>
+            <span className="text-[var(--text)] break-words flex-1">
                 {entry.message}
             </span>
         </div>

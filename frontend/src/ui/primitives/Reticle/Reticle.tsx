@@ -15,30 +15,12 @@ export function Reticle({
             role="presentation"
             aria-hidden={ariaHidden}
             className={cn('relative inline-block text-accent', className)}
-            style={{ width: size, height: size }}
+            style={{ width: size, height: size } as React.CSSProperties}
         >
             {/* vertical line */}
-            <span
-                className="absolute bg-current"
-                style={{
-                    left: '50%',
-                    top: 0,
-                    bottom: 0,
-                    width: 1,
-                    transform: 'translateX(-50%)',
-                }}
-            />
+            <span className="absolute bg-current left-1/2 top-0 bottom-0 w-px -translate-x-1/2" />
             {/* horizontal line */}
-            <span
-                className="absolute bg-current"
-                style={{
-                    top: '50%',
-                    left: 0,
-                    right: 0,
-                    height: 1,
-                    transform: 'translateY(-50%)',
-                }}
-            />
+            <span className="absolute bg-current top-1/2 left-0 right-0 h-px -translate-y-1/2" />
         </span>
     );
 }

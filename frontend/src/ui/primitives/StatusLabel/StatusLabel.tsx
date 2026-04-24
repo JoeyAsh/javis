@@ -1,7 +1,6 @@
 import { type ReactElement } from 'react';
 import type { AppOrbState } from '@common/types';
 import type { StatusLabelProps } from './StatusLabel.types';
-import './StatusLabel.css';
 
 const STATE_LABELS: Record<AppOrbState, string> = {
     idle: 'READY',

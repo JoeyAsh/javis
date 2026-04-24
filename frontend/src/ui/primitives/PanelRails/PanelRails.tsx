@@ -1,6 +1,5 @@
 import { type ReactElement } from 'react';
 import type { PanelRailsProps } from './PanelRails.types';
-import './PanelRails.css';
 
 export function PanelRails({ className, visible = false }: PanelRailsProps): ReactElement {
     return (

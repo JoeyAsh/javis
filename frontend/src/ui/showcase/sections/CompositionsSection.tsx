@@ -75,115 +75,63 @@ export function CompositionsSection(): ReactElement {
                 <span className="text-[9px] uppercase tracking-[2px] font-mono text-text-secondary">
                     Panel
                 </span>
-                <div
-                    style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: 24,
-                        alignItems: 'flex-start',
-                    }}
-                >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span
-                            style={{
-                                fontSize: 8,
-                                letterSpacing: 1,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                <div className="flex flex-wrap gap-6 items-start">
+                    <div className="flex flex-col gap-[6px]">
+                        <span className="text-[8px] tracking-[1px] text-text-muted font-mono uppercase">
                             AT REST
                         </span>
                         <Panel
                             title="Panel · Rest"
-                            style={{ width: 280, height: 100 }}
+                            style={{ width: 280, height: 100 } as React.CSSProperties}
                             focused={focusedId === 'rest'}
                             onFocus={() => setFocusedId('rest')}
                         >
-                            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                            <span className="text-[10px] text-text-secondary font-mono">
                                 Hover → brackets grow · click → focus
                             </span>
                         </Panel>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span
-                            style={{
-                                fontSize: 8,
-                                letterSpacing: 1,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                    <div className="flex flex-col gap-[6px]">
+                        <span className="text-[8px] tracking-[1px] text-text-muted font-mono uppercase">
                             FOCUSED
                         </span>
                         <Panel
                             title="Panel · Focused"
-                            style={{ width: 280, height: 100 }}
+                            style={{ width: 280, height: 100 } as React.CSSProperties}
                             focused={focusedId === 'focused' || focusedId === null}
                             onFocus={() => setFocusedId('focused')}
                         >
-                            <span style={{ fontSize: 10, color: 'var(--text)' }}>
+                            <span className="text-[10px] text-text font-mono">
                                 Accent border · shimmer · bloom · cornerBreath active
                             </span>
                         </Panel>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <span
-                            style={{
-                                fontSize: 8,
-                                letterSpacing: 1,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                    <div className="flex flex-col gap-[6px]">
+                        <span className="text-[8px] tracking-[1px] text-text-muted font-mono uppercase">
                             FULL HEADER
                         </span>
                         <Panel
                             ix="◈"
                             title="System Vitals · live"
                             badge="LIVE"
-                            style={{ width: 280, height: 180 }}
+                            style={{ width: 280, height: 180 } as React.CSSProperties}
                             focused={focusedId === 'vitals'}
                             onFocus={() => setFocusedId('vitals')}
                         >
-                            <div
-                                style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(2, 1fr)',
-                                    gap: 8,
-                                }}
-                            >
+                            <div className="grid grid-cols-2 gap-2">
                                 {['CPU', 'RAM', 'GPU', 'TEMP'].map((label) => (
                                     <div
                                         key={label}
-                                        style={{
-                                            border: '1px solid var(--border)',
-                                            padding: '4px 8px',
-                                        }}
+                                        className="border border-border px-2 py-1"
                                     >
-                                        <div
-                                            style={{
-                                                fontSize: 9,
-                                                color: 'var(--text-secondary)',
-                                                letterSpacing: 1,
-                                                textTransform: 'uppercase',
-                                            }}
-                                        >
+                                        <div className="text-[9px] text-text-secondary font-mono uppercase tracking-[1px]">
                                             {label}
                                         </div>
-                                        <div
-                                            style={{
-                                                fontSize: 13,
-                                                color: 'var(--accent-bright)',
-                                                fontVariantNumeric: 'tabular-nums',
-                                            }}
-                                        >
+                                        <div className="text-[13px] text-accent-bright font-mono tabular-nums">
                                             42
-                                            <small
-                                                style={{ fontSize: 9, color: 'var(--text-muted)' }}
-                                            >
+                                            <small className="text-[9px] text-text-muted">
                                                 %
                                             </small>
                                         </div>
@@ -202,36 +150,23 @@ export function CompositionsSection(): ReactElement {
                 </span>
                 <TopBar
                     left={
-                        <span
-                            style={{
-                                fontSize: 11,
-                                color: 'var(--text-secondary)',
-                                letterSpacing: 1,
-                            }}
-                        >
-                            <span style={{ color: 'var(--text)' }}>09:04:17</span>
+                        <span className="text-[11px] text-text-secondary font-mono tracking-[1px]">
+                            <span className="text-text">09:04:17</span>
                             &nbsp;·&nbsp;
-                            <span style={{ color: 'var(--accent)' }}>● LINK · SECURE</span>
+                            <span className="text-accent">● LINK · SECURE</span>
                         </span>
                     }
                     center={
-                        <span
-                            style={{
-                                fontSize: 9,
-                                letterSpacing: 8,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                            }}
-                        >
+                        <span className="text-[9px] tracking-[8px] text-text-muted font-mono uppercase">
                             J&nbsp;A&nbsp;R&nbsp;V&nbsp;I&nbsp;S&nbsp;/&nbsp;
-                            <b style={{ color: 'var(--accent-bright)', fontWeight: 500 }}>
+                            <b className="text-accent-bright font-medium">
                                 MK XLII
                             </b>
                         </span>
                     }
                     right={<BrandMark />}
                 />
-                <p className="text-[9px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-[9px] font-mono text-text-muted">
                     TopBar is fixed-position (top:10, left:10, right:10) — see page top for animated
                     corner brackets + circumnavigating trace.
                 </p>
@@ -258,9 +193,9 @@ export function CompositionsSection(): ReactElement {
                     state={dockState}
                     onPTT={() => setDockState((s) => (s === 'idle' ? 'listening' : 'idle'))}
                 />
-                <p className="text-[9px] font-mono" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-[9px] font-mono text-text-muted">
                     Dock renders at{' '}
-                    <span style={{ color: 'var(--accent)' }}>position: fixed; bottom: 24px</span> —
+                    <span className="text-accent">position: fixed; bottom: 24px</span> —
                     visible at page bottom.
                 </p>
             </div>

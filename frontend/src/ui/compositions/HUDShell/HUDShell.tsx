@@ -3,7 +3,6 @@ import { Scene } from '../../primitives/Scene';
 import { Reactor } from '../../primitives/Reactor';
 import { ViewportCorners } from '../../primitives/ViewportCorners';
 import type { HUDShellProps } from './HUDShell.types';
-import './HUDShell.css';
 
 export function HUDShell({
     topbar,

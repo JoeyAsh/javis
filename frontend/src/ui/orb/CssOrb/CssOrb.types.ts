@@ -7,3 +7,12 @@ export interface CssOrbProps {
     particles?: boolean;
     className?: string;
 }
+
+export interface ParticleConfig {
+    radius: number;
+    dir: 1 | -1;
+    period: number;
+    phase: number;
+    size: number;
+    colorVar: string;
+}

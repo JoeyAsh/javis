@@ -51,8 +51,8 @@ export function Sparkline({
         <svg
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="none"
-            className={cn('block', className)}
-            style={{ width: '100%', height: `${height}px` }}
+            className={cn('block w-full', className)}
+            style={{ height: `${height}px` } as React.CSSProperties}
             aria-label={ariaLabel}
             role={ariaLabel ? 'img' : undefined}
         >

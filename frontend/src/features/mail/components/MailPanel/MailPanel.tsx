@@ -8,65 +8,12 @@ import { useAppSelector } from '@app';
 import { selectMailSendFlashActive } from '../../mailSelectors';
 import { usePanelAvailable } from '@app/providers/PanelAvailabilityProvider';
 import { useMail } from '../../hooks/useMail';
-import { DraftPreview } from '../DraftPreview';
-import { MailItemRow } from '../MailItemRow';
+import { MailCompact } from './MailCompact';
+import { MailExpanded } from './MailExpanded';
 import type { MailPanelProps } from './MailPanel.types';
-import type { MailMessage, EmailDraftPreviewPayload } from '../../types';
 import styles from './MailPanel.module.css';
 
 const AVAILABILITY_TIMEOUT_MS = 10_000;
-
-// ---- Compact mode ----
-
-type MailCompactProps = {
-    messages: MailMessage[];
-    unreadCount: number;
-    draft: EmailDraftPreviewPayload | null;
-    sendFlash: boolean;
-};
-
-function MailCompact({ messages, unreadCount, draft, sendFlash }: MailCompactProps): ReactElement {
-    const vip = messages.filter((m) => m.isVip).length;
-    const latest = messages[0];
-    return (
-        <div className={`${styles.compact}${sendFlash ? ` ${styles.flash}` : ''}`}>
-            {draft && <DraftPreview draft={draft} />}
-            <div className={styles.stats}>
-                <span>
-                    <span className={styles.count}>{unreadCount}</span>{' '}
-                    <span className={styles.monoSmall}>ungelesen</span>
-                </span>
-                <span className={styles.separator}>·</span>
-                <span>
-                    <span className={styles.vip}>{vip}</span>{' '}
-                    <span className={styles.monoSmall}>VIP</span>
-                </span>
-            </div>
-            {latest && <div className={styles.sender}>{latest.sender}</div>}
-        </div>
-    );
-}
-
-// ---- Expanded mode ----
-
-type MailExpandedProps = {
-    messages: MailMessage[];
-    draft: EmailDraftPreviewPayload | null;
-    sendFlash: boolean;
-}
-
-function MailExpanded({ messages, draft, sendFlash }: MailExpandedProps): ReactElement {
-    return (
-        <div className={`${styles.panel}${sendFlash ? ` ${styles.flash}` : ''}`}>
-            {draft && <DraftPreview draft={draft} />}
-            {messages.slice(0, 3).map((msg) => (
-                <MailItemRow key={msg.id} message={msg} />
-            ))}
-        </div>
-    );
-}
-
-// ---- Main export ----
 
 /**
  * MailPanel — renders mail messages with draft preview.

@@ -2,7 +2,6 @@ import type { CSSProperties, ReactElement } from 'react';
 import type { SlotId } from '../slotGrid';
 import { SLOT_IDS } from '../slotGrid';
 import type { SnapOverlayProps } from './SnapOverlay.types';
-import './SnapOverlay.css';
 
 export function SnapOverlay({
     active,

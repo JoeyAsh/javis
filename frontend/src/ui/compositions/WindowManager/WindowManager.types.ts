@@ -4,6 +4,28 @@ import type { PanelMode, PanelContentRenderProps } from '../../window/Window';
 
 export type { PanelMode, PanelContentRenderProps };
 
+/** Internal per-drag state (compact slot-drag). */
+export interface ActiveDrag {
+    windowId: string;
+    /** Slot the dragged window was in at the start of the drag. */
+    originSlot: SlotId;
+}
+
+/** Per-window free-drag tracking (expanded mode). */
+export interface FreeDrag {
+    windowId: string;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+}
+
+/** Read-only viewport dimensions. */
+export interface ViewportSize {
+    w: number;
+    h: number;
+}
+
 export interface ManagedWindow {
     id: string;
     title?: ReactNode;

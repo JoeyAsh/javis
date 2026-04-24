@@ -36,8 +36,7 @@ export function WeatherWidget({ latitude, longitude }: WeatherWidgetProps): Reac
 
     return (
         <span
-            className={isError ? 'opacity-40' : undefined}
-            style={{ color: 'var(--text-secondary)' }}
+            className={['text-text-secondary', isError ? 'opacity-40' : ''].filter(Boolean).join(' ')}
             aria-label="Current weather"
         >
             <span className="mr-1" aria-hidden="true">{icon}</span>

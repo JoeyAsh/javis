@@ -1,15 +1,5 @@
 import { useEffect, useRef, type ReactElement } from 'react';
-import type { CssOrbProps } from './CssOrb.types';
-import './CssOrb.css';
-
-interface ParticleConfig {
-    radius: number;
-    dir: 1 | -1;
-    period: number;
-    phase: number;
-    size: number;
-    colorVar: string;
-}
+import type { CssOrbProps, ParticleConfig } from './CssOrb.types';
 
 const TICK_ANGLES = Array.from({ length: 36 }, (_, i) => i * 10);
 

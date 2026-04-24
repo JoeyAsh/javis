@@ -1,39 +1,8 @@
 import { useState, type ReactElement } from 'react';
 import { StateSimulator } from '../../primitives/StateSimulator';
-import { Tweaks, TWEAKS_DEFAULTS, useTweakApply } from '../../primitives/Tweaks';
-import { Button } from '../../primitives/Button';
 import { CssOrb } from '../../orb/CssOrb';
+import { TweaksDemo } from './TweaksDemo';
 import type { AppOrbState } from '@common/types';
-import type { TweaksState } from '../../primitives/Tweaks';
-
-function TweaksDemo(): ReactElement {
-    const [tweaks, setTweaks] = useState<TweaksState>(TWEAKS_DEFAULTS);
-    const [tweaksOpen, setTweaksOpen] = useState(false);
-    useTweakApply(tweaks);
-
-    return (
-        <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-                <Button
-                    variant={tweaksOpen ? 'primary' : 'ghost'}
-                    size="sm"
-                    onClick={() => setTweaksOpen((v) => !v)}
-                >
-                    {tweaksOpen ? 'CLOSE TWEAKS' : 'OPEN TWEAKS'}
-                </Button>
-                <span className="text-[9px] text-text-muted font-mono uppercase tracking-[1px]">
-                    hue: {tweaks.hue}° · glow: {tweaks.glow}
-                </span>
-            </div>
-            <p className="text-[9px] text-text-muted font-mono uppercase tracking-[1px]">
-                Tweaks panel renders at{' '}
-                <span className="text-accent">position: fixed; bottom: 110px; right: 14px</span>.
-                Moving the hue slider recolors the live mini-orb below.
-            </p>
-            <Tweaks open={tweaksOpen} tweaks={tweaks} onChange={setTweaks} />
-        </div>
-    );
-}
 
 export function DevOverlaysSection(): ReactElement {
     const [orbState, setOrbState] = useState<AppOrbState>('idle');
@@ -56,10 +25,7 @@ export function DevOverlaysSection(): ReactElement {
             </div>
 
             {/* Live mini orb responding to state */}
-            <div
-                className="border border-border overflow-hidden"
-                style={{ position: 'relative', height: '260px', background: 'rgba(5,5,8,0.95)' }}
-            >
+            <div className="border border-border overflow-hidden relative h-[260px] bg-[rgba(5,5,8,0.95)]">
                 <CssOrb state={orbState} particles />
             </div>
 

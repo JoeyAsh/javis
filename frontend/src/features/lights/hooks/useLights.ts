@@ -2,12 +2,7 @@ import { useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch } from '@app';
 import { zoneToggled, zoneBrightnessSet } from '../lightsSlice';
-import type { LightsState } from '../types';
-import type { UseLightsReturn } from './useLights.types';
-
-interface StateWithLights {
-    lights: LightsState;
-}
+import type { UseLightsReturn, StateWithLights } from './useLights.types';
 
 export function useLights(): UseLightsReturn {
     const dispatch = useDispatch<AppDispatch>();

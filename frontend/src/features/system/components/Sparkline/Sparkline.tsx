@@ -26,7 +26,7 @@ export function Sparkline({ values, color, warn = false }: SparklineProps): Reac
         <svg
             viewBox="0 0 100 28"
             preserveAspectRatio="none"
-            style={{ width: '100%', height: 28, display: 'block' }}
+            className="w-full h-7 block"
             aria-hidden
         >
             <defs>

@@ -11,16 +11,7 @@ import { CompositionsSection } from './sections/CompositionsSection';
 import { WindowsSection } from './sections/WindowsSection';
 import { DevOverlaysSection } from './sections/DevOverlaysSection';
 import { useShowcaseSfx } from './ShowcaseSfxRoot';
-
-/* ---- Nav definition ---- */
-
-type NavGroup = 'TOKENS' | 'PRIMITIVES' | 'COMPOSITIONS' | 'DEV' | null;
-
-interface NavItem {
-    id: string;
-    label: string;
-    group: NavGroup;
-}
+import type { NavItem, NavGroup } from './Showcase.types';
 
 const NAV: NavItem[] = [
     { id: 'overview', label: 'OVERVIEW', group: null },
@@ -62,8 +53,11 @@ export function Showcase(): ReactElement {
 
             {/* Sidebar nav */}
             <nav
-                className="fixed top-0 left-0 bottom-0 w-[132px] flex flex-col gap-0 p-3 border-r border-border z-[30] overflow-y-auto"
-                style={{ background: 'rgba(5,5,8,0.88)', backdropFilter: 'blur(12px)' }}
+                className="fixed top-0 left-0 bottom-0 w-[132px] flex flex-col gap-0 p-3 border-r border-border z-[30] overflow-y-auto bg-[rgba(5,5,8,0.88)]"
+                style={{
+                    /* backdrop-filter cannot be expressed as a Tailwind utility in v4 */
+                    backdropFilter: 'blur(12px)',
+                } as React.CSSProperties}
             >
                 <div className="mb-5">
                     <BrandMark />

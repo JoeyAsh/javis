@@ -4,7 +4,6 @@ import {
 } from 'react';
 import { useHoverSfx } from '@core/audio';
 import type { PanelProps } from './Panel.types';
-import './Panel.css';
 
 function cn(...parts: (string | undefined | false)[]): string {
     return parts.filter(Boolean).join(' ');

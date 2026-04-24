@@ -12,35 +12,13 @@ import type {
     WindowManagerProps,
     PanelMode,
     PanelContentRenderProps,
+    ActiveDrag,
+    FreeDrag,
+    ViewportSize,
 } from './WindowManager.types';
-import './WindowManager.css';
 
 // Re-export so consumers can import from this module.
 export type { PanelMode, PanelContentRenderProps, ManagedWindow, ExpandedRect };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Internal per-drag state (compact slot-drag). */
-interface ActiveDrag {
-    windowId: string;
-    /** Slot the dragged window was in at the start of the drag. */
-    originSlot: SlotId;
-}
-
-/** Per-window free-drag tracking (expanded mode). */
-interface FreeDrag {
-    windowId: string;
-    startX: number;
-    startY: number;
-    originX: number;
-    originY: number;
-}
-
-/** Read-only viewport dimensions. */
-interface ViewportSize {
-    w: number;
-    h: number;
-}
 
 function getViewport(): ViewportSize {
     return {

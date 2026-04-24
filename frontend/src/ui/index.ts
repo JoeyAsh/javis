@@ -5,6 +5,9 @@
 
 // Import keyframes and shared CSS so any consumer gets them
 import './ui.css';
+// Import all component stylesheets (BEM global classes) — aggregated here
+// so individual component files don't need `import './Foo.css'`.
+import './components.css';
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 

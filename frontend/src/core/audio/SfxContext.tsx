@@ -1,17 +1,12 @@
 /**
  * SfxContext — React context that exposes `playOneShot`, `play`, and `stop`.
  * Copy of src/lib/audio/SfxContext.tsx — original remains in place.
+ * Imports adjusted for new location within core/audio/.
  */
 
 import { createContext, useContext } from 'react';
-import type { ReactElement, ReactNode } from 'react';
-import type { SfxEvent } from './config';
-
-export interface SfxContextValue {
-    playOneShot: (event: SfxEvent) => void;
-    play: (event: SfxEvent) => void;
-    stop: (event: SfxEvent) => void;
-}
+import type { ReactElement } from 'react';
+import type { SfxContextValue, SfxProviderProps } from './SfxContext.types';
 
 /** Fallback: no-ops so components don't crash outside a provider in tests. */
 const defaultValue: SfxContextValue = {
@@ -21,13 +16,6 @@ const defaultValue: SfxContextValue = {
 };
 
 export const SfxContext = createContext<SfxContextValue>(defaultValue);
-
-export interface SfxProviderProps {
-    playOneShot: (event: SfxEvent) => void;
-    play: (event: SfxEvent) => void;
-    stop: (event: SfxEvent) => void;
-    children: ReactNode;
-}
 
 export function SfxProvider({
     playOneShot,
@@ -42,5 +30,7 @@ export function SfxProvider({
 export function useSfx(): SfxContextValue {
     return useContext(SfxContext);
 }
+
+export type { SfxContextValue, SfxProviderProps };
 
 export default SfxContext;

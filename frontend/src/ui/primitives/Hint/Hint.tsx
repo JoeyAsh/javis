@@ -1,6 +1,5 @@
 import { type ReactElement } from 'react';
 import type { HintKeyProps, HintProps } from './Hint.types';
-import './Hint.css';
 
 function HintKey({ children, className }: HintKeyProps): ReactElement {
     return <kbd className={['lib-hint__kbd', className].filter(Boolean).join(' ')}>{children}</kbd>;

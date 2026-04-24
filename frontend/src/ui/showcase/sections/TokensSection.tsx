@@ -4,15 +4,7 @@ import { Metric } from '../../primitives/Metric';
 import { Mono } from '../../primitives/Mono';
 import { BrandMark } from '../../primitives/BrandMark';
 import { ShowcaseCard } from '../ShowcaseCard';
-
-/* ---- Color swatches ---- */
-
-interface Swatch {
-    name: string;
-    value: string;
-    cssVar: string;
-    border?: boolean;
-}
+import type { Swatch } from './ColorsSection.types';
 
 const SWATCHES: Swatch[] = [
     { name: 'bg', value: '#050508', cssVar: '--bg', border: true },
@@ -136,10 +128,7 @@ export function TokensSection(): ReactElement {
                 <span className="text-[9px] uppercase tracking-[2px] font-mono text-text-secondary">
                     Spacing Scale (px)
                 </span>
-                <div
-                    className="flex items-end gap-3 border border-border p-4"
-                    style={{ background: 'rgba(13,13,20,0.75)' }}
-                >
+                <div className="flex items-end gap-3 border border-border p-4 bg-[rgba(13,13,20,0.75)]">
                     {SPACING.map(({ label, size }) => (
                         <div key={label} className="flex flex-col items-center gap-1">
                             <div
@@ -192,15 +181,10 @@ export function TokensSection(): ReactElement {
                     {SHADOWS.map(({ label, shadow }) => (
                         <div key={label} className="flex flex-col items-center gap-2">
                             <div
+                                className="w-[120px] h-[40px] bg-[var(--surface-raised)] border border-border flex items-center justify-center"
                                 style={{
-                                    width: 120,
-                                    height: 40,
-                                    background: 'var(--surface-raised)',
-                                    border: '1px solid var(--border)',
+                                    /* runtime data — shadow value from SHADOWS array */
                                     boxShadow: shadow,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
                                 }}
                             >
                                 <span className="text-[8px] text-accent font-mono uppercase tracking-[1px]">

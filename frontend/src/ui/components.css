@@ -1,0 +1,38 @@
+/* ================================================================
+   JARVIS UI — Component stylesheets.
+   Aggregated here so that no individual component file needs a
+   global `import './Foo.css'`. Imported once from ui/index.ts.
+   All rules use BEM prefixes (lib-*) scoped by convention.
+   ================================================================ */
+
+/* ── primitives ── */
+@import './primitives/Panel/Panel.css';
+@import './primitives/TopBar/TopBar.css';
+@import './primitives/LightTrace/LightTrace.css';
+@import './primitives/PanelBloom/PanelBloom.css';
+@import './primitives/PanelRails/PanelRails.css';
+@import './primitives/ViewportCorners/ViewportCorners.css';
+@import './primitives/StarField/StarField.css';
+@import './primitives/Reactor/Reactor.css';
+@import './primitives/Scene/Scene.css';
+@import './primitives/WaveStrip/WaveStrip.css';
+@import './primitives/WaveformMeter/WaveformMeter.css';
+@import './primitives/StatusLabel/StatusLabel.css';
+@import './primitives/Hint/Hint.css';
+@import './primitives/StateSimulator/StateSimulator.css';
+@import './primitives/Tweaks/Tweaks.css';
+@import './primitives/PushToTalkButton/PushToTalkButton.css';
+
+/* ── orb ── */
+@import './orb/CssOrb/CssOrb.css';
+
+/* ── window subsystem ── */
+@import './window/Window/Window.css';
+@import './window/SnapOverlay/SnapOverlay.css';
+@import './window/SwapOverlay/SwapOverlay.css';
+@import './window/SlotGhost/SlotGhost.css';
+
+/* ── compositions ── */
+@import './compositions/WindowManager/WindowManager.css';
+@import './compositions/StatusDock/StatusDock.css';
+@import './compositions/HUDShell/HUDShell.css';

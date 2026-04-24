@@ -29,15 +29,10 @@ import {
     ChevronLeft,
     ChevronRight,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import type { IconEntry } from './IconsSection.types';
 
 const CPU_DATA = [18, 16, 14, 12, 14, 10, 8, 11, 6, 9, 5, 7, 11, 8, 6];
 const TEMP_DATA = [14, 13, 11, 12, 9, 7, 5, 4, 3, 2, 1, 2, 4, 6, 8];
-
-interface IconEntry {
-    name: string;
-    icon: LucideIcon;
-}
 
 const ICONS: IconEntry[] = [
     { name: 'mic', icon: Mic },

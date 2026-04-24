@@ -1,6 +1,5 @@
 import type { CSSProperties, ReactElement } from 'react';
 import type { SlotGhostProps } from './SlotGhost.types';
-import './SlotGhost.css';
 
 export function SlotGhost({ rect, label, className }: SlotGhostProps): ReactElement {
     const style: CSSProperties = {

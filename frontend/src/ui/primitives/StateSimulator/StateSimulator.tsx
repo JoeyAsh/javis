@@ -1,7 +1,6 @@
 import { type ReactElement } from 'react';
 import { useClickSfx, useHoverSfx } from '@core/audio';
 import type { StateSimulatorProps, SimOption, SimButtonProps } from './StateSimulator.types';
-import './StateSimulator.css';
 
 const SIM_OPTIONS: SimOption[] = [
     { key: 'idle', label: 'IDLE' },

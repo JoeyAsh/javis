@@ -15,14 +15,13 @@ export function GlowFrame({
 
     return (
         <div
-            className={cn('border border-border rounded-[2px]', className)}
+            className={cn('border border-[var(--accent-dim)] rounded-[2px]', className)}
             style={{
                 boxShadow: breathe ? undefined : staticShadow,
                 animation: breathe
                     ? 'jlib-glow-breathe 2.8s cubic-bezier(.4,0,.2,1) infinite'
                     : undefined,
-                borderColor: 'var(--accent-dim)',
-            }}
+            } as React.CSSProperties}
         >
             {children}
         </div>

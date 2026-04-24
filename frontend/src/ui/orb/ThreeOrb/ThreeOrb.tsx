@@ -37,14 +37,9 @@ export function ThreeOrb({ state, className }: ThreeOrbProps): ReactElement {
     return (
         <canvas
             ref={canvasRef}
-            className={className}
-            style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                pointerEvents: 'none',
-                zIndex: 0,
-            }}
+            className={['fixed top-0 left-0 pointer-events-none z-0', className]
+                .filter(Boolean)
+                .join(' ')}
         />
     );
 }

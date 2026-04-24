@@ -6,11 +6,7 @@
  */
 
 import { useEffect } from 'react';
-import type { SfxEvent } from './config';
-
-interface TauriWindowSfxProps {
-    playOneShot: (event: SfxEvent) => void;
-}
+import type { TauriWindowSfxProps } from './useTauriWindowSfx.types';
 
 export function useTauriWindowSfx({ playOneShot }: TauriWindowSfxProps): void {
     useEffect(() => {
@@ -23,8 +19,7 @@ export function useTauriWindowSfx({ playOneShot }: TauriWindowSfxProps): void {
 
         async function register(): Promise<void> {
             try {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const tauriWindow: any = await (
+                const tauriWindow = await (
                     Function('specifier', 'return import(specifier)') as (
                         s: string,
                     ) => Promise<unknown>

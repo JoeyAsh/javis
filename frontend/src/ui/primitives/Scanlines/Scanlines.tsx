@@ -9,32 +9,29 @@ export function Scanlines({ children, className, sweep = false }: ScanlinesProps
     return (
         <div className={cn('relative overflow-hidden', className)}>
             {children}
-            {/* scanline overlay */}
+            {/* scanline overlay — repeating-linear-gradient + mix-blend-mode require inline style */}
             <span
                 aria-hidden
-                className="pointer-events-none absolute inset-0 motion-reduce:hidden"
+                className="pointer-events-none absolute inset-0 motion-reduce:hidden z-[1]"
                 style={{
                     background:
                         'repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(76,168,232,0.035) 2px, rgba(76,168,232,0.035) 3px)',
                     mixBlendMode: 'screen',
-                    zIndex: 1,
-                }}
+                } as React.CSSProperties}
             />
             {/* optional data-sweep shimmer */}
             {sweep && (
                 <span
                     aria-hidden
-                    className="pointer-events-none absolute inset-0 overflow-hidden motion-reduce:hidden"
-                    style={{ zIndex: 2 }}
+                    className="pointer-events-none absolute inset-0 overflow-hidden motion-reduce:hidden z-[2]"
                 >
                     <span
-                        className="absolute top-0 bottom-0"
+                        className="absolute top-0 bottom-0 w-[40%]"
                         style={{
-                            width: '40%',
                             background:
                                 'linear-gradient(90deg, transparent, rgba(76,168,232,0.25), transparent)',
                             animation: 'jlib-sweep-x 3.2s linear infinite',
-                        }}
+                        } as React.CSSProperties}
                     />
                 </span>
             )}

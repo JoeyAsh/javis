@@ -19,14 +19,9 @@ import {
     ChevronLeft,
     ChevronRight,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import { Icon } from '../../primitives/Icon';
 import { ShowcaseCard } from '../ShowcaseCard';
-
-interface IconEntry {
-    name: string;
-    icon: LucideIcon;
-}
+import type { IconEntry } from './IconsSection.types';
 
 const ICONS: IconEntry[] = [
     { name: 'mic', icon: Mic },

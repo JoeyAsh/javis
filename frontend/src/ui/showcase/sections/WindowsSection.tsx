@@ -4,76 +4,15 @@ import type { ManagedWindow, PanelMode } from '../../compositions/WindowManager'
 import type { PanelContentRenderProps } from '../../window/Window';
 import type { SlotId } from '../../window/slotGrid';
 import { Mono } from '../../primitives/Mono';
-import { Label } from '../../primitives/Label';
-
-// ── Compact view stub ─────────────────────────────────────────────────────────
-
-function CompactContent({ label }: { label: string }): ReactElement {
-    return (
-        <div
-            style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                padding: 8,
-                gap: 6,
-            }}
-        >
-            <span
-                style={{
-                    fontSize: 8,
-                    letterSpacing: 3,
-                    textTransform: 'uppercase',
-                    color: 'var(--text-muted)',
-                }}
-            >
-                DOCKED
-            </span>
-            <Label dim>{label}</Label>
-        </div>
-    );
-}
-
-// ── Expanded view stub ────────────────────────────────────────────────────────
-
-function ExpandedContent({ label }: { label: string }): ReactElement {
-    return (
-        <div
-            style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                padding: 16,
-                gap: 10,
-            }}
-        >
-            <span
-                style={{
-                    fontSize: 8,
-                    letterSpacing: 3,
-                    textTransform: 'uppercase',
-                    color: 'var(--accent)',
-                }}
-            >
-                UNDOCKED
-            </span>
-            <Label>{label}</Label>
-            <span style={{ fontSize: 10, color: 'var(--text-secondary)', textAlign: 'center' }}>
-                Drag header to move · resize via edges and corners · click ⊞ in header to dock back
-            </span>
-        </div>
-    );
-}
+import { WindowsCompactContent } from './WindowsCompactContent';
+import { WindowsExpandedContent } from './WindowsExpandedContent';
 
 // ── ItemRenderer factory ──────────────────────────────────────────────────────
 
 function makeRenderer(label: string): (props: PanelContentRenderProps) => ReactElement {
     return function Renderer({ mode }: PanelContentRenderProps): ReactElement {
-        if (mode === 'expanded') return <ExpandedContent label={label} />;
-        return <CompactContent label={label} />;
+        if (mode === 'expanded') return <WindowsExpandedContent label={label} />;
+        return <WindowsCompactContent label={label} />;
     };
 }
 
@@ -140,35 +79,14 @@ export function WindowsSection(): ReactElement {
             </div>
 
             {/* Interaction hint */}
-            <div
-                style={{
-                    fontSize: 10,
-                    color: 'var(--text-secondary)',
-                    fontFamily: 'var(--font)',
-                    letterSpacing: '0.5px',
-                }}
-            >
+            <p className="text-[10px] text-text-secondary font-mono tracking-[0.5px]">
                 Compact: drag header to snap/swap slots · Reset (↺) restores home slot and docks.
                 Expanded: drag to move · resize via edges/corners · ⊟ to dock back.
-            </div>
+            </p>
 
             {/* Assignment readout */}
-            <div
-                style={{
-                    border: '1px solid var(--border)',
-                    padding: '8px 12px',
-                    background: 'rgba(13,13,20,0.6)',
-                }}
-            >
-                <div
-                    style={{
-                        fontSize: 9,
-                        letterSpacing: 2,
-                        textTransform: 'uppercase',
-                        color: 'var(--text-secondary)',
-                        marginBottom: 4,
-                    }}
-                >
+            <div className="border border-border px-3 py-2 bg-[rgba(13,13,20,0.6)]">
+                <div className="text-[9px] tracking-[2px] uppercase text-text-secondary font-mono mb-1">
                     Current Assignments
                 </div>
                 <Mono size="sm" secondary>
@@ -176,44 +94,20 @@ export function WindowsSection(): ReactElement {
                         .map(([wId, sId]) => `${wId.replace('win-', '')} → ${sId}`)
                         .join('  ·  ')}
                 </Mono>
-                <div
-                    style={{
-                        fontSize: 9,
-                        letterSpacing: 2,
-                        textTransform: 'uppercase',
-                        color: 'var(--text-secondary)',
-                        marginBottom: 4,
-                        marginTop: 8,
-                    }}
-                >
+                <div className="text-[9px] tracking-[2px] uppercase text-text-secondary font-mono mt-2 mb-1">
                     Current Modes
                 </div>
                 <Mono size="sm" secondary>
                     {currentModesDisplay}
                 </Mono>
-                <div
-                    style={{
-                        fontSize: 8,
-                        color: 'var(--text-muted)',
-                        marginTop: 6,
-                        letterSpacing: 1,
-                    }}
-                >
-                    Drag compact window header to another slot to move · drag onto occupied slot to swap
+                <div className="text-[8px] text-text-muted font-mono mt-1.5 tracking-[1px]">
+                    Drag compact window header to another slot to move · drag onto occupied slot to
+                    swap
                 </div>
             </div>
 
             {/* Scoped stage */}
-            <div
-                style={{
-                    position: 'relative',
-                    height: 860,
-                    width: '100%',
-                    border: '1px solid var(--border)',
-                    background: 'rgba(5,5,8,0.9)',
-                    overflow: 'hidden',
-                }}
-            >
+            <div className="relative h-[860px] w-full border border-border bg-[rgba(5,5,8,0.9)] overflow-hidden">
                 <WindowManager
                     windows={MANAGED_WINDOWS}
                     assignments={assignments}

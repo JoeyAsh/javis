@@ -1,11 +1,5 @@
 import { ReactElement } from 'react';
-
-interface Swatch {
-    name: string;
-    value: string;
-    cssVar: string;
-    border?: boolean;
-}
+import type { Swatch } from './ColorsSection.types';
 
 const SWATCHES: Swatch[] = [
     { name: 'bg', value: '#050508', cssVar: '--bg', border: true },
@@ -42,7 +36,7 @@ export function ColorsSection(): ReactElement {
                             style={{
                                 background: `var(${sw.cssVar})`,
                                 border: sw.border ? '1px solid var(--border)' : undefined,
-                            }}
+                            } as React.CSSProperties}
                         />
                         <div className="text-[10px] text-text font-mono leading-[1.3]">
                             {sw.name}

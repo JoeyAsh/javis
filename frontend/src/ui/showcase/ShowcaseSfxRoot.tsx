@@ -8,15 +8,11 @@
  *   heartbeatEnabled=false → no heartbeat loop in Showcase
  */
 
-import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
+import { createContext, useContext, type ReactElement } from 'react';
 import { useAudioEngine, SfxProvider } from '@core/audio';
+import type { ShowcaseSfxContextValue, ShowcaseSfxRootProps } from './ShowcaseSfxRoot.types';
 
 /* ---- Mute context ---- */
-
-interface ShowcaseSfxContextValue {
-    isMuted: boolean;
-    toggleMute: () => void;
-}
 
 const ShowcaseSfxContext = createContext<ShowcaseSfxContextValue>({
     isMuted: false,
@@ -28,10 +24,6 @@ export function useShowcaseSfx(): ShowcaseSfxContextValue {
 }
 
 /* ---- Provider ---- */
-
-interface ShowcaseSfxRootProps {
-    children: ReactNode;
-}
 
 export function ShowcaseSfxRoot({ children }: ShowcaseSfxRootProps): ReactElement {
     const { isMuted, toggleMute, playOneShot, play, stop } = useAudioEngine(

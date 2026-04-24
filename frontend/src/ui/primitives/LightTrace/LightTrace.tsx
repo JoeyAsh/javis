@@ -1,6 +1,5 @@
 import { type CSSProperties, type ReactElement } from 'react';
 import type { LightTraceProps } from './LightTrace.types';
-import './LightTrace.css';
 
 export function LightTrace({ className, color }: LightTraceProps): ReactElement {
     const style = color !== undefined ? ({ '--lt-color': color } as CSSProperties) : undefined;

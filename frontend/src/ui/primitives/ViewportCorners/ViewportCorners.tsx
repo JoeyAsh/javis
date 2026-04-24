@@ -1,6 +1,5 @@
 import { type ReactElement } from 'react';
 import type { ViewportCornersProps } from './ViewportCorners.types';
-import './ViewportCorners.css';
 
 export function ViewportCorners({ className }: ViewportCornersProps): ReactElement {
     const corners: ReadonlyArray<'tl' | 'tr' | 'bl' | 'br'> = ['tl', 'tr', 'bl', 'br'];

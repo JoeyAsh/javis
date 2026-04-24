@@ -1,6 +1,5 @@
 import type { CSSProperties, ReactElement } from 'react';
 import type { SwapOverlayProps } from './SwapOverlay.types';
-import './SwapOverlay.css';
 
 export function SwapOverlay({
     active,

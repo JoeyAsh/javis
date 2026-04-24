@@ -1,6 +1,5 @@
 import { type ReactElement } from 'react';
 import type { WaveStripProps } from './WaveStrip.types';
-import './WaveStrip.css';
 
 export function WaveStrip({
     active = true,

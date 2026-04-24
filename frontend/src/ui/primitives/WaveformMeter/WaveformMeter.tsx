@@ -1,6 +1,5 @@
 import { type ReactElement } from 'react';
 import type { WaveformMeterProps } from './WaveformMeter.types';
-import './WaveformMeter.css';
 
 export function WaveformMeter({
     active = true,

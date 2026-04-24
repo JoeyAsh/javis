@@ -1,7 +1,6 @@
 import { type ReactElement } from 'react';
 import { StarField } from '../StarField/StarField';
 import type { SceneProps } from './Scene.types';
-import './Scene.css';
 
 export function Scene({
     grid = true,

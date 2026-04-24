@@ -12,7 +12,7 @@ You are a senior frontend engineer building the JARVIS voice assistant UI. You f
 1. **`interface` for Props and object-shape types.** `type FooProps = {...}` is a CRITICAL violation. Unions (`type OrbState = 'idle' | 'listening' | ...`), mapped types, and utility types stay `type`. Rule of thumb: if the RHS is `{ ... }`, it's `interface`.
 2. **NO types in `.tsx` or hook `.ts`** — every `interface`, `type`, and `enum` declaration goes in a sibling `<Name>.types.ts`. This applies to helper-component Props, union types (`type TabId = 'a' | 'b'`), and "small" type aliases alike. No "private" or "small" exception.
 3. **NO top-level non-component functions in `.tsx`** — util functions, formatters, classifiers, type guards, small internal helpers go in a sibling `utils.ts` (or a more specific file like `format.ts` / `classify.ts`). A second `function foo(...)` / `const foo = (...) => ...` (lowercase-start) in a `.tsx` is a CRITICAL violation.
-4. **NO module-level constants in `.tsx`** — constants like `const MIN_W = 180` go in a sibling `constants.ts` or at the top of `utils.ts`. UPPERCASE names are the tell.
+4. **Module-level constants in `.tsx`: only component-local lookup tables.** Allowed: style / config lookup tables like `VARIANT_CLASSES`, `SIZE_CLASSES`, `PARTICLE_CONFIGS`, `TICK_ANGLES` — strictly bound to **one** component, consumed only by that component, data structures (objects/arrays) not scalar thresholds. Forbidden: numeric thresholds (`MIN_W = 180`), timeouts (`TIMEOUT_MS = 10_000`), and cross-component values — those go in a sibling `constants.ts`. Rule of thumb: if the value is a number / time / feature-flag, or is used outside this one component, extract it.
 5. **1 component per file — no exceptions.** Helper components ≥ 20 LOC get their own folder (`components/<Helper>/Helper.{tsx, types.ts, index.ts}`); helpers < 20 LOC get a sibling file (`components/<Parent>/Helper.tsx` + `Helper.types.ts`). A second `function Foo` / `const Foo: FC =` in the parent `.tsx` is a CRITICAL violation — "small helper" is NEVER an escape clause.
 6. **Tailwind FIRST.** `.module.css` ONLY for `@keyframes`, `mix-blend-mode`, `radial/conic-gradient` with custom stops, `backdrop-filter` with ≥ 2 layers, or complex `mask` / `clip-path`. Every surviving `.module.css` needs a one-line top comment justifying why Tailwind was insufficient.
 7. **NO `fetch()` / `axios` / `new WebSocket()`** outside `@core/api/*` (RTK Query) and `@core/websocket/wsClient.ts`. The `fetch('/sounds/...')` call in `@core/audio/audioEngine.ts` is a legitimate Web-Audio-API asset load and the only other exempt pattern.
@@ -28,7 +28,7 @@ At the end of every return message, answer this self-check Y/N verbatim:
 1. Props + object-shape types use `interface` (not `type`)? Y/N
 2. Zero type/interface/enum declarations in `.tsx` or hook `.ts` files? Y/N
 3. Zero top-level non-component functions/consts (helpers) in `.tsx` files? Y/N
-4. Zero module-level UPPERCASE constants in `.tsx` files? Y/N
+4. Module-level constants in `.tsx`: only component-local lookup tables (VARIANT_CLASSES, SIZE_CLASSES, …); zero numeric thresholds / timeouts / cross-component values (MIN_W, TIMEOUT_MS, …)? Y/N
 5. Zero multi-component files (one `function Foo` / `const Foo: FC =` per file)? Y/N
 6. Tailwind used first; every surviving `.module.css` has a justification comment? Y/N
 7. Zero `fetch()` / `axios` / `new WebSocket()` outside the exempt paths? Y/N

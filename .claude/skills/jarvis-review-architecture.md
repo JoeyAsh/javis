@@ -58,14 +58,18 @@ rg --type tsx -n "^(export\s+)?(function|const)\s+[a-z]\w*\s*[=(]" frontend/src 
 **Detects**: lowercase-start function or const declarations at module level in `.tsx` files — these are helpers, not components. Helper functions belong in sibling `utils.ts`.
 **Fix**: Move to sibling `utils.ts` (or feature-level `utils.ts` if reused across multiple components). For shared utilities like `formatTime`, consolidate to `@common/utils/time.ts`.
 
-### 6. Module-level constants in `.tsx` (Critical / Warning)
+### 6. Module-level constants in `.tsx` (Critical for thresholds/timeouts, allowed for lookup tables)
 
 ```bash
 rg --type tsx -n "^(export\s+)?const\s+[A-Z_]+\s*=" frontend/src --glob='!*__tests__*'
 ```
 
-**Detects**: UPPERCASE constants at module level in `.tsx` files. These belong in sibling `constants.ts` or at the top of `utils.ts`.
-**Fix**: Move to `constants.ts` or `utils.ts` sibling. Verify it's genuinely a module constant, not a component-internal `const` inside the component body (those are fine).
+**Detects**: UPPERCASE constants at module level in `.tsx` files. Classify each hit:
+
+- **Allowed (not a violation)** — component-local style / config lookup tables bound to a single component: `VARIANT_CLASSES`, `SIZE_CLASSES`, `PARTICLE_CONFIGS`, `TICK_ANGLES`, `STROKE_COLOR`, `FILL_OPACITY`. Typically objects / arrays. Consumed only inside this one `.tsx`.
+- **Critical violation** — numeric thresholds (`MIN_W = 180`), timeouts (`TIMEOUT_MS = 10_000`), cross-component values, feature flags, locale/tz constants. These belong in a sibling `constants.ts`.
+
+**Fix**: Move Critical-class constants to `constants.ts`. Leave lookup tables in place. Rule of thumb: if the value is a number / time / used outside this component, extract it.
 
 ### 7. Multiple component declarations in one `.tsx` (Critical)
 

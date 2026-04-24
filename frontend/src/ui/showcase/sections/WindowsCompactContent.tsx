@@ -1,9 +1,6 @@
 import type { ReactElement } from 'react';
 import { Label } from '../../primitives/Label';
-
-interface WindowsCompactContentProps {
-    label: string;
-}
+import type { WindowsCompactContentProps } from './WindowsCompactContent.types';
 
 export function WindowsCompactContent({ label }: WindowsCompactContentProps): ReactElement {
     return (

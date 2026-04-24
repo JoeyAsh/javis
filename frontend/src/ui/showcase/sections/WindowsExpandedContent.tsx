@@ -1,9 +1,6 @@
 import type { ReactElement } from 'react';
 import { Label } from '../../primitives/Label';
-
-interface WindowsExpandedContentProps {
-    label: string;
-}
+import type { WindowsExpandedContentProps } from './WindowsExpandedContent.types';
 
 export function WindowsExpandedContent({ label }: WindowsExpandedContentProps): ReactElement {
     return (

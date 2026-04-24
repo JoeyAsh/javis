@@ -1,9 +1,7 @@
 import { ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { SparklineProps } from './Sparkline.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
+import { buildPath } from './utils';
 
 const STROKE_COLOR = {
     accent: '#6ec4ff',
@@ -14,20 +12,6 @@ const FILL_OPACITY = {
     accent: '0.15',
     warn: '0.18',
 } as const;
-
-function buildPath(data: number[], vw: number, vh: number): string {
-    if (data.length < 2) return '';
-    const min = Math.min(...data);
-    const max = Math.max(...data);
-    const range = max - min || 1;
-    const pad = 2;
-    const points = data.map((v, i) => {
-        const x = (i / (data.length - 1)) * vw;
-        const y = vh - pad - ((v - min) / range) * (vh - pad * 2);
-        return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    return points.join(' ');
-}
 
 export function Sparkline({
     data,
@@ -51,7 +35,7 @@ export function Sparkline({
         <svg
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="none"
-            className={cn('block w-full', className)}
+            className={cx('block w-full', className)}
             style={{ height: `${height}px` } as React.CSSProperties}
             aria-label={ariaLabel}
             role={ariaLabel ? 'img' : undefined}

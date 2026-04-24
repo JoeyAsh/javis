@@ -1,13 +1,10 @@
 import { ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { ScanlinesProps } from './Scanlines.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 export function Scanlines({ children, className, sweep = false }: ScanlinesProps): ReactElement {
     return (
-        <div className={cn('relative overflow-hidden', className)}>
+        <div className={cx('relative overflow-hidden', className)}>
             {children}
             {/* scanline overlay — repeating-linear-gradient + mix-blend-mode require inline style */}
             <span

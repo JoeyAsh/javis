@@ -1,29 +1,9 @@
 import type { ReactElement } from 'react';
 import { useSfx } from '@core/audio';
-import type { AgendaEvent } from '../../types';
+import { formatTime } from '@common/utils/time';
 import type { AgendaEventRowProps } from './AgendaEventRow.types';
+import { derivePill } from './utils';
 import styles from './AgendaEventRow.module.css';
-
-type EventPill = {
-    label: string;
-    variant: 'now' | 'soon';
-};
-
-function derivePill(event: AgendaEvent): EventPill | null {
-    const minsUntil = Math.round((new Date(event.start).getTime() - Date.now()) / 60_000);
-    if (minsUntil <= 0 && Date.now() < new Date(event.end).getTime()) {
-        return { label: 'NOW', variant: 'now' };
-    }
-    if (minsUntil > 0 && minsUntil <= 30) {
-        return { label: 'SOON', variant: 'soon' };
-    }
-    return null;
-}
-
-function formatTime(iso: string): string {
-    const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
 
 export function AgendaEventRow({ event, onClick }: AgendaEventRowProps): ReactElement {
     const { playOneShot } = useSfx();

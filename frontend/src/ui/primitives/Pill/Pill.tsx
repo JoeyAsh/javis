@@ -1,9 +1,6 @@
 import { ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { PillProps } from './Pill.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 const VARIANT_CLASSES = {
     default: 'text-text-secondary border-border',
@@ -16,7 +13,7 @@ const VARIANT_CLASSES = {
 export function Pill({ children, variant = 'default', className }: PillProps): ReactElement {
     return (
         <span
-            className={cn(
+            className={cx(
                 'inline-flex items-center px-[6px] py-[2px]',
                 'text-[9px] uppercase tracking-[1px] font-mono',
                 'border rounded-[2px]',

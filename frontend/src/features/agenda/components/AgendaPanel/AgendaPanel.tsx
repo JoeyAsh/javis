@@ -9,13 +9,9 @@ import { useAgenda } from '../../hooks/useAgenda';
 import { AgendaEventRow } from '../AgendaEventRow';
 import type { AgendaEvent } from '../../types';
 import type { AgendaPanelProps } from './AgendaPanel.types';
+import { minutesUntil } from './utils';
+import { AVAILABILITY_TIMEOUT_MS } from './constants';
 import styles from './AgendaPanel.module.css';
-
-const AVAILABILITY_TIMEOUT_MS = 10_000;
-
-function minutesUntil(iso: string): number {
-    return Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60_000));
-}
 
 // ---- Compact mode ----
 

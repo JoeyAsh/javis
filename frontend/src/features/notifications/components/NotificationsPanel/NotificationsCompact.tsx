@@ -1,29 +1,7 @@
 import type { ReactElement } from 'react';
-import type { NotificationSeverity } from '../../types';
 import type { NotificationsCompactProps } from './NotificationsCompact.types';
+import { severityDotStyle, severityTitleStyle } from './utils';
 import styles from './NotificationsPanel.module.css';
-
-function severityDotStyle(sev: NotificationSeverity): string {
-    switch (sev) {
-        case 'urgent':
-            return 'var(--error, #e05c5c)';
-        case 'warning':
-            return 'var(--warning, #e0a85c)';
-        case 'info':
-            return 'var(--accent-bright)';
-    }
-}
-
-function severityTitleStyle(sev: NotificationSeverity): string {
-    switch (sev) {
-        case 'urgent':
-            return 'var(--error, #e05c5c)';
-        case 'warning':
-            return 'var(--warning, #e0a85c)';
-        case 'info':
-            return 'var(--accent-bright)';
-    }
-}
 
 export function NotificationsCompact({ notifications }: NotificationsCompactProps): ReactElement {
     const top = notifications[0];

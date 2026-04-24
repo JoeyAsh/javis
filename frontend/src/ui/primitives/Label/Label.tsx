@@ -1,9 +1,6 @@
 import { ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { LabelProps } from './Label.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 export function Label({ children, dim = false, className, htmlFor }: LabelProps): ReactElement {
     const base = 'text-[9px] uppercase tracking-[1px] font-mono';
@@ -11,13 +8,13 @@ export function Label({ children, dim = false, className, htmlFor }: LabelProps)
 
     if (htmlFor) {
         return (
-            <label htmlFor={htmlFor} className={cn(base, color, className)}>
+            <label htmlFor={htmlFor} className={cx(base, color, className)}>
                 {children}
             </label>
         );
     }
 
-    return <span className={cn(base, color, className)}>{children}</span>;
+    return <span className={cx(base, color, className)}>{children}</span>;
 }
 
 export default Label;

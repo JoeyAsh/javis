@@ -23,15 +23,17 @@ When you use this skill, produce the following block as the **opening** of the b
 ## MANDATORY RULES (re-read before every file you write — each rule is a hard failure mode)
 
 1. **`interface` for Props and object-shape types.** `type FooProps = {...}` is a CRITICAL violation. Unions (`type OrbState = 'idle' | 'listening' | ...`), mapped types, and utility types stay `type`.
-2. **Interfaces NEVER in `.tsx` or hook `.ts`** — always in a sibling `<Name>.types.ts`. Applies to helper-component Props within the same feature too.
-3. **1 component per file — no exceptions.** Helpers ≥ 20 LOC get their own folder; helpers < 20 LOC get a sibling file. A second `function Foo` / `const Foo: FC =` in a parent `.tsx` is a CRITICAL violation.
-4. **Tailwind FIRST.** `.module.css` ONLY for `@keyframes`, `mix-blend-mode`, `radial/conic-gradient` with custom stops, `backdrop-filter` with ≥ 2 layers, complex `mask` / `clip-path`. Every `.module.css` needs a top comment justifying why Tailwind cannot express it.
-5. **NO `fetch()` / `axios` / `new WebSocket()`** outside `@core/api/*` (RTK Query) and `@core/websocket/wsClient.ts`. The `fetch('/sounds/...')` in `@core/audio/audioEngine.ts` is the only other exempt pattern.
-6. **NO global `import './*.css'`** in component files. Aggregated global CSS imported once from a library barrel (e.g. `@ui/components.css`) is acceptable.
-7. **No inline styles** except CSS custom-property injection (`style={{ '--foo': value }}`) and runtime-computed dynamics Tailwind cannot express.
-8. **Named + default export** on every component.
-9. **Strict TypeScript**: no `any`, no `!`, no `@ts-ignore`.
-10. **"Port" / "migrate" NEVER means byte-for-byte copy.** Apply rules 1–9 to the legacy while preserving behavior.
+2. **NO types in `.tsx` or hook `.ts`** — every `interface`, `type`, and `enum` goes in a sibling `<Name>.types.ts`. Applies to union types (`type TabId = 'a' | 'b'`), "small" aliases, and helper-component Props too. No "private" or "small" exception.
+3. **NO top-level non-component functions in `.tsx`** — util functions, formatters, classifiers, type guards, small internal helpers go in a sibling `utils.ts`. A lowercase-start `function foo` or `const foo =` at module level in a `.tsx` is a CRITICAL violation.
+4. **NO module-level constants in `.tsx`** — `const MIN_W = 180` and similar UPPERCASE constants go in sibling `constants.ts` or at the top of `utils.ts`.
+5. **1 component per file — no exceptions.** Helpers ≥ 20 LOC get their own folder; helpers < 20 LOC get a sibling file. A second `function Foo` / `const Foo: FC =` in a parent `.tsx` is a CRITICAL violation.
+6. **Tailwind FIRST.** `.module.css` ONLY for `@keyframes`, `mix-blend-mode`, `radial/conic-gradient` with custom stops, `backdrop-filter` with ≥ 2 layers, complex `mask` / `clip-path`. Every `.module.css` needs a top comment justifying why Tailwind cannot express it.
+7. **NO `fetch()` / `axios` / `new WebSocket()`** outside `@core/api/*` (RTK Query) and `@core/websocket/wsClient.ts`. The `fetch('/sounds/...')` in `@core/audio/audioEngine.ts` is the only other exempt pattern.
+8. **NO global `import './*.css'`** in component files. Aggregated global CSS imported once from a library barrel (e.g. `@ui/components.css`) is acceptable.
+9. **No inline styles** except CSS custom-property injection (`style={{ '--foo': value }}`) and runtime-computed dynamics Tailwind cannot express.
+10. **Named + default export** on every component.
+11. **Strict TypeScript**: no `any`, no `!`, no `@ts-ignore`.
+12. **"Port" / "migrate" NEVER means byte-for-byte copy.** Apply rules 1–11 to the legacy while preserving behavior.
 
 ---
 
@@ -59,15 +61,17 @@ When you use this skill, produce the following block as the **opening** of the b
 ## Self-check (answer Y/N verbatim at end of your return message)
 
 1. Props + object-shape types use `interface` (not `type`)? Y/N
-2. Zero interfaces in `.tsx` / hook `.ts` files? Y/N
-3. Zero multi-component files (one `function Foo` / `const Foo: FC =` per file)? Y/N
-4. Tailwind used first; every surviving `.module.css` has a justification comment? Y/N
-5. Zero `fetch()` / `axios` / `new WebSocket()` outside exempt paths? Y/N
-6. Zero global `import './*.css'` in component files? Y/N
-7. Zero inline styles except CSS-var injection / runtime-computed dynamics? Y/N
-8. Named + default export on every component? Y/N
-9. Zero `any` / `!` / `@ts-ignore`? Y/N
-10. `@ui/orb/orbEngine.ts` untouched? Y/N
+2. Zero type/interface/enum declarations in `.tsx` or hook `.ts` files? Y/N
+3. Zero top-level non-component functions/consts (helpers) in `.tsx` files? Y/N
+4. Zero module-level UPPERCASE constants in `.tsx` files? Y/N
+5. Zero multi-component files (one `function Foo` / `const Foo: FC =` per file)? Y/N
+6. Tailwind used first; every surviving `.module.css` has a justification comment? Y/N
+7. Zero `fetch()` / `axios` / `new WebSocket()` outside exempt paths? Y/N
+8. Zero global `import './*.css'` in component files? Y/N
+9. Zero inline styles except CSS-var injection / runtime-computed dynamics? Y/N
+10. Named + default export on every component? Y/N
+11. Zero `any` / `!` / `@ts-ignore`? Y/N
+12. `@ui/orb/orbEngine.ts` untouched? Y/N
 
 If any answer is N, STOP and fix it before returning.
 ```

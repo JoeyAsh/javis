@@ -1,17 +1,9 @@
 import type { ReactElement } from 'react';
-import type { GithubCIRunLive, CIRun } from '../../types';
 import { ciPillClass, relativeTime } from '../../utils';
 import { DevSectionHeader } from '../DevSectionHeader';
 import type { GithubCiStatusProps } from './GithubCiStatus.types';
+import { isLive, getKey } from './utils';
 import styles from './GithubCiStatus.module.css';
-
-function isLive(run: GithubCIRunLive | CIRun): run is GithubCIRunLive {
-    return 'ran_at' in run;
-}
-
-function getKey(run: GithubCIRunLive | CIRun): string {
-    return isLive(run) ? run.repo : run.id;
-}
 
 export function GithubCiStatus({ ci, stale }: GithubCiStatusProps): ReactElement {
     return (

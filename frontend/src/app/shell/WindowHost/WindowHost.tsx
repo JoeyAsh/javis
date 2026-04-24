@@ -11,34 +11,10 @@ import type { ReactElement, ReactNode } from 'react';
 import { WindowManager } from '@ui';
 import type { ManagedWindow, PanelContentRenderProps } from '@ui';
 import type { SlotId } from '@common/types';
-import type { PanelMode, AppOrbState } from '@common/types';
-import { TranscriptPanel } from '@features/transcript';
-import { SystemPanel } from '@features/system';
+import type { PanelMode } from '@common/types';
 import { PANELS, DEFAULT_ASSIGNMENTS } from '../../panels';
 import type { WindowHostProps } from './WindowHost.types';
-
-// ── Panels that need extra props beyond PanelSharedProps ─────────────────────
-
-function renderPanel(
-    id: string,
-    mode: PanelMode,
-    orbState: AppOrbState,
-    paused: boolean,
-): ReactNode {
-    // Find the spec from registry
-    const spec = PANELS.find((p) => p.id === id);
-    if (!spec) return null;
-
-    if (id === 'transcript') {
-        return <TranscriptPanel mode={mode} orbState={orbState} />;
-    }
-    if (id === 'system') {
-        return <SystemPanel mode={mode} paused={paused} />;
-    }
-    return <spec.Component mode={mode} />;
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
+import { renderPanel } from './utils';
 
 export function WindowHost({ idle, orbState = 'idle' }: WindowHostProps): ReactElement {
     const effectivePaused = idle;

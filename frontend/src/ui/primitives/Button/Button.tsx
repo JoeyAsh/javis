@@ -1,10 +1,7 @@
 import { forwardRef } from 'react';
+import { cx } from '@common/utils/cx';
 import { useClickSfx, useHoverSfx } from '@core/audio';
 import type { ButtonProps } from './Button.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 const VARIANT_CLASSES = {
     primary:
@@ -30,7 +27,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     return (
         <button
             ref={ref}
-            className={cn(
+            className={cx(
                 'font-mono uppercase tracking-[1px] border rounded-[2px] cursor-pointer',
                 'transition-all duration-[200ms]',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',

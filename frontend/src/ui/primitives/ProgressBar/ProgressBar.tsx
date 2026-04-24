@@ -1,9 +1,6 @@
 import { ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { ProgressBarProps } from './ProgressBar.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 const FILL_CLASSES = {
     accent: 'bg-accent shadow-glow',
@@ -33,14 +30,14 @@ export function ProgressBar({
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label={ariaLabel}
-            className={cn(
+            className={cx(
                 'bg-border overflow-hidden rounded-[0px]',
                 HEIGHT_CLASSES[height],
                 className,
             )}
         >
             <div
-                className={cn(
+                className={cx(
                     'h-full transition-[width] duration-[120ms] linear',
                     FILL_CLASSES[variant],
                 )}

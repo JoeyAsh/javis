@@ -5,12 +5,9 @@ import type { LogLinePayload } from '../../types';
 import { LogLine } from '../LogLine';
 import { LogFilters } from '../LogFilters';
 import { TurnTimingSummary } from '../TurnTimingSummary';
-import type { LogPanelProps, StreamViewProps } from './LogPanel.types';
+import type { LogPanelProps, StreamViewProps, TabId } from './LogPanel.types';
+import { VISIBLE_LINES } from './constants';
 import styles from './LogPanel.module.css';
-
-type TabId = 'stream' | 'timeline';
-
-const VISIBLE_LINES = 100;
 
 // ---------------------------------------------------------------------------
 // Stream view

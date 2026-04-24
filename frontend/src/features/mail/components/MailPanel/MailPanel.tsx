@@ -11,9 +11,8 @@ import { useMail } from '../../hooks/useMail';
 import { MailCompact } from './MailCompact';
 import { MailExpanded } from './MailExpanded';
 import type { MailPanelProps } from './MailPanel.types';
+import { AVAILABILITY_TIMEOUT_MS } from './constants';
 import styles from './MailPanel.module.css';
-
-const AVAILABILITY_TIMEOUT_MS = 10_000;
 
 /**
  * MailPanel — renders mail messages with draft preview.

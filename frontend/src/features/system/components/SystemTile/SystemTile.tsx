@@ -1,16 +1,8 @@
 import type { ReactElement } from 'react';
 import { Sparkline } from '../Sparkline';
-import type { SystemTileProps, SparkTile } from './SystemTile.types';
+import type { SystemTileProps } from './SystemTile.types';
+import { isWarn } from './utils';
 import styles from './SystemTile.module.css';
-
-function isWarn(tile: SparkTile): boolean {
-    if (tile.current === null) return false;
-    return (
-        (tile.id === 'cpu' && tile.current > 85) ||
-        (tile.id === 'cpuTemp' && tile.current > 80) ||
-        (tile.id === 'ram' && tile.current > 90)
-    );
-}
 
 export function SystemTile({ tile }: SystemTileProps): ReactElement {
     const warn = isWarn(tile);

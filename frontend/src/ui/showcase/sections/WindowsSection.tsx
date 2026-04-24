@@ -1,20 +1,9 @@
 import { useState, type ReactElement } from 'react';
 import { WindowManager } from '../../compositions/WindowManager';
 import type { ManagedWindow, PanelMode } from '../../compositions/WindowManager';
-import type { PanelContentRenderProps } from '../../window/Window';
 import type { SlotId } from '../../window/slotGrid';
 import { Mono } from '../../primitives/Mono';
-import { WindowsCompactContent } from './WindowsCompactContent';
-import { WindowsExpandedContent } from './WindowsExpandedContent';
-
-// ── ItemRenderer factory ──────────────────────────────────────────────────────
-
-function makeRenderer(label: string): (props: PanelContentRenderProps) => ReactElement {
-    return function Renderer({ mode }: PanelContentRenderProps): ReactElement {
-        if (mode === 'expanded') return <WindowsExpandedContent label={label} />;
-        return <WindowsCompactContent label={label} />;
-    };
-}
+import { makeRenderer } from './WindowsSection.utils';
 
 // ── Window definitions ────────────────────────────────────────────────────────
 

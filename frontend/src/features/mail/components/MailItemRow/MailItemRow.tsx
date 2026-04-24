@@ -1,17 +1,8 @@
 import type { ReactElement } from 'react';
 import { useSfx } from '@core/audio';
+import { relativeTime } from '@common/utils/time';
 import type { MailItemRowProps } from './MailItemRow.types';
 import styles from './MailItemRow.module.css';
-
-function relativeTime(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60_000);
-    if (mins < 1) return 'now';
-    if (mins < 60) return `${mins}m`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h`;
-    return `${Math.floor(hrs / 24)}d`;
-}
 
 export function MailItemRow({ message, onClick }: MailItemRowProps): ReactElement {
     const { playOneShot } = useSfx();

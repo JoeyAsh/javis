@@ -1,9 +1,6 @@
 import { CSSProperties, ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { CornerBracketsProps } from './CornerBrackets.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 export function CornerBrackets({
     focused = false,
@@ -23,7 +20,7 @@ export function CornerBrackets({
     };
 
     return (
-        <div className={cn('relative', className)}>
+        <div className={cx('relative', className)}>
             {/* top-left */}
             <span
                 aria-hidden

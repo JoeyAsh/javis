@@ -1,9 +1,6 @@
 import { ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { GridBackgroundProps } from './GridBackground.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 export function GridBackground({
     drift = false,
@@ -13,7 +10,7 @@ export function GridBackground({
     return (
         <div
             aria-hidden
-            className={cn(
+            className={cx(
                 'fixed inset-0 pointer-events-none motion-reduce:!animation-none',
                 className,
             )}

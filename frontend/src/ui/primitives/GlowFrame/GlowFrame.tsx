@@ -1,9 +1,6 @@
 import { ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { GlowFrameProps } from './GlowFrame.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 export function GlowFrame({
     children,
@@ -15,7 +12,7 @@ export function GlowFrame({
 
     return (
         <div
-            className={cn('border border-[var(--accent-dim)] rounded-[2px]', className)}
+            className={cx('border border-[var(--accent-dim)] rounded-[2px]', className)}
             style={{
                 boxShadow: breathe ? undefined : staticShadow,
                 animation: breathe

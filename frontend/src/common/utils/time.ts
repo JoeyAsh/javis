@@ -3,6 +3,35 @@
  */
 
 /**
+ * Formats an ISO timestamp as HH:mm (24-hour clock).
+ *
+ * @example
+ * formatTime('2024-01-01T14:30:00Z') // "14:30"
+ */
+export function formatTime(iso: string): string {
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * Formats an ISO timestamp as a compact relative age string.
+ * Uses the shortest possible representation: "now", "Xs", "Xm", "Xh", "Xd".
+ *
+ * @example
+ * relativeTime(new Date(Date.now() - 90_000).toISOString()) // "1m"
+ */
+export function relativeTime(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime();
+    const secs = Math.floor(diff / 1000);
+    if (secs < 60) return secs <= 0 ? 'now' : `${secs}s`;
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h`;
+    return `${Math.floor(hrs / 24)}d`;
+}
+
+/**
  * Formats a duration in milliseconds to a human-readable string.
  *
  * @example

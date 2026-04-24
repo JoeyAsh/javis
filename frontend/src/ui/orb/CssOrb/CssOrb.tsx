@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { CssOrbProps, ParticleConfig } from './CssOrb.types';
 
 const TICK_ANGLES = Array.from({ length: 36 }, (_, i) => i * 10);
@@ -11,10 +12,6 @@ const PARTICLE_CONFIGS: ParticleConfig[] = [
     { radius: 295, dir: 1, period: 24, phase: 4.2, size: 2, colorVar: '--accent-speak' },
     { radius: 330, dir: -1, period: 28, phase: 5.25, size: 3, colorVar: '--accent-bright' },
 ];
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 export function CssOrb({ state, rings = true, particles = true, className }: CssOrbProps): ReactElement {
     const particleRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -56,7 +53,7 @@ export function CssOrb({ state, rings = true, particles = true, className }: Css
 
     return (
         <div
-            className={cn('orb-wrap', isWorking && 'is-working', className)}
+            className={cx('orb-wrap', isWorking && 'is-working', className)}
             aria-label={`Orb: ${state}`}
         >
             {rings && (

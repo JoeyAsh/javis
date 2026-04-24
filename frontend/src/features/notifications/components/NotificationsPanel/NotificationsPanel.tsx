@@ -10,9 +10,8 @@ import { NotificationsCompact } from './NotificationsCompact';
 import { NotificationsExpanded } from './NotificationsExpanded';
 import type { HudNotification } from '../../types';
 import type { NotificationsPanelProps } from './NotificationsPanel.types';
+import { AVAILABILITY_TIMEOUT_MS } from './constants';
 import styles from './NotificationsPanel.module.css';
-
-const AVAILABILITY_TIMEOUT_MS = 10_000;
 
 /**
  * NotificationsPanel body — severity-coloured notification rows.

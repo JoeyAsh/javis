@@ -22,7 +22,16 @@ rg --type ts --type tsx -n "^(export\s+)?type\s+\w*Props\s*=" frontend/src
 **Detects**: `type FooProps = {...}`. These must be `interface FooProps {...}` per rule 1.
 **Fix**: Change `type FooProps =` to `interface FooProps` and convert `=` to nothing (no `=` in interface declaration). Unions and utility types are allowed to stay `type`; only Props / object-shape types are CRITICAL.
 
-### 2. Interface declared in `.tsx` (Critical)
+### 2. Type alias declared in `.tsx` (Critical)
+
+```bash
+rg --type tsx -n "^(export\s+)?type\s+\w" frontend/src --glob='!*__tests__*'
+```
+
+**Detects**: any `type Foo = ...` living in a `.tsx` file. All type declarations belong in sibling `<Name>.types.ts`.
+**Fix**: Move the type into a sibling `.types.ts` file, import with `import type { Foo } from './<Name>.types';`.
+
+### 3. Interface declared in `.tsx` (Critical)
 
 ```bash
 rg --type tsx -n "^(export\s+)?interface\s+\w" frontend/src
@@ -31,7 +40,7 @@ rg --type tsx -n "^(export\s+)?interface\s+\w" frontend/src
 **Detects**: any `interface Foo {...}` living in a `.tsx` file. Interfaces belong in sibling `<Name>.types.ts`.
 **Fix**: Move the interface into a sibling `.types.ts` file, import with `import type { Foo } from './<Name>.types';`.
 
-### 3. Interface declared in hook `.ts` (Critical)
+### 4. Interface declared in hook `.ts` (Critical)
 
 ```bash
 rg -g 'hooks/*.ts' -g '!*.types.ts' -n "^(export\s+)?interface\s+\w" frontend/src
@@ -40,7 +49,25 @@ rg -g 'hooks/*.ts' -g '!*.types.ts' -n "^(export\s+)?interface\s+\w" frontend/sr
 **Detects**: interfaces inline in hook implementation files.
 **Fix**: Move to `<hook>.types.ts`.
 
-### 4. Multiple component declarations in one `.tsx` (Critical)
+### 5. Top-level helper functions in `.tsx` (Critical)
+
+```bash
+rg --type tsx -n "^(export\s+)?(function|const)\s+[a-z]\w*\s*[=(]" frontend/src --glob='!*__tests__*'
+```
+
+**Detects**: lowercase-start function or const declarations at module level in `.tsx` files — these are helpers, not components. Helper functions belong in sibling `utils.ts`.
+**Fix**: Move to sibling `utils.ts` (or feature-level `utils.ts` if reused across multiple components). For shared utilities like `formatTime`, consolidate to `@common/utils/time.ts`.
+
+### 6. Module-level constants in `.tsx` (Critical / Warning)
+
+```bash
+rg --type tsx -n "^(export\s+)?const\s+[A-Z_]+\s*=" frontend/src --glob='!*__tests__*'
+```
+
+**Detects**: UPPERCASE constants at module level in `.tsx` files. These belong in sibling `constants.ts` or at the top of `utils.ts`.
+**Fix**: Move to `constants.ts` or `utils.ts` sibling. Verify it's genuinely a module constant, not a component-internal `const` inside the component body (those are fine).
+
+### 7. Multiple component declarations in one `.tsx` (Critical)
 
 ```bash
 rg --type tsx -l "(export\s+)?(function|const)\s+[A-Z]\w*\s*[:=(][^{]*(ReactElement|JSX\.Element|ReactNode|FC\s*<)" frontend/src | while read -r f; do
@@ -52,7 +79,7 @@ done
 **Detects**: files declaring ≥ 2 components.
 **Fix**: Extract additional components to sibling files. Helpers ≥ 20 LOC get their own folder; < 20 LOC get a sibling `.tsx` + `.types.ts`.
 
-### 5. Inline styles (Critical / Warning per case)
+### 8. Inline styles (Critical / Warning per case)
 
 ```bash
 rg --type tsx -n "style=\{\{" frontend/src | rg -v "'--" | rg -v "\\\${"
@@ -61,7 +88,7 @@ rg --type tsx -n "style=\{\{" frontend/src | rg -v "'--" | rg -v "\\\${"
 **Detects**: inline `style={{...}}` that isn't CSS-variable injection (`style={{ '--foo': x }}`) and isn't a runtime-computed template literal (`style={{ width: \`${pct}%\` }}`). Remaining hits are static inline styles that must move to Tailwind utilities.
 **Fix**: Replace with Tailwind classes. CSS-var values use arbitrary value syntax (`className="border-[var(--border)]"`).
 
-### 6. Global CSS import in component files (Critical)
+### 9. Global CSS import in component files (Critical)
 
 ```bash
 rg --type tsx -n "^import\s+['\"][^'\"]+\.css['\"]" frontend/src | rg -v "\.module\.css"
@@ -70,7 +97,7 @@ rg --type tsx -n "^import\s+['\"][^'\"]+\.css['\"]" frontend/src | rg -v "\.modu
 **Detects**: component `.tsx` files importing global CSS. Only `.module.css` scoped imports are allowed in components. The one exemption is `ui/index.ts` importing `./components.css` (aggregated BEM library CSS imported once).
 **Fix**: Either convert to Tailwind utilities or move the import into a library-level `index.ts` aggregation.
 
-### 7. Direct network calls outside exempt paths (Critical)
+### 10. Direct network calls outside exempt paths (Critical)
 
 ```bash
 rg --type ts --type tsx -n "\\b(fetch\\(|axios\\.|new\\s+WebSocket\\()" frontend/src \
@@ -82,7 +109,7 @@ rg --type ts --type tsx -n "\\b(fetch\\(|axios\\.|new\\s+WebSocket\\()" frontend
 **Detects**: direct `fetch()` / `axios` / `new WebSocket()` outside `@core/api/*` (RTK Query), `@core/websocket/wsClient.ts`, and the legitimate Web-Audio asset-loader in `core/audio/audioEngine.ts`.
 **Fix**: Convert to RTK Query endpoint (REST) or route through `wsClient` (WS).
 
-### 8. Cross-feature imports (Warning)
+### 11. Cross-feature imports (Warning)
 
 ```bash
 for f in $(rg --type ts --type tsx -l "@features/" frontend/src/features); do
@@ -95,7 +122,7 @@ done
 **Detects**: a file under `features/<X>/` importing from `@features/<Y>/` where X ≠ Y. Features must not depend on each other directly.
 **Fix**: Lift the shared code to `@common/*` or `@core/*`, depending on whether it's types/utilities or infrastructure.
 
-### 9. Banned TypeScript features (Critical)
+### 12. Banned TypeScript features (Critical)
 
 ```bash
 rg --type ts --type tsx -n "(:\\s*any\\b|\\bas\\s+any\\b|//\\s*@ts-ignore|!\\.|!\\[)" frontend/src
@@ -104,7 +131,7 @@ rg --type ts --type tsx -n "(:\\s*any\\b|\\bas\\s+any\\b|//\\s*@ts-ignore|!\\.|!
 **Detects**: `: any`, `as any`, `@ts-ignore`, non-null assertion chains (`foo!.bar`). All four are forbidden.
 **Fix**: Write the correct type, narrow properly, or refactor until the cast is unnecessary.
 
-### 10. Orb engine modification (Critical)
+### 13. Orb engine modification (Critical)
 
 ```bash
 git diff --name-only main -- frontend/src/ui/orb/orbEngine.ts

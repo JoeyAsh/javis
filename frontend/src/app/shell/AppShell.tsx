@@ -20,14 +20,7 @@ import { TopBar } from './TopBar';
 import { Dock } from './Dock';
 import { OrbStage } from './OrbStage';
 import { WindowHost } from './WindowHost';
-
-// follow_up renders visually as listening
-function toDisplayOrbState(
-    state: import('@common/types').AppOrbState,
-): import('@common/types').AppOrbState {
-    if (state === 'follow_up') return 'listening';
-    return state;
-}
+import { toDisplayOrbState } from './utils';
 
 export function AppShell(): ReactElement {
     const [idle, setIdle] = useState(false);

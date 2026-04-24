@@ -1,9 +1,6 @@
 import { ReactElement } from 'react';
+import { cx } from '@common/utils/cx';
 import type { MetricProps } from './Metric.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 export function Metric({
     value,
@@ -17,7 +14,7 @@ export function Metric({
 
     return (
         <span
-            className={cn('font-mono font-medium tabular-nums', sizeClass, valueColor, className)}
+            className={cx('font-mono font-medium tabular-nums', sizeClass, valueColor, className)}
         >
             {value}
             {unit && <small className="text-[9px] text-text-muted ml-[2px]">{unit}</small>}

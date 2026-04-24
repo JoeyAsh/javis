@@ -7,13 +7,8 @@
 import { type ReactElement, useCallback, useEffect } from 'react';
 import { PushToTalkButton, StatusDock } from '@ui';
 import { usePushToTalk } from '@features/conversation';
-import type { AppOrbState } from '@common/types';
 import type { DockProps } from './Dock.types';
-
-function toDisplayState(state: AppOrbState): AppOrbState {
-    if (state === 'follow_up') return 'listening';
-    return state;
-}
+import { toDisplayState } from './utils';
 
 export function Dock({ orbState, pttEnabled }: DockProps): ReactElement {
     const { pttState, handlePressStart, handlePressEnd } = usePushToTalk({ enabled: pttEnabled });

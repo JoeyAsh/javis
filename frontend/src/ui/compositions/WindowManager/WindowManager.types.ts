@@ -2,6 +2,9 @@ import type { ReactNode } from 'react';
 import type { SlotId } from '../../window/slotGrid';
 import type { PanelMode, PanelContentRenderProps } from '../../window/Window';
 
+/** Per-window local state tracked internally by WindowManager. */
+export type WindowLocalState = 'idle' | 'resizing';
+
 export type { PanelMode, PanelContentRenderProps };
 
 /** Internal per-drag state (compact slot-drag). */

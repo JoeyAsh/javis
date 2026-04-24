@@ -2,12 +2,9 @@ import {
     type MouseEvent,
     type ReactElement,
 } from 'react';
+import { cx } from '@common/utils/cx';
 import { useHoverSfx } from '@core/audio';
 import type { PanelProps } from './Panel.types';
-
-function cn(...parts: (string | undefined | false)[]): string {
-    return parts.filter(Boolean).join(' ');
-}
 
 export function Panel({
     ix,
@@ -31,7 +28,7 @@ export function Panel({
 
     return (
         <div
-            className={cn('lib-panel', focused && 'focused', className)}
+            className={cx('lib-panel', focused && 'focused', className)}
             style={style}
             onMouseDown={handleMouseDown}
             onMouseEnter={hoverSfx}

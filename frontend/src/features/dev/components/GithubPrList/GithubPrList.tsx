@@ -1,13 +1,9 @@
 import type { ReactElement } from 'react';
-import type { GithubPRLive, GithubPR } from '../../types';
 import { relativeTime } from '../../utils';
 import { DevSectionHeader } from '../DevSectionHeader';
 import type { GithubPrListProps } from './GithubPrList.types';
+import { isLive } from './utils';
 import styles from './GithubPrList.module.css';
-
-function isLive(pr: GithubPRLive | GithubPR): pr is GithubPRLive {
-    return 'updated_at' in pr;
-}
 
 export function GithubPrList({ prs, stale }: GithubPrListProps): ReactElement {
     return (

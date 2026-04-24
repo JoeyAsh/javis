@@ -1,13 +1,8 @@
 import type { ReactElement } from 'react';
 import { DevSectionHeader } from '../DevSectionHeader';
 import type { DockerContainersListProps } from './DockerContainersList.types';
+import { containerPillClass } from './utils';
 import styles from './DockerContainersList.module.css';
-
-function containerPillClass(status: 'running' | 'exited' | 'restarting'): string {
-    if (status === 'running') return 'pill ok';
-    if (status === 'restarting') return 'pill warn';
-    return 'pill err';
-}
 
 export function DockerContainersList({ containers }: DockerContainersListProps): ReactElement {
     return (

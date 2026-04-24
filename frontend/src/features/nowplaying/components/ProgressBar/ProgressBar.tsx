@@ -1,18 +1,8 @@
-import { useMemo } from 'react';
 import type { ReactElement } from 'react';
-import { useMockTicker } from '@common/hooks/useMockTicker';
 import { formatMs } from '../../utils';
 import type { ProgressBarProps } from './ProgressBar.types';
+import { useLiveProgress } from './useLiveProgress';
 import styles from './ProgressBar.module.css';
-
-/** Ticks forward 1 s per interval while the track is playing. */
-function useLiveProgress(playing: boolean, progressMs: number, durationMs: number): number {
-    const tick = useMockTicker(1000, !playing);
-    return useMemo<number>(() => {
-        if (!playing) return progressMs;
-        return (progressMs + tick * 1000) % durationMs;
-    }, [tick, playing, progressMs, durationMs]);
-}
 
 export function ProgressBar({ track }: ProgressBarProps): ReactElement {
     const progress = useLiveProgress(track.playing, track.progressMs, track.durationMs);

@@ -78,7 +78,9 @@ Zugriff ausschließlich über Public-Barrels. Deep-Imports verboten (ESLint-enfo
 ### Komponenten-Regeln (non-negotiable)
 
 - **Eine Komponente pro Datei.** Kein zweiter `function Foo` oder `const Foo: FC = ...` im selben `.tsx`.
-- **Interfaces nicht in `.tsx`.** Props + interne Typen leben in `<Component>.types.ts` neben der `.tsx`. Domain-Typen (`MailMessage`, WS-Payloads) in `features/<name>/types.ts`.
+- **Keine Typen in `.tsx` oder Hook-`.ts`-Dateien.** Jede `interface`-, `type`- und `enum`-Deklaration lebt in `<Component>.types.ts` neben der `.tsx`. Das gilt auch für Union-Types (`type TabId = 'a' | 'b'`), "kleine" Aliases und Helper-Component-Props. Keine "private" oder "klein"-Ausnahme.
+- **Keine Top-Level-Hilfsfunktionen in `.tsx`.** Util-Funktionen, Formatter, Classifier, Type Guards und kleine interne Helpers gehören in eine Geschwister-Datei `utils.ts` (oder spezifischer: `format.ts`, `classify.ts`). Ein `function foo(...)` oder `const foo = (...)` (Kleinbuchstabenstart) auf Modulebene in einer `.tsx` ist ein KRITISCHER Verstoß.
+- **Keine Modul-Level-Konstanten in `.tsx`.** Konstanten wie `const MIN_W = 180` gehören in `constants.ts` oder an den Anfang von `utils.ts`. UPPERCASE-Namen sind das Erkennungszeichen.
 - **Keine Inline-Styles.** Einzige Ausnahme: CSS-Variablen-Injection, z. B. `style={{ '--panel-opacity': x } as React.CSSProperties}`.
 - **Tailwind first, CSS Modules bei Bedarf.** Keyframes, Blend-Modes, komplexe Gradienten dürfen in `<Component>.module.css` — ausschließlich von dieser Komponente konsumiert. **Kein globales `import './Foo.css'`.**
 - **Named export + default export** auf jeder Komponente.

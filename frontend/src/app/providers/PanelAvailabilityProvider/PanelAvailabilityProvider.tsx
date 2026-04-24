@@ -5,7 +5,7 @@
  * Moved from src/contexts/PanelAvailability.tsx to src/app/providers/.
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { PanelId } from '@common/types';
 import type {
@@ -13,8 +13,8 @@ import type {
     PanelAvailabilityContextValue,
     PanelAvailabilityProviderProps,
 } from './PanelAvailabilityProvider.types';
-
-const PanelAvailabilityContext = createContext<PanelAvailabilityContextValue | null>(null);
+import { PanelAvailabilityContext } from './PanelAvailabilityContext';
+import { usePanelAvailabilityContext } from './usePanelAvailabilityContext';
 
 export function PanelAvailabilityProvider({
     children,
@@ -38,14 +38,6 @@ export function PanelAvailabilityProvider({
             {children}
         </PanelAvailabilityContext.Provider>
     );
-}
-
-function usePanelAvailabilityContext(): PanelAvailabilityContextValue {
-    const ctx = useContext(PanelAvailabilityContext);
-    if (!ctx) {
-        throw new Error('usePanelAvailable must be used inside <PanelAvailabilityProvider>');
-    }
-    return ctx;
 }
 
 export function usePanelAvailable(id: PanelId, available: boolean): void {

@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Label, Mono } from '@ui';
 import { Toggle } from '../Toggle';
-import type { AudioSectionProps } from './AudioSection.types';
-
-type MicPermission = 'unknown' | 'granted' | 'denied';
+import type { AudioSectionProps, MicPermission } from './AudioSection.types';
 
 export function AudioSection({
     micDeviceId,

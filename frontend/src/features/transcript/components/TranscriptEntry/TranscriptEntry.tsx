@@ -1,11 +1,7 @@
 import type { ReactElement } from 'react';
+import { formatTime } from '@common/utils/time';
 import type { TranscriptEntryProps } from './TranscriptEntry.types';
 import styles from './TranscriptEntry.module.css';
-
-function formatTime(iso: string): string {
-    const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
 
 export function TranscriptEntry({ turn }: TranscriptEntryProps): ReactElement {
     const isUser = turn.role === 'user';

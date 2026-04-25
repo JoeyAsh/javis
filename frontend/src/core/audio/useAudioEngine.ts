@@ -156,15 +156,25 @@ export function useAudioEngine(
 
         if (prev === orbState) return;
 
-        if (prev !== null) {
+        // state_change fires on every real transition except:
+        //   - initial mount (prev === null)
+        //   - entering follow_up: it's a soft, continuation state — no jarring
+        //     state-change cue; the ambient loop resuming provides the implicit signal.
+        if (prev !== null && orbState !== 'follow_up') {
             engine.playOneShot('state_change');
         }
 
         if (prev === 'listening') {
             engine.setDucking(false);
             engine.playOneShot('mic_close');
+        } else if (prev === 'follow_up') {
+            // follow_up exit: ambient loop stays alive for the next entry branch to handle.
+            // No ducking was active, no scan was running — nothing to clean up here.
         } else if (prev === 'speaking') {
             engine.setDucking(false);
+            // Barge-in only when the user literally interrupted: listening arrives while
+            // audio was playing. A follow_up transition means audio finished normally —
+            // play speech_end so the end-of-speech cue fires reliably.
             const isBargeIn = orbState === 'listening';
             if (isBargeIn) {
                 engine.playOneShot('barge_in');
@@ -180,10 +190,19 @@ export function useAudioEngine(
             engine.stop('scan');
         }
 
-        if (orbState === 'idle' || orbState === 'follow_up') {
+        if (orbState === 'idle') {
             stopIdleLoops();
             engine.play('ambient');
             startIdleTimer();
+        } else if (orbState === 'follow_up') {
+            // Softer alert-but-relaxed listening window: ambient resumes, scan stops,
+            // no idle-pulse timer (we're still actively in a conversation turn),
+            // no mic_open SFX (mic is already open from the previous listening state),
+            // no state_change cue (suppressed above — ambient loop is the implicit signal).
+            stopIdleLoops();
+            engine.stop('scan');
+            engine.setDucking(false);
+            engine.play('ambient');
         } else if (orbState === 'listening') {
             stopIdleLoops();
             engine.setDucking(true);
@@ -236,7 +255,9 @@ export function useAudioEngine(
     }, [connected]);
 
     useEffect(() => {
-        if ((orbState === 'idle' || orbState === 'follow_up') && idleTimerRef.current === null) {
+        // Heartbeat is an idle-only ambient — don't play it during follow_up
+        // (which is an active conversation window, not a true resting state).
+        if (orbState === 'idle' && idleTimerRef.current === null) {
             if (heartbeatEnabled) {
                 engineRef.current.play('heartbeat');
             } else {

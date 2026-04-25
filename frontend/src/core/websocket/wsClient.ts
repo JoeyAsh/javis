@@ -65,7 +65,17 @@ class WsClientImpl implements WsClient {
     // ---------------------------------------------------------------------------
 
     connect(url: string): void {
-        if (this.destroyed) return;
+        // Idempotent: if already connecting/open to the same URL, no-op.
+        // This makes the call safe under React 18 StrictMode, where the
+        // WebSocketProvider's effect runs mount → unmount → remount in dev,
+        // and the provider may also re-render under HMR.
+        if (this.url === url && this.ws !== null && this.state !== 'closed') {
+            return;
+        }
+        // Switching URLs (rare): tear down first.
+        if (this.ws !== null) {
+            this.tearDown();
+        }
         this.url = url;
         this.destroyed = false;
         this.openSocket();
@@ -73,13 +83,21 @@ class WsClientImpl implements WsClient {
 
     disconnect(): void {
         this.destroyed = true;
+        this.tearDown();
+    }
+
+    private tearDown(): void {
         if (this.reconnectTimer !== null) {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
-        if (this.ws) {
+        if (this.ws !== null) {
             this.ws.onclose = null;
-            this.ws.close();
+            try {
+                this.ws.close();
+            } catch {
+                // ignore — close on a CONNECTING socket is best-effort
+            }
             this.ws = null;
         }
         this.setReadyState('closed');

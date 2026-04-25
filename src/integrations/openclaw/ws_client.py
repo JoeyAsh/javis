@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -501,6 +502,12 @@ class OpenClawWSClient:
         # Step 2: build signature and send connect
         role = "operator"
         signed_at_ms = int(time.time() * 1000)
+        if sys.platform == "win32":
+            platform = "win32"
+        elif sys.platform == "darwin":
+            platform = "darwin"
+        else:
+            platform = "linux"
         payload_str = _build_device_auth_payload_v3(
             device_id=device_id,
             client_id=_CLIENT_ID,
@@ -510,7 +517,7 @@ class OpenClawWSClient:
             signed_at_ms=signed_at_ms,
             token=gateway_token,
             nonce=nonce,
-            platform="linux",
+            platform=platform,
         )
         signature = _sign_device_payload(private_key_pem, payload_str)
 
@@ -521,7 +528,7 @@ class OpenClawWSClient:
                 "id": _CLIENT_ID,
                 "version": _CLIENT_VERSION,
                 "mode": _CLIENT_MODE,
-                "platform": "linux",
+                "platform": platform,
             },
             "caps": [],
             "role": role,

@@ -80,7 +80,19 @@ export function useAudioAnalyser(): UseAudioAnalyserReturn {
 
             source.connect(gain);
             const analyserNode = analyserRef.current;
-            if (!analyserNode) return;
+            if (!analyserNode) {
+                activeSourceRef.current = null;
+                gainRef.current = null;
+                speechPlayingRef.current = false;
+                queueRef.current = queueRef.current.slice(1);
+                playingRef.current = false;
+                if (queueRef.current.length === 0) {
+                    setIsSpeaking(false);
+                } else {
+                    void playNext();
+                }
+                return;
+            }
             gain.connect(analyserNode);
 
             source.onended = () => {

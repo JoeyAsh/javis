@@ -2962,7 +2962,7 @@ async def voices_handler(request: web.Request) -> web.Response:
 # every request. Only the sections relevant to spoken announcements are kept;
 # the DM Auto-Reply Policy table is excluded (irrelevant for TTS generation).
 _soul_extract_cache: str | None = None
-_SOUL_MD_PATH: Path = Path("/home/paps/.openclaw/workspace/SOUL.md")
+_SOUL_MD_PATH: Path = Path.home() / ".openclaw" / "workspace" / "SOUL.md"
 _SOUL_SECTIONS_WANTED = {
     "## Core Directives",
     "## Response Style",

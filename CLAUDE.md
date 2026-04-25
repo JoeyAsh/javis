@@ -54,9 +54,17 @@ Einstiegspunkt: **`jarvis-dev`** (Orchestrator, `claude-opus-4-7`). Subagents (a
 Definitionen in `.claude/agents/`.
 
 ### Workflow
-1. **Planning** — Neue Feature-Idee → `jarvis-dev` ruft `feature-planner` auf. Planner drafted und retourniert den Spec-Body + Slug + Summary. Orchestrator publisht via Skill `jarvis-publish-issue` als GitHub-Issue im Backlog. **Keine lokalen Spec-Dateien mehr.** **Stopp** — keine Implementation, bis der User explizit den Auftrag erteilt.
-2. **Implementation** (nur nach Freigabe) — `jarvis-dev` arbeitet den Implementation Plan Schritt für Schritt ab: `backend-dev` / `frontend-dev` → `tester` → `reviewer`. Bei `NEEDS_CHANGES` wird der jeweilige Dev-Agent mit dem Review-Report erneut angerufen (max. 3 Zyklen pro Batch).
-3. **Definition of Done** — Feature gilt nur als fertig, wenn **alle** Acceptance Criteria implementiert sind, alle neuen/geänderten Dateien Tests haben und der finale `reviewer` `PASS` zurückgibt. Keine stillschweigenden Auslassungen, keine Restarbeit für den User.
+
+**Default (lightweight) — gilt für die meisten Tasks:** Branch + Code + PR + Merge. Kein GitHub-Issue. Kein `feature-planner`. Bugfixes, kleine Features, Refactors laufen direkt: Orchestrator brieft `backend-dev` / `frontend-dev`, danach `tester` (außer bei trivialen 1–2-Zeilen-Fixes), danach `reviewer`, dann PR.
+
+**Heavy (opt-in, nur wenn der User es ausdrücklich verlangt — Schlüsselwörter wie "mach einen Spec", "leg ein Issue an", "ins Backlog"):**
+1. **Planning** — `jarvis-dev` ruft `feature-planner` auf. Planner drafted und retourniert Spec-Body + Slug + Summary. Orchestrator publisht via Skill `jarvis-publish-issue` als GitHub-Issue im Backlog. **Stopp** — keine Implementation, bis der User explizit den Auftrag erteilt.
+2. **Implementation** — wie Default-Workflow.
+3. **Issue-Lifecycle** — beim Schließen des Issues als completed wird der Project-Board-Eintrag automatisch auf `Done` verschoben (siehe Skill `jarvis-move-issue-status`).
+
+**Definition of Done (beide Modi)** — alle bewussten Acceptance Criteria sind implementiert, alle neuen/geänderten Dateien Tests haben (Trivial-Fixes ausgenommen, wenn explizit so vereinbart), und der finale `reviewer` gibt `PASS` zurück (oder der Orchestrator skippt Review explizit für triviale Fälle und vermerkt das im PR-Body).
+
+**Niemals automatisch** — GitHub-Issue anlegen, Project-Board ändern, Spec im `feature-planner`-Stil draften. Diese drei Schritte passieren nur auf explizite User-Anforderung.
 
 ## Issue Lifecycle (Auto-Convention)
 

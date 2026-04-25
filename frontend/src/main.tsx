@@ -1,7 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { AppProviders } from '@app';
+// @app/providers avoids bare-alias Vite dev-cache failure; do not revert to '@app'.
+import { AppProviders } from '@app/providers';
 import './styles/tokens.css';
 import './index.css';
 

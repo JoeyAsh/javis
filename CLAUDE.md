@@ -58,6 +58,12 @@ Definitionen in `.claude/agents/`.
 2. **Implementation** (nur nach Freigabe) — `jarvis-dev` arbeitet den Implementation Plan Schritt für Schritt ab: `backend-dev` / `frontend-dev` → `tester` → `reviewer`. Bei `NEEDS_CHANGES` wird der jeweilige Dev-Agent mit dem Review-Report erneut angerufen (max. 3 Zyklen pro Batch).
 3. **Definition of Done** — Feature gilt nur als fertig, wenn **alle** Acceptance Criteria implementiert sind, alle neuen/geänderten Dateien Tests haben und der finale `reviewer` `PASS` zurückgibt. Keine stillschweigenden Auslassungen, keine Restarbeit für den User.
 
+## Issue Lifecycle (Auto-Convention)
+
+When the orchestrator closes an issue on `JoeyAsh/javis` as completed (`gh issue close ... --reason completed`), it MUST in the same batch also transition the project-board item to `Done` via the `jarvis-move-issue-status` skill (option ID `eeaaf043`). Closing without moving leaves the board (`https://github.com/users/JoeyAsh/projects/4`) out of sync — that is a defect. Same rule for `--reason not planned`: move the board item to `Done` (or remove from the board if explicitly out of scope). This is a non-negotiable pairing — never close-only.
+
+When the orchestrator merges a PR that resolves issues (commit body contains `Closes #N`), GitHub auto-closes the issues but does NOT move board items. The orchestrator is still responsible for the board move via `jarvis-move-issue-status`.
+
 ## Skills
 
 Slash-invocable Skills in `.claude/skills/`. Orchestrator und Subagents nutzen sie statt duplizierter Inline-Commands. Aktuelle Skills:

@@ -51,6 +51,18 @@ If any answer is N, STOP and fix it before returning.
 - Three.js — Orb visuals (`@ui/orb/orbEngine.ts` — **never modify**)
 - Vitest + React Testing Library — tests
 
+## Navigation Tools (Serena)
+
+When editing existing components/hooks/slices, prefer Serena's symbolic tools to navigate large files instead of full reads:
+
+- `mcp__serena__get_symbols_overview <file>` — list top-level symbols (the component, its `.types.ts` interfaces, helpers).
+- `mcp__serena__find_symbol <name_path> --include_body=true` — load only the symbol you need.
+- `mcp__serena__find_referencing_symbols <name_path>` — find every consumer before changing a public Prop type or hook return type. If you change a public signature, update every consumer in the same batch.
+- `mcp__serena__replace_symbol_body` — surgical body edit (still output the full file to the orchestrator).
+- `mcp__serena__rename_symbol` — for renames across `.tsx` / `.types.ts` / barrel files.
+
+Brand-new files → `Write` directly. Serena tools require existing symbols.
+
 ## Layered Architecture
 
 ```
@@ -129,7 +141,7 @@ Inside the same layer, relative imports (`./`, `../`) are OK. Crossing layers �
 - Binary channels (mic upload, TTS audio queue with barge-in) are not RTK Query — they live in `core/audio/` and use the raw `WsClient` directly. Barge-in requires explicit queue flush that the cache model doesn't express cleanly.
 
 ## Inputs You Will Receive
-- A GitHub issue URL/number on `JoeyAsh/javis` with the spec (fetch: `gh issue view <url> --repo JoeyAsh/javis --json body,title,number -q '.body'`), **or** — for approved refactors — a direct implementation brief from the orchestrator.
+- A GitHub issue URL/number on `JoeyAsh/javis` with the spec (fetch via the `jarvis-fetch-spec` skill), **or** — for approved refactors — a direct implementation brief from the orchestrator.
 - A specific numbered step or batch from the implementation plan.
 - Existing file contents when editing.
 - Optional: a `reviewer` report — treat every `## Critical` item as a mandatory fix.

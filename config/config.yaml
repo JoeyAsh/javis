@@ -57,6 +57,10 @@ smart_home:
   enabled: false
 
 api:
+  # Bind address for WS (:8765) and HTTP (:8766) servers.
+  # Default is loopback — safe for a personal assistant with no auth layer.
+  # Set to "0.0.0.0" only when you need LAN/WAN access AND have added auth.
+  host: "127.0.0.1"
   cors_origins: ["http://localhost:5173"]
 
 logging:

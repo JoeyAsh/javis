@@ -3572,9 +3572,13 @@ async def start_ws_server(
 
     logger.info("Voice pipeline components ready")
 
-    # Server ports and CORS
+    # Server ports, host and CORS
     ws_port = config.get("ws_port", 8765)
     http_port = config.get("http_port", 8766)
+    # Default is loopback — JARVIS is a personal assistant; exposing to 0.0.0.0
+    # with no authentication is a security risk. Override in config.yaml only
+    # if you deliberately want LAN/WAN exposure and have added auth.
+    host = config.get("host", "127.0.0.1")
     cors_origins = config.get("cors_origins", ["http://localhost:5173"])
 
     # WebSocket application
@@ -3611,16 +3615,16 @@ async def start_ws_server(
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)
     await ws_runner.setup()
-    ws_site = web.TCPSite(ws_runner, "0.0.0.0", ws_port)
+    ws_site = web.TCPSite(ws_runner, host, ws_port)
     await ws_site.start()
-    logger.info(f"WebSocket server started on port {ws_port}")
+    logger.info(f"WebSocket server started on {host}:{ws_port}")
 
     # Start HTTP server
     http_runner = web.AppRunner(http_app)
     await http_runner.setup()
-    http_site = web.TCPSite(http_runner, "0.0.0.0", http_port)
+    http_site = web.TCPSite(http_runner, host, http_port)
     await http_site.start()
-    logger.info(f"HTTP server started on port {http_port}")
+    logger.info(f"HTTP server started on {host}:{http_port}")
 
     # Log-panel sink — wire loguru → WS broadcast when feature is enabled.
     log_panel_cfg = cfg.get_section("log_panel") or {}

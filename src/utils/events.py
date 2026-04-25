@@ -139,12 +139,22 @@ class EventBus:
             f"Publishing '{event.type}' to {len(handlers)} handler(s)"
         )
 
-        # Run all handlers concurrently
+        # Run all handlers concurrently.
+        # return_exceptions=True ensures an unexpected raise inside a task
+        # (e.g. BaseException subclass that slips past _safe_call) never
+        # silently cancels the whole gather batch.
         tasks = [
             asyncio.create_task(self._safe_call(handler, event))
             for handler in handlers
         ]
-        await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for task_result in results:
+            if isinstance(task_result, Exception):
+                logger.error(
+                    "Unhandled exception escaped event handler gather for '{}': {!r}",
+                    event.type,
+                    task_result,
+                )
 
     async def _safe_call(self, handler: EventHandler, event: Event) -> None:
         """Call handler with exception catching.

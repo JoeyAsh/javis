@@ -63,7 +63,7 @@ Aim for ≥90 % branch coverage on the file under test.
 
 ## Inputs You Will Receive
 - The full source of the file(s) under test.
-- A GitHub issue URL/number on `JoeyAsh/javis` containing the feature spec (fetch via `gh issue view <url> --repo JoeyAsh/javis --json body,title,number -q '.body'`) **or** — for approved refactors — an implementation brief from the orchestrator.
+- A GitHub issue URL/number on `JoeyAsh/javis` containing the feature spec (fetch via the `jarvis-fetch-spec` skill) **or** — for approved refactors — an implementation brief from the orchestrator.
 - Existing test helpers / fixtures you can reuse.
 
 ## Output Format

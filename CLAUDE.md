@@ -1,7 +1,17 @@
 # CLAUDE.md — JARVIS
 
-## Project
-Voice-activated AI assistant. Wake word → STT → Claude API → TTS. PC control + Smart Home. Runs locally, Docker, Raspberry Pi.
+## Vision
+A personal AI assistant in the spirit of Tony Stark's JARVIS — calm, witty, always-on. Built for a single user (senior software engineer & architect) who runs it on Linux, Windows, and macOS workstations and as an always-on companion on a Raspberry Pi 5.
+
+Three pillars:
+- **Voice-first companion** — wake word → STT → reasoning → TTS, with barge-in, backchannels, conversation mode, persona. Voice quality matters as much as answer quality.
+- **Day & life planning** — daily briefings, calendar/mail coordination, proactive reminders, focus mode, end-of-day review.
+- **Programming peer** — pairs with Claude Code and OpenClaw skills to triage PRs, summarise repo activity, capture ADRs by voice, and run review/refactor sessions.
+
+## Stack at a glance
+- **JARVIS** owns the voice pipeline (mic, STT, TTS, barge-in, prosody), the React HUD (Orb + panels), realtime integrations (Spotify, Google, GitHub/GitLab), the proactive scheduler, and persistence (SQLite).
+- **OpenClaw** (local clone at `D:/Repos/openclaw`, runtime under `~/.openclaw/`) owns the agent runtime: sessions, memory, model routing, tool use, channels (WhatsApp/Telegram/Slack/Signal/iMessage/…), skills, and automation (cron, webhooks).
+- **Claude Code** is the heavyweight coding peer. JARVIS routes non-trivial coding asks through OpenClaw → Claude Code and reads the result back conversationally.
 
 ## Conventions
 - **Async-first**: all I/O and API calls `async`. Entrypoint: `python -m main` (aiohttp WS server on 8765 / HTTP on 8766; FastAPI is NOT used).
@@ -35,7 +45,7 @@ Claude (Opus, Haupt-Session) ist **ausschließlich Orchestrator**. Er **schreibt
 
 ## Dev Agents
 Einstiegspunkt: **`jarvis-dev`** (Orchestrator, `claude-opus-4-7`). Subagents (alle `claude-sonnet-4-6`):
-- `feature-planner` — drafted pro Feature einen Spec als Text und übergibt ihn per `SendMessage` an `product-owner`, der ihn als GitHub-Issue im Backlog veröffentlicht. Kein Code, keine lokalen Dateien.
+- `feature-planner` — drafted pro Feature einen Spec als Text. Gibt den Body + Slug + Summary an den Orchestrator zurück, der via Skill `jarvis-publish-issue` ein GitHub-Issue im Backlog anlegt. Kein Code, keine lokalen Dateien.
 - `backend-dev` — Python-Backend (audio, brain, actions, FastAPI, WS).
 - `frontend-dev` — React/TypeScript/Three.js Frontend.
 - `tester` — pytest (+asyncio) Backend, Vitest + RTL Frontend. Externes I/O immer gemockt.
@@ -44,9 +54,29 @@ Einstiegspunkt: **`jarvis-dev`** (Orchestrator, `claude-opus-4-7`). Subagents (a
 Definitionen in `.claude/agents/`.
 
 ### Workflow
-1. **Planning** — Neue Feature-Idee → `jarvis-dev` öffnet ein Agent-Team und ruft `feature-planner` + `product-owner` darin. Planner drafted, schickt per `SendMessage` an den PO, der eine GitHub-Issue im Backlog anlegt. **Keine lokalen Spec-Dateien mehr.** **Stopp** — keine Implementation, bis der User explizit den Auftrag erteilt.
+1. **Planning** — Neue Feature-Idee → `jarvis-dev` ruft `feature-planner` auf. Planner drafted und retourniert den Spec-Body + Slug + Summary. Orchestrator publisht via Skill `jarvis-publish-issue` als GitHub-Issue im Backlog. **Keine lokalen Spec-Dateien mehr.** **Stopp** — keine Implementation, bis der User explizit den Auftrag erteilt.
 2. **Implementation** (nur nach Freigabe) — `jarvis-dev` arbeitet den Implementation Plan Schritt für Schritt ab: `backend-dev` / `frontend-dev` → `tester` → `reviewer`. Bei `NEEDS_CHANGES` wird der jeweilige Dev-Agent mit dem Review-Report erneut angerufen (max. 3 Zyklen pro Batch).
 3. **Definition of Done** — Feature gilt nur als fertig, wenn **alle** Acceptance Criteria implementiert sind, alle neuen/geänderten Dateien Tests haben und der finale `reviewer` `PASS` zurückgibt. Keine stillschweigenden Auslassungen, keine Restarbeit für den User.
+
+## Skills
+
+Slash-invocable Skills in `.claude/skills/`. Orchestrator und Subagents nutzen sie statt duplizierter Inline-Commands. Aktuelle Skills:
+
+| Skill | Zweck |
+|---|---|
+| `jarvis-run-dev` | Backend (aiohttp :8765/:8766) + Frontend (Vite :5173) starten, mit Port-Check und Health-Polling. Cross-platform venv-Resolution. |
+| `jarvis-tests-run` | pytest + vitest in einem Aufruf, vereinheitlichte PASS/FAIL-Summary. |
+| `jarvis-feature-scaffold` | Komplette Frontend-Feature-Folder mit allen Files (Slice/Api/Selectors/Hook/Panel/Tests) emittieren. Rule-compliant by construction. |
+| `jarvis-ws-message` | 13-Schritt-Checkliste für neuen WS-Message-Type (Backend-Broadcast → Frontend-Subscribe → Slice → Tests beidseitig). |
+| `jarvis-brief-template` | Verbindlicher Delegations-Brief mit MANDATORY-RULES-Block (Quelle: `agents/frontend-dev.md`) + Y/N-Self-Check. Pflicht für jeden frontend-dev-Brief. |
+| `jarvis-review-architecture` | Ripgrep-Sweep für alle Architektur-Regeln (interface-in-tsx, multi-component, inline-style, cross-feature-import, …). Severity-grouped Report. |
+| `jarvis-fetch-spec` | Issue-Body von `JoeyAsh/javis` fetchen — zentrale Quelle für Dev/Test/Review-Agents. |
+| `jarvis-publish-issue` | Spec-Body als GitHub-Issue auf `JoeyAsh/javis` publishen, Label `feature`, Projektboard `Backlog`. Ersetzt den retired `product-owner`-Agent. |
+| `jarvis-move-issue-status` | Issue-Status auf dem Projektboard transitionieren (Backlog → … → Done). |
+| `jarvis-issue-status` | Schneller Health-Check des Projektboards: alle offenen Issues nach Status gruppiert. |
+| `jarvis-symbol-impact` | Via Serena alle Referenzen eines Symbols auflisten — vor jedem Refactor / Signatur-Change. |
+
+Skills werden via Slash-Command oder direkter Aufruf durch den Orchestrator genutzt. Der Orchestrator ruft Skills auch in der Implementation-Phase, um deterministisches Tooling (Tests, GitHub-State) nicht an Sonnet-Subagents zu delegieren.
 
 ## Frontend Architecture
 
@@ -75,16 +105,16 @@ Zugriff ausschließlich über Public-Barrels. Deep-Imports verboten (ESLint-enfo
 - **WebSocket-Streams: RTK Query Streaming Queries** via `onCacheEntryAdded` + `updateCachedData`. Singleton-Client in `core/websocket/wsClient.ts`. Ausnahme: Binär-Mic-Upload + TTS-Audio-Queue bleiben raw WS in `core/audio/` (Barge-in + Queue-Flush passen nicht ins Cache-Modell).
 - **OpenAPI-Codegen**: bewusst deaktiviert. Endpoints werden aktuell manuell geschrieben. Migration auf `@rtk-query/codegen-openapi` folgt nach Backend-Refactor.
 
-### Komponenten-Regeln (non-negotiable)
+### Component Rules
 
-- **Eine Komponente pro Datei.** Kein zweiter `function Foo` oder `const Foo: FC = ...` im selben `.tsx`.
-- **Keine Typen in `.tsx` oder Hook-`.ts`-Dateien.** Jede `interface`-, `type`- und `enum`-Deklaration lebt in `<Component>.types.ts` neben der `.tsx`. Das gilt auch für Union-Types (`type TabId = 'a' | 'b'`), "kleine" Aliases und Helper-Component-Props. Keine "private" oder "klein"-Ausnahme.
-- **Keine Top-Level-Hilfsfunktionen in `.tsx`.** Util-Funktionen, Formatter, Classifier, Type Guards und kleine interne Helpers gehören in eine Geschwister-Datei `utils.ts` (oder spezifischer: `format.ts`, `classify.ts`). Ein `function foo(...)` oder `const foo = (...)` (Kleinbuchstabenstart) auf Modulebene in einer `.tsx` ist ein KRITISCHER Verstoß.
-- **Modul-Level-Konstanten in `.tsx`: nur komponenten-lokale Lookup-Tabellen.** Erlaubt sind Style-/Config-Lookups wie `VARIANT_CLASSES`, `SIZE_CLASSES`, `PARTICLE_CONFIGS`, `TICK_ANGLES` — strikt an **eine** Komponente gebunden, nur von ihr konsumiert. Verboten sind numerische Schwellen (`MIN_W = 180`), Timings (`TIMEOUT_MS = 10_000`) und cross-component-Werte — die gehören in `constants.ts` daneben. Faustregel: wird der Wert außerhalb der Komponente gebraucht oder ist es eine Zahl/ein Zeitwert, raus damit.
-- **Keine Inline-Styles.** Einzige Ausnahme: CSS-Variablen-Injection, z. B. `style={{ '--panel-opacity': x } as React.CSSProperties}`.
-- **Tailwind first, CSS Modules bei Bedarf.** Keyframes, Blend-Modes, komplexe Gradienten dürfen in `<Component>.module.css` — ausschließlich von dieser Komponente konsumiert. **Kein globales `import './Foo.css'`.**
-- **Named export + default export** auf jeder Komponente.
-- **Strikt TypeScript**: kein `any`, kein `!`, kein `@ts-ignore`. Fehlt ein Type, wird er geschrieben.
+Die vollständigen, verbindlichen Komponenten-Regeln (12 Punkte: `interface` für Props, Types in `.types.ts`, eine Komponente pro Datei, Tailwind-first, keine Inline-Styles, keine direkten `fetch`/`axios`/`new WebSocket`, strikt TypeScript, etc.) liegen in `.claude/agents/frontend-dev.md` unter "MANDATORY RULES" und sind die Single Source of Truth. Subagents lesen sie dort. Auch der Skill `jarvis-brief-template` zieht aus dieser Quelle.
+
+Kurzform für den Orchestrator:
+- 1 Komponente pro Datei, Types in `<Component>.types.ts`, Helper in `utils.ts`/`constants.ts`.
+- Tailwind first, `.module.css` nur mit Justification-Kommentar.
+- Kein `fetch`/`axios`/`new WebSocket()` außerhalb `@core/api/*` und `@core/websocket/wsClient.ts`.
+- Strikt TypeScript: kein `any`/`!`/`@ts-ignore`. Named + Default Export.
+- `@ui/orb/orbEngine.ts` ist eingefroren.
 
 ### Feature-Anatomie
 
@@ -119,18 +149,6 @@ frontend/src/features/<name>/
 @test/*      → src/test/*
 ```
 
-### Verboten (ESLint `no-restricted-imports` auf `error`)
-
-- Feature-zu-Feature-Imports
-- Deep-Imports in `@ui` — nur `import { Button } from '@ui'`
-- `fetch()` / `axios` direkt — immer RTK Query
-- Globale `import './Foo.css'` — nur scoped `.module.css`
-- Mehr als eine Komponente pro Datei
-- Interfaces in `.tsx`-Dateien
-- Inline-Styles (außer CSS-Variablen-Injection)
-- `any`, `!`, `@ts-ignore`
-- `border-radius > 4px`
-- Änderungen an `src/ui/orb/orbEngine.ts` (Three.js-Engine — black box)
 
 ## Further Docs
 - Architecture & runtime agents: `docs/ARCHITECTURE.md`

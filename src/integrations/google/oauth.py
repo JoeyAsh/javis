@@ -14,11 +14,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+import aiohttp
 import google.auth.exceptions
 import google.auth.transport.requests
 import google.oauth2.credentials
 import googleapiclient.discovery
-import requests
 from google_auth_oauthlib.flow import InstalledAppFlow
 from loguru import logger
 
@@ -189,7 +189,7 @@ class GoogleOAuthService:
 
         try:
             creds = await self._load_cached_credentials()
-        except Exception as exc:
+        except (OSError, json.JSONDecodeError, ValueError, KeyError) as exc:
             logger.warning("is_authenticated: error loading cache — {}", exc)
             return False
 
@@ -220,7 +220,7 @@ class GoogleOAuthService:
 
         if creds is not None and creds.token:
             try:
-                await asyncio.to_thread(self._sync_revoke, creds)
+                await self._async_revoke(creds)
                 logger.info("Google token revoked successfully")
             except GoogleOAuthRevokeError:
                 # Delete local file even when revocation fails so JARVIS is clean
@@ -440,16 +440,26 @@ class GoogleOAuthService:
         )
         logger.debug("Credentials persisted to {}", self._token_cache_path)
 
-    def _sync_revoke(self, creds: google.oauth2.credentials.Credentials) -> None:
-        """Blocking revocation call — run via asyncio.to_thread by caller."""
+    async def _async_revoke(self, creds: google.oauth2.credentials.Credentials) -> None:
+        """Async revocation call using aiohttp — no thread wrapper needed."""
         try:
-            resp = requests.post(
-                "https://oauth2.googleapis.com/revoke",
-                params={"token": creds.token},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=10,
-            )
-        except requests.exceptions.RequestException as exc:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://oauth2.googleapis.com/revoke",
+                    params={"token": creds.token},
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status not in (200, 204):
+                        body = await resp.text()
+                        raise GoogleOAuthRevokeError(
+                            f"Revocation endpoint returned HTTP {resp.status}: {body}",
+                            spoken_message=(
+                                "I couldn't sign out of Google right now. "
+                                "Your local credentials have been removed."
+                            ),
+                        )
+        except aiohttp.ClientError as exc:
             raise GoogleOAuthRevokeError(
                 f"Revocation request failed (network error): {exc}",
                 spoken_message=(
@@ -457,14 +467,6 @@ class GoogleOAuthService:
                     "Your local credentials have been removed."
                 ),
             ) from exc
-        if resp.status_code not in (200, 204):
-            raise GoogleOAuthRevokeError(
-                f"Revocation endpoint returned HTTP {resp.status_code}: {resp.text}",
-                spoken_message=(
-                    "I couldn't sign out of Google right now. "
-                    "Your local credentials have been removed."
-                ),
-            )
 
     def _delete_cache_file(self) -> None:
         """Remove the token cache file if it exists."""

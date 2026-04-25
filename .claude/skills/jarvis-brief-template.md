@@ -22,20 +22,7 @@ When you use this skill, produce the following block as the **opening** of the b
 ```markdown
 ## MANDATORY RULES (re-read before every file you write — each rule is a hard failure mode)
 
-1. **`interface` for Props and object-shape types.** `type FooProps = {...}` is a CRITICAL violation. Unions (`type OrbState = 'idle' | 'listening' | ...`), mapped types, and utility types stay `type`.
-2. **NO types in `.tsx` or hook `.ts`** — every `interface`, `type`, and `enum` goes in a sibling `<Name>.types.ts`. Applies to union types (`type TabId = 'a' | 'b'`), "small" aliases, and helper-component Props too. No "private" or "small" exception.
-3. **NO top-level non-component functions in `.tsx`** — util functions, formatters, classifiers, type guards, small internal helpers go in a sibling `utils.ts`. A lowercase-start `function foo` or `const foo =` at module level in a `.tsx` is a CRITICAL violation.
-4. **Module-level constants in `.tsx`: only component-local lookup tables.** Allowed: `VARIANT_CLASSES`, `SIZE_CLASSES`, `PARTICLE_CONFIGS` and similar style/config lookups bound to one component. Forbidden: numeric thresholds (`MIN_W = 180`), timeouts, cross-component values — those go in sibling `constants.ts`. If it's a number / time / used elsewhere, extract.
-5. **1 component per file — no exceptions.** Helpers ≥ 20 LOC get their own folder; helpers < 20 LOC get a sibling file. A second `function Foo` / `const Foo: FC =` in a parent `.tsx` is a CRITICAL violation.
-6. **Tailwind FIRST.** `.module.css` ONLY for `@keyframes`, `mix-blend-mode`, `radial/conic-gradient` with custom stops, `backdrop-filter` with ≥ 2 layers, complex `mask` / `clip-path`. Every `.module.css` needs a top comment justifying why Tailwind cannot express it.
-7. **NO `fetch()` / `axios` / `new WebSocket()`** outside `@core/api/*` (RTK Query) and `@core/websocket/wsClient.ts`. The `fetch('/sounds/...')` in `@core/audio/audioEngine.ts` is the only other exempt pattern.
-8. **NO global `import './*.css'`** in component files. Aggregated global CSS imported once from a library barrel (e.g. `@ui/components.css`) is acceptable.
-9. **No inline styles** except CSS custom-property injection (`style={{ '--foo': value }}`) and runtime-computed dynamics Tailwind cannot express.
-10. **Named + default export** on every component.
-11. **Strict TypeScript**: no `any`, no `!`, no `@ts-ignore`.
-12. **"Port" / "migrate" NEVER means byte-for-byte copy.** Apply rules 1–11 to the legacy while preserving behavior.
-
----
+[Copy the entire "MANDATORY RULES" block verbatim from `.claude/agents/frontend-dev.md` (the 12 numbered rules). It is the single source of truth — do NOT paraphrase or reorder. If the block is missing rules or has been edited, fix `frontend-dev.md` instead of this brief.]
 
 ## Context
 

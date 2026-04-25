@@ -16,7 +16,7 @@ All commands assume `rg` (ripgrep) is installed. If `grep -rn` is the only optio
 ### 1. Props defined as `type` alias (Critical)
 
 ```bash
-rg --type ts --type tsx -n "^(export\s+)?type\s+\w*Props\s*=" frontend/src
+rg -g '*.ts' -g '*.tsx' -n "^(export\s+)?type\s+\w*Props\s*=" frontend/src
 ```
 
 **Detects**: `type FooProps = {...}`. These must be `interface FooProps {...}` per rule 1.
@@ -25,7 +25,7 @@ rg --type ts --type tsx -n "^(export\s+)?type\s+\w*Props\s*=" frontend/src
 ### 2. Type alias declared in `.tsx` (Critical)
 
 ```bash
-rg --type tsx -n "^(export\s+)?type\s+\w" frontend/src --glob='!*__tests__*'
+rg -g '*.tsx' -g '!*__tests__*' -n "^(export\s+)?type\s+\w" frontend/src
 ```
 
 **Detects**: any `type Foo = ...` living in a `.tsx` file. All type declarations belong in sibling `<Name>.types.ts`.
@@ -34,7 +34,7 @@ rg --type tsx -n "^(export\s+)?type\s+\w" frontend/src --glob='!*__tests__*'
 ### 3. Interface declared in `.tsx` (Critical)
 
 ```bash
-rg --type tsx -n "^(export\s+)?interface\s+\w" frontend/src
+rg -g '*.tsx' -n "^(export\s+)?interface\s+\w" frontend/src
 ```
 
 **Detects**: any `interface Foo {...}` living in a `.tsx` file. Interfaces belong in sibling `<Name>.types.ts`.
@@ -52,7 +52,7 @@ rg -g 'hooks/*.ts' -g '!*.types.ts' -n "^(export\s+)?interface\s+\w" frontend/sr
 ### 5. Top-level helper functions in `.tsx` (Critical)
 
 ```bash
-rg --type tsx -n "^(export\s+)?(function|const)\s+[a-z]\w*\s*[=(]" frontend/src --glob='!*__tests__*'
+rg -g '*.tsx' -g '!*__tests__*' -n "^(export\s+)?(function|const)\s+[a-z]\w*\s*[=(]" frontend/src
 ```
 
 **Detects**: lowercase-start function or const declarations at module level in `.tsx` files — these are helpers, not components. Helper functions belong in sibling `utils.ts`.
@@ -61,7 +61,7 @@ rg --type tsx -n "^(export\s+)?(function|const)\s+[a-z]\w*\s*[=(]" frontend/src 
 ### 6. Module-level constants in `.tsx` (Critical for thresholds/timeouts, allowed for lookup tables)
 
 ```bash
-rg --type tsx -n "^(export\s+)?const\s+[A-Z_]+\s*=" frontend/src --glob='!*__tests__*'
+rg -g '*.tsx' -g '!*__tests__*' -n "^(export\s+)?const\s+[A-Z_]+\s*=" frontend/src
 ```
 
 **Detects**: UPPERCASE constants at module level in `.tsx` files. Classify each hit:
@@ -74,7 +74,7 @@ rg --type tsx -n "^(export\s+)?const\s+[A-Z_]+\s*=" frontend/src --glob='!*__tes
 ### 7. Multiple component declarations in one `.tsx` (Critical)
 
 ```bash
-rg --type tsx -l "(export\s+)?(function|const)\s+[A-Z]\w*\s*[:=(][^{]*(ReactElement|JSX\.Element|ReactNode|FC\s*<)" frontend/src | while read -r f; do
+rg -g '*.tsx' -l "(export\s+)?(function|const)\s+[A-Z]\w*\s*[:=(][^{]*(ReactElement|JSX\.Element|ReactNode|FC\s*<)" frontend/src | while read -r f; do
   count=$(rg -c "^(export\s+)?(function|const)\s+[A-Z]\w*\s*[:=(][^{]*(ReactElement|JSX\.Element|ReactNode|FC\s*<)" "$f")
   [ "$count" -gt 1 ] && echo "$f: $count components"
 done
@@ -86,7 +86,7 @@ done
 ### 8. Inline styles (Critical / Warning per case)
 
 ```bash
-rg --type tsx -n "style=\{\{" frontend/src | rg -v "'--" | rg -v "\\\${"
+rg -g '*.tsx' -n "style=\{\{" frontend/src | rg -v "'--" | rg -v "\\\${"
 ```
 
 **Detects**: inline `style={{...}}` that isn't CSS-variable injection (`style={{ '--foo': x }}`) and isn't a runtime-computed template literal (`style={{ width: \`${pct}%\` }}`). Remaining hits are static inline styles that must move to Tailwind utilities.
@@ -95,7 +95,7 @@ rg --type tsx -n "style=\{\{" frontend/src | rg -v "'--" | rg -v "\\\${"
 ### 9. Global CSS import in component files (Critical)
 
 ```bash
-rg --type tsx -n "^import\s+['\"][^'\"]+\.css['\"]" frontend/src | rg -v "\.module\.css"
+rg -g '*.tsx' -n "^import\s+['\"][^'\"]+\.css['\"]" frontend/src | rg -v "\.module\.css"
 ```
 
 **Detects**: component `.tsx` files importing global CSS. Only `.module.css` scoped imports are allowed in components. The one exemption is `ui/index.ts` importing `./components.css` (aggregated BEM library CSS imported once).
@@ -104,7 +104,7 @@ rg --type tsx -n "^import\s+['\"][^'\"]+\.css['\"]" frontend/src | rg -v "\.modu
 ### 10. Direct network calls outside exempt paths (Critical)
 
 ```bash
-rg --type ts --type tsx -n "\\b(fetch\\(|axios\\.|new\\s+WebSocket\\()" frontend/src \
+rg -g '*.ts' -g '*.tsx' -n "\\b(fetch\\(|axios\\.|new\\s+WebSocket\\()" frontend/src \
   | rg -v "core/api/" \
   | rg -v "core/websocket/wsClient\\.ts" \
   | rg -v "core/audio/audioEngine\\.ts"
@@ -116,7 +116,7 @@ rg --type ts --type tsx -n "\\b(fetch\\(|axios\\.|new\\s+WebSocket\\()" frontend
 ### 11. Cross-feature imports (Warning)
 
 ```bash
-for f in $(rg --type ts --type tsx -l "@features/" frontend/src/features); do
+for f in $(rg -g '*.ts' -g '*.tsx' -l "@features/" frontend/src/features); do
   own=$(echo "$f" | sed -E 's#.*frontend/src/features/([^/]+)/.*#\1#')
   rg -n "@features/([^/'\"]+)" "$f" | rg -v "@features/$own" | grep -v '^$' \
     && echo "  ↑ in $f (own feature: $own)"
@@ -129,7 +129,7 @@ done
 ### 12. Banned TypeScript features (Critical)
 
 ```bash
-rg --type ts --type tsx -n "(:\\s*any\\b|\\bas\\s+any\\b|//\\s*@ts-ignore|!\\.|!\\[)" frontend/src
+rg -g '*.ts' -g '*.tsx' -n "(:\\s*any\\b|\\bas\\s+any\\b|//\\s*@ts-ignore|!\\.|!\\[)" frontend/src
 ```
 
 **Detects**: `: any`, `as any`, `@ts-ignore`, non-null assertion chains (`foo!.bar`). All four are forbidden.

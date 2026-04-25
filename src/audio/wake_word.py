@@ -52,7 +52,7 @@ class WakeWordDetector:
 
     async def initialize(self) -> None:
         """Load the wake word model and chime sound."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def load_model() -> Any:
             try:

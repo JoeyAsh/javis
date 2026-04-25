@@ -949,8 +949,9 @@ async def _broadcast(message: str) -> None:
     if not _connected_clients:
         return
 
+    clients = list(_connected_clients)
     disconnected = set()
-    for ws in _connected_clients:
+    for ws in clients:
         try:
             await ws.send_str(message)
         except Exception as e:
@@ -2043,8 +2044,6 @@ async def _run_voice_pipeline_body(
                 )
                 audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                 await broadcast_audio(audio_b64, closing)
-                play_duration = max(1.2, len(audio_bytes) / 2000)
-                await asyncio.sleep(play_duration)
             except FishTTSError as exc:
                 logger.error(f"Fish TTS error during sleep close: {exc}")
 
@@ -3876,6 +3875,13 @@ async def start_ws_server(
             logger.warning("http_runner cleanup timed out after 5 s — forcing shutdown")
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"http_runner cleanup failed: {exc}")
+
+        # Close Fish TTS persistent httpx client.
+        if _fish_tts is not None:
+            try:
+                await _fish_tts.aclose()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Fish TTS client close failed: {exc}")
 
         # Close OpenClaw + MemoryStore.
         if _openclaw_client is not None:

@@ -14,7 +14,6 @@ const STORAGE_KEY = 'jarvis.sfx.muted';
 const IDLE_TIMEOUT_MS = 30_000;
 const DISCONNECT_SFX_GATE_MS = 5_000;
 const OFFLINE_DELAY_MS = 3_000;
-const WAKE_GUARD_MS = 500;
 
 function readStoredMute(): boolean {
     try {
@@ -56,7 +55,6 @@ export function useAudioEngine(
 
     const bootFiredRef = useRef(false);
     const prevOrbStateRef = useRef<AppOrbState | null>(null);
-    const wakeGuardActiveRef = useRef(false);
 
     const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const disconnectSfxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -159,10 +157,7 @@ export function useAudioEngine(
         if (prev === orbState) return;
 
         if (prev !== null) {
-            const suppressStateChange = orbState === 'listening' && wakeGuardActiveRef.current;
-            if (!suppressStateChange) {
-                engine.playOneShot('state_change');
-            }
+            engine.playOneShot('state_change');
         }
 
         if (prev === 'listening') {
@@ -286,8 +281,6 @@ export function useAudioEngine(
     const stop = useCallback((event: SfxEvent) => {
         engineRef.current.stop(event);
     }, []);
-
-    void WAKE_GUARD_MS;
 
     return {
         isMuted,

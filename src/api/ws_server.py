@@ -1650,6 +1650,7 @@ async def _broadcast_from_cache(
     language: str,
     log_label: str,
     stat_key: str | None = None,
+    channel: str | None = None,
 ) -> None:
     """Pick a random pre-cached MP3 from ``cache`` and broadcast it.
 
@@ -1660,6 +1661,9 @@ async def _broadcast_from_cache(
         stat_key: Prefix for ``_phrase_cache_stats`` counters
             (e.g. ``"filler"`` increments ``filler_hits`` / ``filler_misses``).
             When ``None`` no stats are updated.
+        channel: Optional channel tag forwarded to :func:`broadcast_audio`.
+            Pass ``"filler"`` for filler/quick-ack clips so the frontend can
+            avoid forcing the orb into ``speaking`` state for non-speech audio.
     """
     import random
 
@@ -1689,12 +1693,14 @@ async def _broadcast_from_cache(
         _phrase_cache_stats[f"{stat_key}_hits"] = (
             _phrase_cache_stats.get(f"{stat_key}_hits", 0) + 1
         )
-    await broadcast_audio(audio_b64, text)
+    await broadcast_audio(audio_b64, text, channel=channel)
 
 
 async def _broadcast_quick_ack_filler(language: str) -> None:
     """Broadcast a random pre-cached filler MP3 — plays while LLM is running."""
-    await _broadcast_from_cache(_filler_cache, language, "Filler", stat_key="filler")
+    await _broadcast_from_cache(
+        _filler_cache, language, "Filler", stat_key="filler", channel="filler"
+    )
 
 
 async def _maybe_play_backchannel(
@@ -1835,9 +1841,10 @@ async def _arm_follow_up_window(ws: web.WebSocketResponse) -> None:
     window = _conversation_mode.window_seconds
     logger.info(f"Follow-up window armed for {window:.1f}s")
     await broadcast_conversation_mode(active=True, seconds_remaining=window)
-    # Keep broadcasting "listening" so the frontend orb stays lit during
-    # the follow-up window (a new wake word is not required inside it).
-    await broadcast_state("listening")
+    # Broadcast "follow_up" so the frontend orb can render conversation-mode
+    # distinctly from a fresh "listening" state.  The barge-in path keeps its
+    # own broadcast_state("listening") call — that one is intentionally unchanged.
+    await broadcast_state("follow_up")
 
     timer = asyncio.create_task(_follow_up_expiry_task(conn_id, window))
     state["follow_up_timer_task"] = timer
@@ -2089,7 +2096,9 @@ async def _run_voice_pipeline_body(
     # filler_*.mp3 — same delivery path, better UX signal.
     if _quick_ack_enabled and _quick_ack_generator is not None and _ack_cache:
         if _quick_ack_generator.should_ack(result.text):
-            await _broadcast_from_cache(_ack_cache, result.language, "QuickAck", stat_key="ack")
+            await _broadcast_from_cache(
+                _ack_cache, result.language, "QuickAck", stat_key="ack", channel="filler"
+            )
         else:
             await _broadcast_quick_ack_filler(result.language)
     else:

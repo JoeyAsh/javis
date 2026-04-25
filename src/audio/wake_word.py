@@ -6,6 +6,7 @@ Uses OpenWakeWord for efficient on-device wake word detection.
 import asyncio
 import base64
 import io
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +39,7 @@ class WakeWordDetector:
         """Initialize the wake word detector.
 
         Args:
-            model_path: Path to custom ONNX model. None uses built-in "hey_jarvis".
+            model_path: Path to a custom ONNX or TFLite model file. None uses the bundled "hey_jarvis" model.
             threshold: Detection threshold (0-1)
             vad_threshold: Voice activity detection threshold (0-1)
         """
@@ -60,14 +61,42 @@ class WakeWordDetector:
 
                 logger.info("Loading OpenWakeWord model...")
 
-                # Determine inference framework: prefer tflite, fall back to
-                # onnx (tflite-runtime is unavailable on Windows).
+                # Determine inference framework: prefer tflite (better accuracy per
+                # upstream docs), fall back to onnx. On Windows, tflite-runtime is not
+                # on PyPI — but ai-edge-litert (Google's official TFLite runtime
+                # successor) is, and is API-compatible. Alias it so openwakeword's
+                # hard-coded `import tflite_runtime.interpreter` resolves.
+                framework = "onnx"
                 try:
-                    import tflite_runtime  # noqa: F401
+                    import tflite_runtime  # noqa: F401  # native Linux / RPi
                     framework = "tflite"
                 except ImportError:
-                    framework = "onnx"
+                    try:
+                        import ai_edge_litert
+                        import ai_edge_litert.interpreter as _ai_interp
+                        sys.modules["tflite_runtime"] = ai_edge_litert
+                        sys.modules["tflite_runtime.interpreter"] = _ai_interp
+                        framework = "tflite"
+                        logger.debug("OpenWakeWord: tflite_runtime aliased to ai_edge_litert")
+                    except ImportError:
+                        pass  # keep framework="onnx"
                 logger.debug(f"OpenWakeWord inference framework: {framework}")
+
+                # Auto-download models on first run if empty (openwakeword does not
+                # bundle them; missing files would otherwise crash with NO_SUCHFILE).
+                try:
+                    pkg_root = Path(openwakeword.__file__).parent / "resources" / "models"
+                    suffix = ".tflite" if framework == "tflite" else ".onnx"
+                    if not pkg_root.exists() or not any(pkg_root.glob(f"*{suffix}")):
+                        logger.info(
+                            f"Wake-word models missing — downloading {suffix} models on first run "
+                            f"(this may take 30–60 s)…"
+                        )
+                        from openwakeword.utils import download_models
+                        download_models()
+                        logger.info("Wake-word models download complete.")
+                except Exception as exc:
+                    logger.warning(f"Could not auto-download wake-word models: {exc}")
 
                 if self.model_path and Path(self.model_path).exists():
                     model = Model(

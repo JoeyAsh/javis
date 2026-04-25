@@ -217,6 +217,7 @@ persona:
   salutation_weights: [0.5, 0.5]  # must sum to 1.0
   salutation_seed: null  # optional: integer seed for reproducibility
   salutation_override: null  # set to force specific salutation
+  default_language: "de"   # used by the online greeting and any other persona-aware utterances
   style: "jarvis"
   language_style:
     en: british_formal

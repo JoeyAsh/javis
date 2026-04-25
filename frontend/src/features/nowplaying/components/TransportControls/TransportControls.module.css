@@ -1,0 +1,49 @@
+.controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: var(--s-2);
+}
+
+.btn {
+    width: 26px;
+    height: 26px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--r-1);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: var(--font);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: all 0.2s;
+}
+
+.btn:hover {
+    color: var(--accent-bright);
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.btn svg {
+    width: 11px;
+    height: 11px;
+    display: block;
+}
+
+.btnPrimary {
+    width: 32px;
+    height: 32px;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+    box-shadow: var(--glow);
+}
+
+.btnPrimary:hover {
+    background: var(--accent-bright);
+    box-shadow: var(--glow-strong);
+}

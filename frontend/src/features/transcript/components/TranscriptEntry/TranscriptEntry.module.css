@@ -1,0 +1,43 @@
+.turn {
+    margin-bottom: 6px;
+    font-family: var(--font);
+}
+
+.turnUser {
+    text-align: right;
+}
+
+.block {
+    display: inline-block;
+    text-align: left;
+    max-width: 90%;
+}
+
+.meta {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-bottom: 2px;
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.metaRole {
+    color: var(--accent-bright);
+}
+
+.bubbleJarvis {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    font-size: 11px;
+    color: var(--text);
+}
+
+.bubbleUser {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}

@@ -1,0 +1,166 @@
+/* ================================================================
+   TopBar chrome — ported verbatim from handoff HTML lines 156-237.
+   Keyframes (tbCornerBreath, traceTop/Bot/Left/Right) live in lib.css.
+   ================================================================ */
+
+.lib-topbar {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    height: 40px;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    background: rgba(13, 13, 20, 0.55);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+}
+
+/* Corner brackets — ::before (tl) and ::after (tr) on the bar itself */
+.lib-topbar::before,
+.lib-topbar::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-color: var(--accent);
+    border-style: solid;
+    animation: tbCornerBreath 3.4s ease-in-out infinite;
+}
+
+.lib-topbar::before {
+    top: -2px;
+    left: -2px;
+    border-width: 1px 0 0 1px;
+    animation-delay: 0s;
+}
+
+.lib-topbar::after {
+    top: -2px;
+    right: -2px;
+    border-width: 1px 1px 0 0;
+    animation-delay: -1.7s;
+}
+
+/* Bottom corner brackets — explicit child elements */
+.lib-topbar__c-bl,
+.lib-topbar__c-br {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-color: var(--accent);
+    border-style: solid;
+    animation: tbCornerBreath 3.4s ease-in-out infinite;
+}
+
+.lib-topbar__c-bl {
+    bottom: -2px;
+    left: -2px;
+    border-width: 0 0 1px 1px;
+    animation-delay: -0.85s;
+}
+
+.lib-topbar__c-br {
+    bottom: -2px;
+    right: -2px;
+    border-width: 0 1px 1px 0;
+    animation-delay: -2.55s;
+}
+
+/* Circumnavigating trace */
+.lib-topbar__trace {
+    position: absolute;
+    inset: -1px;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: 2px;
+}
+
+.lib-topbar__trace::before,
+.lib-topbar__trace::after {
+    content: '';
+    position: absolute;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--accent) 40%,
+        var(--accent-bright) 50%,
+        var(--accent) 60%,
+        transparent 100%
+    );
+    box-shadow: 0 0 8px var(--accent-bright);
+}
+
+.lib-topbar__trace::before {
+    top: 0;
+    left: -40%;
+    width: 40%;
+    height: 1px;
+    animation: traceTop 5.2s linear infinite;
+}
+
+.lib-topbar__trace::after {
+    bottom: 0;
+    right: -40%;
+    width: 40%;
+    height: 1px;
+    animation: traceBot 5.2s linear infinite;
+    animation-delay: -2.6s;
+}
+
+.lib-topbar__trace-l,
+.lib-topbar__trace-r {
+    position: absolute;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent 0%,
+        var(--accent) 40%,
+        var(--accent-bright) 50%,
+        var(--accent) 60%,
+        transparent 100%
+    );
+    box-shadow: 0 0 6px var(--accent-bright);
+}
+
+.lib-topbar__trace-l {
+    left: 0;
+    top: -40%;
+    height: 40%;
+    animation: traceLeft 5.2s linear infinite;
+    animation-delay: -3.9s;
+}
+
+.lib-topbar__trace-r {
+    right: 0;
+    bottom: -40%;
+    height: 40%;
+    animation: traceRight 5.2s linear infinite;
+    animation-delay: -1.3s;
+}
+
+/* Content slots */
+.lib-topbar__left {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.lib-topbar__center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.lib-topbar__right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 1;
+}

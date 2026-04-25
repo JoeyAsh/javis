@@ -1,0 +1,17 @@
+/* ================================================================
+   lib-wm — WindowManager container.
+   Class prefix: .lib-wm
+   ================================================================ */
+
+.lib-wm {
+    position: fixed;
+    inset: 0;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Re-enable pointer events only on Window children, not overlays. */
+.lib-wm > .lib-window {
+    pointer-events: auto;
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Colors — Core</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  .wrap{padding:18px 22px;display:flex;flex-direction:column;gap:14px;}
+  .row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+  .sw{border:1px solid var(--border);border-radius:2px;padding:10px;position:relative;overflow:hidden;}
+  .sw .chip{height:42px;border-radius:2px;margin-bottom:8px;position:relative;}
+  .sw .nm{font-size:10px;color:var(--text);letter-spacing:.05em}
+  .sw .hx{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+  .sec{font-size:9px;color:var(--text-muted);letter-spacing:2px;text-transform:uppercase}
+</style></head>
+<body><div class="wrap">
+  <div class="sec">Surface · near-black</div>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:#050508;border:1px solid var(--border)"></div><div class="nm">bg</div><div class="hx">#050508</div></div>
+    <div class="sw"><div class="chip" style="background:#0d0d14"></div><div class="nm">surface</div><div class="hx">#0d0d14</div></div>
+    <div class="sw"><div class="chip" style="background:#12121c"></div><div class="nm">surface-raised</div><div class="hx">#12121c</div></div>
+    <div class="sw"><div class="chip" style="background:#1a1a2e"></div><div class="nm">border</div><div class="hx">#1a1a2e</div></div>
+    <div class="sw"><div class="chip" style="background:#2a3d4f"></div><div class="nm">border-bright</div><div class="hx">#2a3d4f</div></div>
+  </div>
+  <div class="sec">Accent · HUD blue</div>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:#4ca8e8;box-shadow:var(--glow)"></div><div class="nm">accent</div><div class="hx">#4ca8e8</div></div>
+    <div class="sw"><div class="chip" style="background:#6ec4ff;box-shadow:var(--glow)"></div><div class="nm">accent-bright</div><div class="hx">#6ec4ff</div></div>
+    <div class="sw"><div class="chip" style="background:#5ab8f0"></div><div class="nm">accent-speak</div><div class="hx">#5ab8f0</div></div>
+    <div class="sw"><div class="chip" style="background:#2d6aa1"></div><div class="nm">accent-dim</div><div class="hx">#2d6aa1</div></div>
+    <div class="sw"><div class="chip" style="background:radial-gradient(circle at 50% 50%,#6ec4ff 0%,#4ca8e8 40%,#050508 90%)"></div><div class="nm">orb gradient</div><div class="hx">radial</div></div>
+  </div>
+</div></body></html>

@@ -1,0 +1,71 @@
+/* ================================================================
+   WaveformMeter — 12-bar lateral waveform display.
+   Ported verbatim from handoff lines 464-473.
+   Keyframe: m — defined in lib.css.
+   ================================================================ */
+
+.lib-meter {
+    display: flex;
+    gap: 2px;
+    align-items: flex-end;
+    height: 20px;
+}
+
+.lib-meter.mirrored {
+    transform: scaleX(-1);
+}
+
+.lib-meter__bar {
+    display: block;
+    width: 2px;
+    background: var(--accent);
+    box-shadow: var(--glow);
+    animation: m 0.9s ease-in-out infinite;
+    transition:
+        opacity 0.3s,
+        height 0.3s;
+}
+
+.lib-meter.inactive .lib-meter__bar {
+    opacity: 0.2;
+    height: 3px;
+    animation-play-state: paused;
+}
+
+/* Per-bar animation delays — matching handoff lines 467-472 */
+.lib-meter__bar:nth-child(1) {
+    animation-delay: -0.6s;
+}
+.lib-meter__bar:nth-child(2) {
+    animation-delay: -0.5s;
+}
+.lib-meter__bar:nth-child(3) {
+    animation-delay: -0.4s;
+}
+.lib-meter__bar:nth-child(4) {
+    animation-delay: -0.3s;
+}
+.lib-meter__bar:nth-child(5) {
+    animation-delay: -0.2s;
+}
+.lib-meter__bar:nth-child(6) {
+    animation-delay: -0.1s;
+}
+.lib-meter__bar:nth-child(7) {
+    animation-delay: 0s;
+}
+.lib-meter__bar:nth-child(8) {
+    animation-delay: -0.15s;
+}
+.lib-meter__bar:nth-child(9) {
+    animation-delay: -0.25s;
+}
+.lib-meter__bar:nth-child(10) {
+    animation-delay: -0.35s;
+}
+.lib-meter__bar:nth-child(11) {
+    animation-delay: -0.45s;
+}
+.lib-meter__bar:nth-child(12) {
+    animation-delay: -0.55s;
+}

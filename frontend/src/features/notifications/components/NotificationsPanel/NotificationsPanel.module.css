@@ -1,0 +1,51 @@
+.panel {
+    padding: 4px 6px;
+    font-family: var(--font);
+}
+
+.compact {
+    padding: 6px 8px;
+    font-family: var(--font);
+}
+
+.compactRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+}
+
+.dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.compactTitle {
+    font-size: 11px;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.badge {
+    font-size: 9px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    padding: 1px 4px;
+    flex-shrink: 0;
+}
+
+.compactDetail {
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.empty {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-style: italic;
+}

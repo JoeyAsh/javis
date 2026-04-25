@@ -1,0 +1,64 @@
+/* ================================================================
+   lib-snap — slot preview overlay during drag.
+   Class prefix: .lib-snap
+   ================================================================ */
+
+.lib-snap {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+}
+
+/* Individual slot zone rectangle */
+.lib-snap__zone {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    box-shadow: var(--glow);
+    transition:
+        background 0.15s ease,
+        box-shadow 0.15s ease,
+        border-color 0.15s ease;
+    animation: lib-snap-in 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Hovered (snap target) zone gets stronger fill + pulse */
+.lib-snap__zone--hovered {
+    border-color: var(--accent-bright);
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    box-shadow:
+        var(--glow-strong),
+        inset 0 0 12px color-mix(in srgb, var(--accent) 18%, transparent);
+    animation:
+        lib-snap-in 0.18s cubic-bezier(0.4, 0, 0.2, 1) both,
+        lib-snap-pulse 1.4s ease-in-out infinite;
+}
+
+/* ── keyframes ── */
+@keyframes lib-snap-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.94);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes lib-snap-pulse {
+    0%,
+    100% {
+        box-shadow:
+            var(--glow-strong),
+            inset 0 0 12px color-mix(in srgb, var(--accent) 18%, transparent);
+    }
+    50% {
+        box-shadow:
+            0 0 28px var(--accent-bright),
+            0 0 56px color-mix(in srgb, var(--accent) 55%, transparent),
+            inset 0 0 20px color-mix(in srgb, var(--accent) 28%, transparent);
+    }
+}

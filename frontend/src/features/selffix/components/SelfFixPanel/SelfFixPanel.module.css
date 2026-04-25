@@ -1,0 +1,35 @@
+.compact {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    font-family: var(--font);
+}
+
+.compactIdle {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.compactStatus {
+    font-size: 11px;
+    color: var(--warning);
+    flex-shrink: 0;
+    font-family: var(--font);
+    letter-spacing: 0.05em;
+}
+
+.compactSummary {
+    font-size: 12px;
+    color: var(--text);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font);
+}
+
+.expanded {
+    display: flex;
+    flex-direction: column;
+}

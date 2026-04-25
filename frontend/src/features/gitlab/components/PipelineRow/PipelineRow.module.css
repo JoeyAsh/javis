@@ -1,0 +1,66 @@
+.row {
+    display: flex;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border);
+    align-items: flex-start;
+}
+
+.row:last-child {
+    border-bottom: none;
+}
+
+.time {
+    width: 44px;
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--accent-bright);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+}
+
+.tx {
+    flex: 1;
+    min-width: 0;
+}
+
+.proj {
+    font-size: 11px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.branch {
+    color: var(--text-muted);
+    font-size: 9px;
+    letter-spacing: 1px;
+}
+
+.pill {
+    font-size: 8px;
+    letter-spacing: 1px;
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    align-self: center;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.pillPassed {
+    color: var(--success);
+    border-color: rgba(76, 232, 168, 0.4);
+}
+
+.pillRunning {
+    color: var(--accent-bright);
+    border-color: var(--accent-dim);
+}
+
+.pillFailed {
+    color: var(--error);
+    border-color: rgba(232, 90, 90, 0.4);
+}

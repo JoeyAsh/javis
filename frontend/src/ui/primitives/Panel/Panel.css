@@ -1,0 +1,336 @@
+/* ================================================================
+   Panel chrome — ported verbatim from handoff HTML lines 239-347.
+   BEM-ish: .lib-panel and descendants.
+   Keyframes live in lib.css (imported once via index.ts).
+   ================================================================ */
+
+.lib-panel {
+    position: relative;
+    z-index: 10;
+    background: rgba(13, 13, 20, 0.72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    /* overflow visible so corner brackets at -2px are not clipped */
+    animation: winIn 0.5s var(--ease, cubic-bezier(0.4, 0, 0.2, 1)) both;
+    transition:
+        border-color 0.25s,
+        box-shadow 0.25s,
+        transform 0.25s;
+}
+
+.lib-panel:hover {
+    border-color: var(--accent-dim);
+}
+
+.lib-panel.focused {
+    border-color: var(--accent);
+}
+
+/* ── volumetric bloom (::after, mix-blend screen) ── */
+.lib-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: 2px;
+    background:
+        radial-gradient(
+            120% 70% at 50% 0%,
+            color-mix(in srgb, var(--accent) 16%, transparent) 0%,
+            transparent 55%
+        ),
+        radial-gradient(
+            120% 70% at 50% 100%,
+            color-mix(in srgb, var(--accent) 10%, transparent) 0%,
+            transparent 55%
+        );
+    mix-blend-mode: screen;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.lib-panel:hover::after {
+    opacity: 0.55;
+    animation: panelBloom 3s ease-in-out infinite;
+}
+
+.lib-panel.focused::after {
+    opacity: 1;
+    animation: panelBloom 2.6s ease-in-out infinite;
+}
+
+/* ── circumnavigating trace ── */
+.lib-panel__trace {
+    position: absolute;
+    inset: -1px;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: 2px;
+    z-index: 3;
+}
+
+.lib-panel__trace::before,
+.lib-panel__trace::after {
+    content: '';
+    position: absolute;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--accent) 40%,
+        var(--accent-bright) 50%,
+        var(--accent) 60%,
+        transparent 100%
+    );
+    box-shadow: 0 0 8px var(--accent-bright);
+    opacity: 0.55;
+}
+
+.lib-panel__trace::before {
+    top: 0;
+    left: -40%;
+    width: 40%;
+    height: 1px;
+    animation: pTraceTop 6s linear infinite;
+}
+
+.lib-panel__trace::after {
+    bottom: 0;
+    right: -40%;
+    width: 40%;
+    height: 1px;
+    animation: pTraceBot 6s linear infinite;
+    animation-delay: -3s;
+}
+
+.lib-panel__trace i {
+    position: absolute;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent 0%,
+        var(--accent) 40%,
+        var(--accent-bright) 50%,
+        var(--accent) 60%,
+        transparent 100%
+    );
+    box-shadow: 0 0 6px var(--accent-bright);
+    opacity: 0.55;
+}
+
+.lib-panel__trace i.l {
+    left: 0;
+    top: -40%;
+    height: 40%;
+    animation: pTraceLeft 6s linear infinite;
+    animation-delay: -4.5s;
+}
+
+.lib-panel__trace i.r {
+    right: 0;
+    bottom: -40%;
+    height: 40%;
+    animation: pTraceRight 6s linear infinite;
+    animation-delay: -1.5s;
+}
+
+.lib-panel:hover .lib-panel__trace::before,
+.lib-panel:hover .lib-panel__trace::after,
+.lib-panel:hover .lib-panel__trace i {
+    opacity: 0.9;
+}
+
+.lib-panel.focused .lib-panel__trace::before,
+.lib-panel.focused .lib-panel__trace::after,
+.lib-panel.focused .lib-panel__trace i {
+    opacity: 1;
+}
+
+/* ── corner brackets ── */
+.lib-panel__ck {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-color: var(--accent);
+    border-style: solid;
+    opacity: 0.7;
+    transition:
+        width 0.3s var(--ease, cubic-bezier(0.4, 0, 0.2, 1)),
+        height 0.3s var(--ease, cubic-bezier(0.4, 0, 0.2, 1)),
+        opacity 0.25s,
+        border-color 0.25s;
+    pointer-events: none;
+}
+
+.lib-panel__ck.tl {
+    top: -2px;
+    left: -2px;
+    border-width: 1px 0 0 1px;
+}
+
+.lib-panel__ck.tr {
+    top: -2px;
+    right: -2px;
+    border-width: 1px 1px 0 0;
+}
+
+.lib-panel__ck.bl {
+    bottom: -2px;
+    left: -2px;
+    border-width: 0 0 1px 1px;
+}
+
+.lib-panel__ck.br {
+    bottom: -2px;
+    right: -2px;
+    border-width: 0 1px 1px 0;
+}
+
+.lib-panel:hover .lib-panel__ck {
+    width: 14px;
+    height: 14px;
+    opacity: 0.85;
+    border-color: var(--accent-bright);
+}
+
+.lib-panel.focused .lib-panel__ck {
+    width: 20px;
+    height: 20px;
+    opacity: 1;
+    border-color: var(--accent-bright);
+    animation: cornerBreath 2.6s ease-in-out infinite;
+}
+
+/* ── side rails ── */
+.lib-panel__rail {
+    position: absolute;
+    top: 26px;
+    bottom: 4px;
+    width: 2px;
+    pointer-events: none;
+    background-image: linear-gradient(to bottom, var(--accent) 0 2px, transparent 2px 10px);
+    background-size: 2px 10px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.lib-panel__rail.l {
+    left: -4px;
+}
+
+.lib-panel__rail.r {
+    right: -4px;
+}
+
+.lib-panel:hover .lib-panel__rail,
+.lib-panel.focused .lib-panel__rail {
+    opacity: 0.7;
+}
+
+/* ── header ── */
+.lib-panel__hdr {
+    height: 26px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: rgba(76, 168, 232, 0.04);
+    position: relative;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.lib-panel__hdr .ix {
+    color: var(--accent-bright);
+    font-weight: 500;
+    opacity: 0.8;
+}
+
+.lib-panel__hdr .tt {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+}
+
+.lib-panel.focused .lib-panel__hdr .tt {
+    color: var(--text);
+}
+
+.lib-panel__hdr .dots {
+    display: flex;
+    gap: 3px;
+    margin-left: 6px;
+}
+
+.lib-panel__hdr .dots i {
+    width: 4px;
+    height: 4px;
+    background: var(--text-muted);
+    display: block;
+}
+
+.lib-panel__hdr .dots i:first-child {
+    background: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.lib-panel__hdr .badge {
+    font-size: 8px;
+    letter-spacing: 1px;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    padding: 1px 4px;
+    border-radius: 2px;
+}
+
+.lib-panel__hdr-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+}
+
+/* shimmer line under header — always animated */
+.lib-panel__hdr::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-bright), transparent);
+    animation: shimmer 2s linear infinite;
+    opacity: 0.65;
+}
+
+/* focused emphasis — brighter and faster shimmer */
+.lib-panel.focused .lib-panel__hdr::after {
+    animation-duration: 1.4s;
+    opacity: 1;
+}
+
+/* ── body ── */
+.lib-panel__body {
+    flex: 1;
+    padding: 12px;
+    overflow: auto;
+    font-size: 11px;
+}
+
+.lib-panel__body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.lib-panel__body::-webkit-scrollbar-thumb {
+    background: var(--border);
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Colors — Text &amp; Semantic</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  .wrap{padding:18px 22px;display:flex;flex-direction:column;gap:14px;}
+  .row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .sw{border:1px solid var(--border);border-radius:2px;padding:12px;}
+  .sw .sample{font-size:16px;letter-spacing:.02em;margin-bottom:8px}
+  .sw .nm{font-size:10px;color:var(--text);letter-spacing:.05em}
+  .sw .hx{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+  .sec{font-size:9px;color:var(--text-muted);letter-spacing:2px;text-transform:uppercase}
+</style></head>
+<body><div class="wrap">
+  <div class="sec">Text tiers</div>
+  <div class="row">
+    <div class="sw"><div class="sample" style="color:#e8f4ff">Cool white primary</div><div class="nm">text</div><div class="hx">#e8f4ff</div></div>
+    <div class="sw"><div class="sample" style="color:#6b8fa8">Slate secondary</div><div class="nm">text-secondary</div><div class="hx">#6b8fa8</div></div>
+    <div class="sw"><div class="sample" style="color:#2a3d4f">Dim muted</div><div class="nm">text-muted</div><div class="hx">#2a3d4f</div></div>
+  </div>
+  <div class="sec">Semantic</div>
+  <div class="row">
+    <div class="sw" style="border-color:#e8b24c"><div class="sample" style="color:#e8b24c">CPU 92% WARN</div><div class="nm">warning</div><div class="hx">#e8b24c</div></div>
+    <div class="sw" style="border-color:#e85a5a"><div class="sample" style="color:#e85a5a">Link offline · ERR</div><div class="nm">error</div><div class="hx">#e85a5a</div></div>
+    <div class="sw" style="border-color:#4ce8a8"><div class="sample" style="color:#4ce8a8">Handshake ✓ OK</div><div class="nm">success</div><div class="hx">#4ce8a8</div></div>
+  </div>
+</div></body></html>

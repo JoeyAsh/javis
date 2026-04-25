@@ -1,792 +1,143 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  /* Base */
-  --bg: #050508;
-  --surface: rgba(13, 13, 20, 0.75);
-  --surface-raised: rgba(22, 22, 34, 0.85);
-  --border: rgba(64, 112, 160, 0.25);
-
-  /* Accent palette */
-  --accent: #4ca8e8;
-  --accent-bright: #7ec8ff;
-  --accent-speak: #a8e0ff;
-
-  /* Text */
-  --text: #e8f4ff;
-  --text-secondary: #8ba9c8;
-  --text-muted: #4a6a88;
-
-  /* Glow */
-  --glow: 0 0 12px rgba(76, 168, 232, 0.18);
-  --glow-strong: 0 0 24px rgba(76, 168, 232, 0.35);
-
-  /* Semantic */
-  --danger: #e84c4c;
-  --warning: #e8a84c;
-  --success: #4ce88a;
-  --info: #4ca8e8;
-
-  /* Orb working state — amber tint applied via mix-blend-mode:color overlay
-     on the Three.js canvas. Visually separates tool-execution from thinking. */
-  --orb-working: rgba(232, 168, 76, 0.55);
-
-  /* Font */
-  --font: 'JetBrains Mono', ui-monospace, monospace;
-
-  /* Panel opacity — controlled via Settings → Display slider.
-     Overridden at runtime via style on the root element so all panels
-     pick it up without a reload. Default: 1.0 (fully opaque). */
-  --panel-opacity: 1.0;
-
-  /* Panel dimensions */
-  --panel-header-height: 28px;
-  --panel-padding: 14px;
-  --panel-gap: 12px;
-
-  /* Animation */
-  --panel-fade-duration: 300ms;
-}
-
-*,
-*::before,
-*::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html,
-body {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background-color: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-#root {
-  width: 100%;
-  height: 100%;
-}
-
-/* ======================== Panel (inner content) ======================== */
-
-.panel {
-  background: transparent;
-  font-family: var(--font);
-  color: var(--text);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--panel-header-height);
-  min-height: var(--panel-header-height);
-  padding: 0 var(--panel-padding);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  user-select: none;
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.panel-title {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.panel-badge {
-  margin-left: auto;
-  font-size: 9px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.panel-body {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 10px var(--panel-padding) var(--panel-padding);
-  font-size: 12px;
-  color: var(--text);
-}
-
-.panel-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.panel-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.panel-body::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 0;
-}
-
-/* ======================== HUD top bar ======================== */
-
-.hud-topbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 36px;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  gap: 8px;
-  background: transparent;
-  pointer-events: none;
-}
-
-.hud-topbar__left,
-.hud-topbar__right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  pointer-events: auto;
-}
-
-.hud-infobar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-family: var(--font);
-  font-size: 13px;
-  color: var(--text);
-}
-
-.hud-infobar__sep {
-  color: var(--text-muted);
-  opacity: 0.6;
-  padding: 0 2px;
-}
-
-.hud-infobar__time,
-.hud-infobar__date,
-.hud-infobar__weather {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.orb-devmenu {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 6px;
-  background: rgba(13, 13, 20, 0.6);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-family: var(--font);
-}
-.orb-devmenu__label {
-  font-size: 9px;
-  color: var(--text-muted);
-  letter-spacing: 0.15em;
-  padding-right: 4px;
-}
-.orb-devmenu__btn {
-  font-family: var(--font);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  padding: 3px 6px;
-  cursor: pointer;
-  transition: color 140ms, border-color 140ms, background 140ms;
-}
-.orb-devmenu__btn:hover {
-  color: var(--accent);
-  border-color: var(--border);
-}
-.orb-devmenu__btn--active {
-  color: var(--bg);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.orb-devmenu__btn--active:hover {
-  color: var(--bg);
-  background: var(--accent-bright);
-}
-/* STOP / cancel-turn button — visually distinct from the orb-state toggles
-   so it can't be mistaken for a mock-state control. */
-.orb-devmenu__btn--stop {
-  color: var(--danger);
-  border-color: var(--danger);
-  margin-left: 4px;
-  letter-spacing: 0.12em;
-  font-weight: 600;
-}
-.orb-devmenu__btn--stop:hover {
-  color: var(--bg);
-  background: var(--danger);
-  border-color: var(--danger);
-}
-
-.hud-infobar__weather-icon {
-  margin-right: 4px;
-}
-
-.hud-iconbtn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(13, 13, 20, 0.6);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: color 150ms, border-color 150ms, box-shadow 150ms;
-  font-family: var(--font);
-  font-size: 10px;
-  letter-spacing: 1px;
-}
-
-.hud-iconbtn:hover {
-  color: var(--accent-bright);
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
-
-.hud-iconbtn.active {
-  color: var(--accent-speak);
-  border-color: var(--accent-bright);
-  box-shadow: var(--glow-strong);
-}
-
-/* ======================== Window system ======================== */
-
-.hud-window-root {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.hud-window-root > .window {
-  pointer-events: auto;
-}
-
-.window {
-  position: absolute;
-  background: rgba(13, 13, 20, calc(0.72 * var(--panel-opacity)));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  color: var(--text);
-  font-family: var(--font);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transform-origin: center center;
-  transform-style: preserve-3d;
-  will-change: transform, opacity;
-  transition:
-    transform 180ms ease-out,
-    opacity 180ms ease-out,
-    filter 180ms ease-out,
-    box-shadow 180ms ease-out,
-    border-color 180ms ease-out;
-}
-
-.window--focused {
-  opacity: 1;
-  transform: none;
-}
-
-/*
- * Shared "lit" state: a focused window, OR an unfocused window that is
- * currently being hovered. The hover variant only affects visuals — it does
- * NOT change z-index or focusedId in the window manager.
- */
-.window--focused,
-.window--unfocused:hover {
-  background: rgba(18, 18, 28, 0.78);
-  border: 1px solid var(--accent);
-  box-shadow:
-    0 0 0 1px var(--accent),
-    0 0 24px 2px color-mix(in srgb, var(--accent) 35%, transparent),
-    0 6px 28px rgba(0, 0, 0, 0.55);
-}
-
-.window--unfocused {
-  transform: perspective(1800px) rotateX(3deg) scale(0.96);
-  opacity: 0.55;
-  filter: blur(0.3px);
-}
-
-/* Hovered unfocused windows render like focused ones (no 3D / no dim). */
-.window--unfocused:hover {
-  transform: none;
-  opacity: 1;
-  filter: none;
-}
-
-.window--idle {
-  opacity: 0.15 !important;
-  pointer-events: none !important;
-  transition: opacity var(--panel-fade-duration) ease-in-out;
-}
-
-/* Idle state always wins — hover must not pierce it. */
-.window--idle:hover {
-  opacity: 0.15 !important;
-  transform: perspective(1800px) rotateX(3deg) scale(0.96) !important;
-  filter: blur(0.3px) !important;
-  background: rgba(13, 13, 20, 0.72) !important;
-  border: 1px solid var(--border) !important;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4) !important;
-}
-
-.window--hidden {
-  display: none;
-}
-
-.window-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  min-height: 30px;
-  padding: 0 8px 0 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  cursor: grab;
-  user-select: none;
-  background: rgba(0, 0, 0, 0.22);
-}
-
-.window-header:active {
-  cursor: grabbing;
-}
-
-.window-header-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.window-header-title {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.window--focused .window-header-title,
-.window--focused .window-header-icon {
-  color: var(--text-secondary);
-}
-
-.window-header-spacer {
-  flex: 1;
-}
-
-.window-header-buttons {
-  display: inline-flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.window-header-btn {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-family: var(--font);
-  font-size: 11px;
-  line-height: 1;
-  padding: 0;
-  transition: color 120ms, border-color 120ms, box-shadow 120ms;
-}
-
-.window-header-btn:hover {
-  color: var(--accent-bright);
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
-
-.window-header-btn:focus-visible {
-  outline: none;
-  color: var(--accent-bright);
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
-
-.window-header-btn--reset svg {
-  stroke: var(--text-secondary);
-  transition: stroke 120ms;
-}
-
-.window-header-btn--reset:hover svg,
-.window-header-btn--reset:focus-visible svg {
-  stroke: var(--accent);
-}
-
-.window-body {
-  flex: 1;
-  overflow: auto;
-  padding: 10px;
-  font-size: 12px;
-  color: var(--text);
-}
-
-.window-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.window-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.window-body::-webkit-scrollbar-thumb {
-  background: var(--border);
-}
-
-.window-resize {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
-  background: repeating-linear-gradient(
-    135deg,
-    transparent 0,
-    transparent 2px,
-    var(--text-muted) 2px,
-    var(--text-muted) 3px
-  );
-  opacity: 0.35;
-  transition: opacity 150ms;
-}
-
-.window:hover .window-resize,
-.window--focused .window-resize {
-  opacity: 0.75;
-}
-
-/* Compact body */
-.window--compact .window-body {
-  padding: 6px 8px;
-  font-size: 12px;
-}
-
-.window-compact-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  line-height: 1.35;
-}
-
-.window-compact-row + .window-compact-row {
-  margin-top: 4px;
-}
-
-.truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ======================== Utility ======================== */
-
-.row-flex {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mono-small {
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.list-item {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.list-item:last-child {
-  border-bottom: none;
-}
-
-.accent-line {
-  color: var(--accent);
-}
-
-.bar {
-  position: relative;
-  height: 4px;
-  background: rgba(76, 168, 232, 0.12);
-  overflow: hidden;
-  border-radius: 0;
-}
-
-.bar-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  background: var(--accent);
-  transition: width 600ms ease;
-}
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 6px;
-  font-size: 9px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  color: var(--text-secondary);
-}
-
-.pill.ok   { color: var(--success); border-color: rgba(76,232,138,0.4); }
-.pill.warn { color: var(--warning); border-color: rgba(232,168,76,0.4); }
-.pill.err  { color: var(--danger); border-color: rgba(232,76,76,0.4); }
-.pill.info { color: var(--accent-bright); border-color: rgba(126,200,255,0.4); }
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.2); }
-}
-
-@keyframes ptt-ring {
-  0%   { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
-  100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.8); }
-}
-
-.pulse-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse-dot 1.4s ease-in-out infinite;
-}
-
-/* ======================== Snap preview overlay ======================== */
-
-.snap-overlay {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 9999;
-}
-
-.snap-zone {
-  position: absolute;
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  border: 1px solid var(--accent);
-  box-shadow: var(--glow-strong);
-  border-radius: 2px;
-  transition: all 140ms ease-out;
-  opacity: 0;
-  animation: snap-appear 140ms ease-out forwards;
-}
-
-@keyframes snap-appear {
-  from { opacity: 0; transform: scale(0.985); }
-  to   { opacity: 1; transform: scale(1); }
+@import 'tailwindcss';
+
+/* =====================================================================
+   JARVIS Tailwind v4 theme — maps design tokens to utility classes.
+   All color values reference the CSS custom properties set by tokens.css
+   (loaded before this file in main.tsx). The raw hex fallbacks are only
+   used by Tailwind at build time for internal computations (e.g. opacity
+   modifier arithmetic). Runtime colour always comes from var(--*).
+   ===================================================================== */
+
+@theme {
+    /* ------------------------------------------------------------------
+     Colors → bg-*, text-*, border-*, etc.
+     Reference the :root vars so runtime hue-tweak overrides via
+     useTweakApply keep working.
+  ------------------------------------------------------------------ */
+    --color-bg: var(--bg, #050508);
+    --color-surface: var(--surface, #0d0d14);
+    --color-surface-raised: var(--surface-raised, #12121c);
+    --color-border: var(--border, #1a1a2e);
+    --color-border-bright: var(--border-bright, #2a3d4f);
+    --color-accent: var(--accent, #4ca8e8);
+    --color-accent-bright: var(--accent-bright, #6ec4ff);
+    --color-accent-speak: var(--accent-speak, #5ab8f0);
+    --color-accent-dim: var(--accent-dim, #2d6aa1);
+    --color-text: var(--text, #e8f4ff);
+    --color-text-secondary: var(--text-secondary, #6b8fa8);
+    --color-text-muted: var(--text-muted, #2a3d4f);
+    --color-warning: var(--warning, #e8b24c);
+    --color-error: var(--error, #e85a5a);
+    --color-success: var(--success, #4ce8a8);
+
+    /* ------------------------------------------------------------------
+     Font families
+     Set both --font-mono and --font-sans to JetBrains Mono so that
+     font-mono and font-sans (and the default prose font) all resolve
+     to the JARVIS typeface. The UI is entirely monospace.
+  ------------------------------------------------------------------ */
+    --font-sans: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+    /* ------------------------------------------------------------------
+     Border radius — capped at 4 px.
+     Wipe the full built-in scale first with `initial` then define only
+     the three allowed values so devs cannot accidentally use rounded-lg.
+  ------------------------------------------------------------------ */
+    --radius-none: initial;
+    --radius-sm: initial;
+    --radius-md: initial;
+    --radius-lg: initial;
+    --radius-xl: initial;
+    --radius-2xl: initial;
+    --radius-3xl: initial;
+    /* Keep `full` (9999px) — used for circles (orb) and pill badges. */
+
+    --radius-0: 0px;
+    --radius-r-1: 2px;
+    --radius-r-2: 4px;
+
+    /* ------------------------------------------------------------------
+     Spacing — 4 px base grid (matches --s-* tokens).
+     Keep the default --spacing: 0.25rem so p-1=4px, p-2=8px, etc.
+     Also expose the named tokens as explicit spacing values.
+  ------------------------------------------------------------------ */
+    --spacing-s-1: 4px;
+    --spacing-s-2: 8px;
+    --spacing-s-3: 12px;
+    --spacing-s-4: 16px;
+    --spacing-s-5: 24px;
+    --spacing-s-6: 32px;
+    --spacing-s-7: 48px;
+
+    /* ------------------------------------------------------------------
+     Z-index layers — mirrors --z-* tokens.
+  ------------------------------------------------------------------ */
+    --z-index-orb: 0;
+    --z-index-panel: 10;
+    --z-index-status: 20;
+    --z-index-topbar: 30;
+    --z-index-dev: 40;
+    --z-index-modal: 50;
+
+    /* ------------------------------------------------------------------
+     Transition timing
+  ------------------------------------------------------------------ */
+    --ease-hud: cubic-bezier(0.4, 0, 0.2, 1);
+    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+
+    --duration-fast: 120ms;
+    --duration-base: 200ms;
+    --duration-slow: 300ms;
+    --duration-ambient: 1400ms;
+
+    /* ------------------------------------------------------------------
+     Box shadows / glow — raw hex values used here because
+     multi-stop box-shadow cannot compose via var() reliably in
+     Tailwind's theme output at build time.
+  ------------------------------------------------------------------ */
+    --shadow-glow: 0 0 8px #4ca8e8aa;
+    --shadow-glow-strong: 0 0 20px #4ca8e8cc, 0 0 40px #4ca8e844;
+    --shadow-glow-inner: inset 0 0 12px #4ca8e822;
+    --shadow-glow-warn: 0 0 8px #e8b24caa;
+    --shadow-glow-error: 0 0 8px #e85a5aaa;
 }
 
-/* ======================== Settling animation ======================== */
+/* Design tokens are imported in main.tsx before this file. */
 
-/*
- * Applied for ~320 ms around a geometry change (minimize, swap, resize-
- * after-viewport-resize). NOT present during active user drag / resize.
- */
-.window--settling {
-  transition:
-    left 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    top 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 180ms ease-out,
-    opacity 180ms ease-out,
-    filter 180ms ease-out,
-    box-shadow 180ms ease-out,
-    border-color 180ms ease-out;
-}
-
-/* ======================== Docked vs. floating ======================== */
-
-/*
- * Docked (minimized) windows cannot be resized. Hide the corner handle and
- * show a `grab` cursor on the header to signal the swap-drag affordance.
- */
-.window--docked .window-resize {
-  display: none;
-}
-
-.window--docked .window-header {
-  cursor: grab;
-}
-
-.window--docked .window-header:active {
-  cursor: grabbing;
-}
-
-.window--floating .window-header {
-  cursor: grab;
-}
-
-.window--floating .window-header:active {
-  cursor: grabbing;
-}
-
-/* ======================== Home-slot ghost (floating marker) ======================== */
-
-.slot-ghost {
-  pointer-events: auto;
-  background: transparent;
-  border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent);
-  border-radius: 4px;
-  color: var(--text-muted);
-  font-family: var(--font);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.35;
-  transition: opacity 150ms ease-out, box-shadow 150ms ease-out, border-color 150ms ease-out;
-  z-index: 8;
-  padding: 0;
-}
-
-.slot-ghost:hover,
-.slot-ghost:focus-visible {
-  outline: none;
-  opacity: 0.7;
-  border-color: var(--accent);
-  box-shadow: var(--glow);
-}
+/* =====================================================================
+   Scrollbar — JARVIS-themed; webkit + Firefox fallback.
+   ===================================================================== */
 
-.slot-ghost-label {
-  font-size: 11px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--text-muted);
+html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent-dim) var(--surface);
 }
 
-/* ======================== Swap-drag overlay ======================== */
-
-.swap-overlay {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 9998;
-}
-
-.swap-overlay--active {
-  /* Overlay is visible only while a swap drag is live. */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
 }
 
-.swap-ghost {
-  position: absolute;
-  border: 1px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 4%, transparent);
-  border-radius: 4px;
-  opacity: 0.55;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    opacity 120ms ease-out,
-    box-shadow 120ms ease-out,
-    background 120ms ease-out;
+::-webkit-scrollbar-track {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
 }
 
-.swap-ghost--hovered {
-  opacity: 1;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  box-shadow: var(--glow-strong);
+::-webkit-scrollbar-thumb {
+    background: var(--accent-dim);
+    border-radius: 2px;
 }
-
-.swap-ghost-label {
-  font-size: 10px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--accent-bright);
-  font-family: var(--font);
-  opacity: 0.85;
-}
-
-/* ======================== Swap-drag floating preview ======================== */
 
-.swap-drag-preview {
-  /* positional styles set inline; this class only handles visuals */
-  background: rgba(18, 18, 28, 0.88);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  box-shadow:
-    0 0 0 1px var(--accent),
-    0 0 36px 4px color-mix(in srgb, var(--accent) 45%, transparent),
-    0 10px 40px rgba(0, 0, 0, 0.6);
-  color: var(--text);
-  font-family: var(--font);
-  overflow: hidden;
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+    box-shadow: var(--shadow-glow-inner);
 }
 
-.swap-drag-preview-inner {
-  height: 100%;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+::-webkit-scrollbar-thumb:active {
+    background: var(--accent-bright);
 }
 
-.swap-drag-preview-label {
-  font-size: 12px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--accent-bright);
+::-webkit-scrollbar-corner {
+    background: var(--surface);
 }

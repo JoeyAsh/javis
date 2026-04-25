@@ -1,0 +1,109 @@
+/* ================================================================
+   StateSimulator — dev toolbar for orb state switching.
+   Ported from handoff lines 479-498.
+   ================================================================ */
+
+.lib-sim {
+    display: flex;
+    gap: 6px;
+    padding: 6px;
+    background: rgba(13, 13, 20, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    position: relative;
+}
+
+.lib-sim.fixed-top {
+    position: fixed;
+    left: 50%;
+    top: 60px;
+    transform: translateX(-50%);
+    z-index: 28;
+}
+
+/* Corner brackets on top — matching .sim::before / .sim::after */
+.lib-sim::before,
+.lib-sim::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-color: var(--accent);
+    border-style: solid;
+    pointer-events: none;
+}
+
+.lib-sim::before {
+    top: -2px;
+    left: -2px;
+    border-width: 1px 0 0 1px;
+}
+
+.lib-sim::after {
+    top: -2px;
+    right: -2px;
+    border-width: 1px 1px 0 0;
+}
+
+.lib-sim__label {
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    align-self: center;
+    padding: 0 8px 0 6px;
+    border-right: 1px dashed var(--border);
+    margin-right: 2px;
+    white-space: nowrap;
+    font-family: var(--font);
+}
+
+.lib-sim__btn {
+    font-family: var(--font);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 6px 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.18s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.lib-sim__btn:hover {
+    color: var(--accent-bright);
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.lib-sim__btn.active {
+    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.lib-sim__btn.active.working {
+    color: var(--bg);
+    background: var(--warning);
+    border-color: var(--warning);
+    box-shadow:
+        0 0 8px #e8a84caa,
+        0 0 20px #e8a84c66;
+}
+
+.lib-sim__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 4px currentColor;
+    flex-shrink: 0;
+}

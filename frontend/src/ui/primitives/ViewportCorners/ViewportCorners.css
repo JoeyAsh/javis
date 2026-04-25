@@ -1,0 +1,68 @@
+/* ================================================================
+   ViewportCorners — 4 large L-shape HUD corner marks.
+   Ported from handoff lines 58-65.
+   ================================================================ */
+
+.lib-viewport-corner {
+    position: fixed;
+    width: 32px;
+    height: 32px;
+    border-color: var(--accent);
+    border-style: solid;
+    opacity: 0.55;
+    z-index: 4;
+    pointer-events: none;
+}
+
+.lib-viewport-corner.tl {
+    top: 6px;
+    left: 6px;
+    border-width: 1px 0 0 1px;
+}
+
+.lib-viewport-corner.tr {
+    top: 6px;
+    right: 6px;
+    border-width: 1px 1px 0 0;
+}
+
+.lib-viewport-corner.bl {
+    bottom: 6px;
+    left: 6px;
+    border-width: 0 0 1px 1px;
+}
+
+.lib-viewport-corner.br {
+    bottom: 6px;
+    right: 6px;
+    border-width: 0 1px 1px 0;
+}
+
+.lib-viewport-corner::before {
+    content: '';
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: var(--accent-bright);
+    box-shadow: 0 0 6px var(--accent-bright);
+}
+
+.lib-viewport-corner.tl::before {
+    top: -2px;
+    left: -2px;
+}
+
+.lib-viewport-corner.tr::before {
+    top: -2px;
+    right: -2px;
+}
+
+.lib-viewport-corner.bl::before {
+    bottom: -2px;
+    left: -2px;
+}
+
+.lib-viewport-corner.br::before {
+    bottom: -2px;
+    right: -2px;
+}

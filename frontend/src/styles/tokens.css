@@ -1,0 +1,183 @@
+/* ============================================================
+   JARVIS — Colors & Type
+   ============================================================
+   Import this file in any surface to inherit the full system.
+   All colors via variables. All type via JetBrains Mono.
+   Border radius: --r-1 (2px) is the design-system max; --r-2 (4px) reserved for rare exceptions.
+   Glow instead of drop-shadow.
+   ============================================================ */
+
+/* ---------- Font ---------- */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
+
+:root {
+    /* Core palette */
+    --bg: #050508;
+    --surface: #0d0d14;
+    --surface-raised: #12121c;
+    --border: #1a1a2e;
+    --border-bright: #2a3d4f;
+
+    /* Blue accent spectrum */
+    --accent: #4ca8e8; /* orb idle, primary */
+    --accent-bright: #6ec4ff; /* thinking, hover */
+    --accent-speak: #5ab8f0; /* speaking */
+    --accent-dim: #2d6aa1; /* inactive state */
+
+    /* Text */
+    --text: #e8f4ff;
+    --text-secondary: #6b8fa8;
+    --text-muted: #2a3d4f;
+
+    /* Semantic */
+    --warning: #e8b24c;
+    --error: #e85a5a;
+    --success: #4ce8a8;
+
+    /* Glow system (never drop-shadow) */
+    --glow: 0 0 8px #4ca8e8aa;
+    --glow-strong: 0 0 20px #4ca8e8cc, 0 0 40px #4ca8e844;
+    --glow-inner: inset 0 0 12px #4ca8e822;
+    --glow-warn: 0 0 8px #e8b24caa;
+    --glow-error: 0 0 8px #e85a5aaa;
+
+    /* Panel tint */
+    --panel-bg: rgba(13, 13, 20, 0.75);
+    --panel-blur: blur(12px);
+    --panel-opacity: 1;
+
+    /* Type */
+    --font: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+    /* Radii — NEVER exceed these */
+    --r-0: 0;
+    --r-1: 2px; /* default */
+    --r-2: 4px; /* maximum allowed */
+
+    /* Spacing (4px base) */
+    --s-1: 4px;
+    --s-2: 8px;
+    --s-3: 12px;
+    --s-4: 16px;
+    --s-5: 24px;
+    --s-6: 32px;
+    --s-7: 48px;
+
+    /* Elevation as z-layers */
+    --z-orb: 0;
+    --z-panel: 10;
+    --z-status: 20;
+    --z-topbar: 30;
+    --z-dev: 40;
+    --z-modal: 50;
+
+    /* Motion */
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --dur-fast: 120ms;
+    --dur-base: 200ms;
+    --dur-slow: 300ms;
+    --dur-ambient: 1400ms;
+}
+
+/* ---------- Semantic base ---------- */
+
+html,
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: 0.01em;
+}
+
+.brand-mark {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 6px;
+    color: var(--text-muted);
+}
+
+h1,
+.h1 {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: 0.02em;
+}
+h2,
+.h2 {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+}
+h3,
+.h3 {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+}
+
+.label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+}
+
+.label-dim {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+}
+
+.metric {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent-bright);
+    font-variant-numeric: tabular-nums;
+}
+
+.metric-sm {
+    font-size: 12px;
+    color: var(--accent-bright);
+    font-variant-numeric: tabular-nums;
+}
+
+.mono-small {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.status-transient {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+}
+
+code,
+pre,
+kbd,
+samp {
+    font-family: var(--font);
+    font-size: 11px;
+    color: var(--accent-bright);
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--accent-dim);
+    transition:
+        color var(--dur-base) var(--ease),
+        border-color var(--dur-base) var(--ease);
+}
+a:hover {
+    color: var(--accent-bright);
+    border-color: var(--accent);
+}

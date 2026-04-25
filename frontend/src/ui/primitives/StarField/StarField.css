@@ -1,0 +1,21 @@
+/* ================================================================
+   StarField — 60 twinkling star dots.
+   Keyframes (twinkle) live in lib.css.
+   ================================================================ */
+
+.lib-starfield {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.lib-starfield__star {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    background: var(--text);
+    border-radius: 50%;
+    box-shadow: 0 0 4px var(--accent-bright);
+    animation: twinkle 4s ease-in-out infinite;
+}

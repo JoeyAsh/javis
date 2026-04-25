@@ -1,0 +1,309 @@
+/* ================================================================
+   lib-window — draggable window shell.
+   Class prefix: .lib-window
+   All keyframes reference lib.css (imported once via index.ts).
+   ================================================================ */
+
+.lib-window {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    /* Transition geometry on settle; otherwise instant so drag feels live. */
+    transition:
+        box-shadow 0.2s ease,
+        opacity 140ms ease;
+    /* Panel animation disabled here — Panel inside handles its own winIn. */
+    z-index: 10;
+    outline: none;
+    cursor: default;
+    /* Allow overflow for corner brackets. */
+    overflow: visible;
+}
+
+/* The inner Panel fills the window fully. */
+.lib-window > .lib-panel {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    /* Suppress Panel's own winIn so Window can control entrance timing. */
+    animation: none;
+}
+
+/* ── Full-header grab cursor — only inside a Window, not standalone Panels ── */
+.lib-window .lib-panel__hdr {
+    cursor: grab;
+}
+
+.lib-window[data-state='dragging'] .lib-panel__hdr,
+.lib-window[data-state='snap-preview'] .lib-panel__hdr,
+.lib-window[data-state='swap-preview'] .lib-panel__hdr {
+    cursor: grabbing;
+}
+
+/* Buttons keep their own pointer cursor regardless of header state. */
+.lib-window .lib-panel__hdr button {
+    cursor: pointer;
+}
+
+/* ── dragging state ── */
+.lib-window[data-state='dragging'],
+.lib-window[data-state='snap-preview'],
+.lib-window[data-state='swap-preview'] {
+    box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.6),
+        0 0 0 1px var(--accent),
+        0 0 36px 4px color-mix(in srgb, var(--accent) 45%, transparent);
+    z-index: 9000;
+    cursor: grabbing;
+}
+
+/* ── compact + dragging: semi-transparent ghost so overlays remain readable ── */
+.lib-window[data-mode='compact'][data-state='dragging'],
+.lib-window[data-mode='compact'][data-state='snap-preview'],
+.lib-window[data-mode='compact'][data-state='swap-preview'] {
+    opacity: 0.45;
+}
+
+/* ── expanded mode: elevated shadow + slightly higher z-index base ── */
+.lib-window[data-mode='expanded'] {
+    box-shadow:
+        0 16px 56px rgba(0, 0, 0, 0.72),
+        0 0 0 1px color-mix(in srgb, var(--accent) 30%, var(--border));
+    z-index: 50;
+}
+
+/* ── settling state — subtle position snap animation ── */
+.lib-window[data-state='settling'] {
+    transition:
+        left 140ms ease-in-out,
+        top 140ms ease-in-out,
+        width 140ms ease-in-out,
+        height 140ms ease-in-out,
+        box-shadow 0.2s ease;
+}
+
+/* ── focused state ── */
+.lib-window[data-state='focused'] {
+    z-index: 100;
+}
+
+/* expanded + focused gets higher elevation */
+.lib-window[data-mode='expanded'][data-state='focused'] {
+    z-index: 200;
+}
+
+/* ── drag handle (ix + title span — visual only, no pointer binding) ── */
+.lib-window__hdr-drag {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    min-width: 0;
+}
+
+/* ── header action buttons (new slot-based cluster) ── */
+.lib-window__btn {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    border-radius: var(--r-1, 2px);
+    cursor: pointer;
+    transition:
+        color 120ms var(--ease, cubic-bezier(0.4, 0, 0.2, 1)),
+        border-color 120ms,
+        box-shadow 120ms,
+        background 120ms;
+    padding: 0;
+}
+
+.lib-window__btn:hover {
+    color: var(--accent-bright);
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.lib-window__btn:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.lib-window__btn svg {
+    width: 11px;
+    height: 11px;
+    stroke-width: 1.75;
+}
+
+.lib-window__btn--close:hover {
+    color: var(--error, #e85555);
+    border-color: var(--error, #e85555);
+    box-shadow: 0 0 8px var(--error, #e85555);
+}
+
+/* Legacy header action container — kept for backward compat */
+.lib-window__hdr-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.lib-window__hdr-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+        color 0.15s,
+        border-color 0.15s,
+        box-shadow 0.15s;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.lib-window__hdr-btn:hover {
+    color: var(--text);
+    border-color: var(--border);
+    box-shadow: var(--glow);
+}
+
+.lib-window__hdr-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--glow);
+    border-color: var(--accent);
+}
+
+.lib-window__hdr-btn--close:hover {
+    color: var(--error, #e85555);
+    border-color: var(--error, #e85555);
+    box-shadow: 0 0 8px var(--error, #e85555);
+}
+
+/* ── body ── */
+.lib-window__body {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+.lib-window__body::-webkit-scrollbar {
+    width: 4px;
+}
+
+.lib-window__body::-webkit-scrollbar-thumb {
+    background: var(--border);
+}
+
+/* ── resize handles ── */
+.lib-window__resize {
+    position: absolute;
+    z-index: 20;
+    background: transparent;
+    pointer-events: auto;
+}
+
+/* Edge handles — thin strips */
+.lib-window__resize--n {
+    top: -4px;
+    left: 8px;
+    right: 8px;
+    height: 8px;
+    cursor: ns-resize;
+}
+.lib-window__resize--s {
+    bottom: -4px;
+    left: 8px;
+    right: 8px;
+    height: 8px;
+    cursor: ns-resize;
+}
+.lib-window__resize--e {
+    right: -4px;
+    top: 8px;
+    bottom: 8px;
+    width: 8px;
+    cursor: ew-resize;
+}
+.lib-window__resize--w {
+    left: -4px;
+    top: 8px;
+    bottom: 8px;
+    width: 8px;
+    cursor: ew-resize;
+}
+
+/* Corner handles — squares that overlap edges */
+.lib-window__resize--ne {
+    top: -4px;
+    right: -4px;
+    width: 12px;
+    height: 12px;
+    cursor: nesw-resize;
+}
+.lib-window__resize--nw {
+    top: -4px;
+    left: -4px;
+    width: 12px;
+    height: 12px;
+    cursor: nwse-resize;
+}
+.lib-window__resize--se {
+    bottom: -4px;
+    right: -4px;
+    width: 12px;
+    height: 12px;
+    cursor: nwse-resize;
+}
+.lib-window__resize--sw {
+    bottom: -4px;
+    left: -4px;
+    width: 12px;
+    height: 12px;
+    cursor: nesw-resize;
+}
+
+/* Disable handles in compact mode */
+.lib-window[data-mode='compact'] .lib-window__resize {
+    display: none;
+}
+
+/* Resizing state mirrors dragging visual */
+.lib-window[data-state='resizing'] {
+    box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.6),
+        0 0 0 1px var(--accent),
+        0 0 36px 4px color-mix(in srgb, var(--accent) 45%, transparent);
+    z-index: 9000;
+}
+
+/* ── entrance ── */
+@keyframes lib-win-in {
+    0% {
+        opacity: 0;
+        transform: translateY(8px) scale(0.985);
+        clip-path: inset(46% 0 46% 0);
+    }
+    60% {
+        clip-path: inset(0 0 0 0);
+        opacity: 1;
+    }
+    100% {
+        transform: none;
+    }
+}
+
+.lib-window {
+    animation: lib-win-in 0.45s cubic-bezier(0.4, 0, 0.2, 1) both;
+}

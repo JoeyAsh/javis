@@ -160,15 +160,21 @@ async def _open_app(params: dict[str, Any]) -> str:
     loop = asyncio.get_event_loop()
 
     def open_sync() -> str:
+        # Validate app name against the whitelist before spawning anything.
+        if app not in APP_EXECUTABLES:
+            logger.warning(f"Rejected open_app request for unknown app: {app!r}")
+            raise ValueError(f"Unknown app: {app!r}")
+
         try:
-            app_info = APP_EXECUTABLES.get(app, {})
+            app_info = APP_EXECUTABLES[app]
             executable = app_info.get(platform, app)
 
             if platform == "win32":
-                # Windows: use start command
+                # Windows: list-form cmd /c start avoids shell=True injection risk.
+                # The empty string after "start" is the window title argument,
+                # required so cmd correctly treats the next token as the program.
                 subprocess.Popen(
-                    f"start {executable}",
-                    shell=True,
+                    ["cmd", "/c", "start", "", executable],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -190,7 +196,7 @@ async def _open_app(params: dict[str, Any]) -> str:
             logger.info(f"Opened application: {app}")
             return f"Opened {app}"
 
-        except Exception as e:
+        except (OSError, FileNotFoundError) as e:
             logger.error(f"Failed to open {app}: {e}")
             return f"Failed to open {app}: {e}"
 

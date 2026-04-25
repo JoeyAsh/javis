@@ -24,6 +24,21 @@ struct OpenclawSettings {
 struct OpenclawSection {
     /// `"local"` or `"remote"`.
     target: String,
+    /// SSH hostname used when target is `"remote"`.
+    #[serde(default = "default_ssh_host")]
+    ssh_host: String,
+    /// LAN/WAN URL of the remote OpenClaw gateway (used when building the
+    /// tunnel but also exposed to the frontend for informational purposes).
+    #[serde(default = "default_remote_url")]
+    remote_url: String,
+}
+
+fn default_ssh_host() -> String {
+    "laptop".into()
+}
+
+fn default_remote_url() -> String {
+    "http://192.168.1.121:18789".into()
 }
 
 /// Response type exposed to the frontend via Tauri commands.
@@ -33,6 +48,10 @@ pub struct OpenclawTargetInfo {
     pub target: String,
     /// The resolved base URL for that target.
     pub url: String,
+    /// SSH hostname used when opening the tunnel.
+    pub ssh_host: String,
+    /// Configured remote URL (LAN address of the gateway).
+    pub remote_url: String,
 }
 
 /// Return the OS-standard user-config path for `jarvis-controller/settings.json`.
@@ -62,27 +81,44 @@ fn settings_path() -> PathBuf {
         .join("settings.json")
 }
 
-/// Read the persisted OpenClaw target.
-/// Returns `"remote"` whenever the file is missing or contains invalid JSON.
-fn read_openclaw_target() -> String {
+/// Read the persisted OpenClaw settings.
+/// Returns defaults whenever the file is missing or contains invalid JSON.
+fn read_openclaw_settings() -> OpenclawSection {
     let path = settings_path();
     let contents = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return "remote".into(),
+        Err(_) => {
+            return OpenclawSection {
+                target: "remote".into(),
+                ssh_host: default_ssh_host(),
+                remote_url: default_remote_url(),
+            }
+        }
     };
     let settings: OpenclawSettings = match serde_json::from_str(&contents) {
         Ok(s) => s,
-        Err(_) => return "remote".into(),
+        Err(_) => {
+            return OpenclawSection {
+                target: "remote".into(),
+                ssh_host: default_ssh_host(),
+                remote_url: default_remote_url(),
+            }
+        }
     };
-    match settings.openclaw.target.as_str() {
+    let target = match settings.openclaw.target.as_str() {
         "local" | "remote" => settings.openclaw.target,
         _ => "remote".into(),
+    };
+    OpenclawSection {
+        target,
+        ssh_host: settings.openclaw.ssh_host,
+        remote_url: settings.openclaw.remote_url,
     }
 }
 
-/// Persist the OpenClaw target.
+/// Persist the OpenClaw settings.
 /// Creates the config directory if it does not yet exist.
-fn write_openclaw_target(target: &str) -> Result<(), String> {
+fn write_openclaw_settings(section: &OpenclawSection) -> Result<(), String> {
     let path = settings_path();
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)
@@ -90,12 +126,30 @@ fn write_openclaw_target(target: &str) -> Result<(), String> {
     }
     let settings = OpenclawSettings {
         openclaw: OpenclawSection {
-            target: target.to_string(),
+            target: section.target.clone(),
+            ssh_host: section.ssh_host.clone(),
+            remote_url: section.remote_url.clone(),
         },
     };
     let json = serde_json::to_string_pretty(&settings)
         .map_err(|e| format!("cannot serialise settings: {e}"))?;
     std::fs::write(&path, json).map_err(|e| format!("cannot write settings: {e}"))
+}
+
+/// Build an `OpenclawTargetInfo` from a settings section, computing `url` the
+/// same way `openclaw_base_url()` does.
+fn to_info(s: &OpenclawSection) -> OpenclawTargetInfo {
+    let url = match s.target.as_str() {
+        "local" => "http://127.0.0.1:18789".into(),
+        "remote" => s.remote_url.clone(),
+        _ => "http://127.0.0.1:18789".into(),
+    };
+    OpenclawTargetInfo {
+        target: s.target.clone(),
+        url,
+        ssh_host: s.ssh_host.clone(),
+        remote_url: s.remote_url.clone(),
+    }
 }
 
 // ── Repo-root detection ───────────────────────────────────────────────────────
@@ -132,7 +186,7 @@ fn repo_root() -> Result<PathBuf, String> {
 /// Precedence:
 /// 1. `JARVIS_OPENCLAW_URL` env var (explicit override).
 /// 2. Settings file `target`: `"local"` → `http://127.0.0.1:18789`,
-///    `"remote"` → `http://192.168.1.118:18789`.
+///    `"remote"` → the configured `remote_url` field.
 /// 3. Hardcoded fallback `http://127.0.0.1:18789`.
 fn openclaw_base_url() -> String {
     if let Ok(v) = std::env::var("JARVIS_OPENCLAW_URL") {
@@ -140,10 +194,27 @@ fn openclaw_base_url() -> String {
             return v;
         }
     }
-    match read_openclaw_target().as_str() {
+    let s = read_openclaw_settings();
+    match s.target.as_str() {
         "local" => "http://127.0.0.1:18789".into(),
-        "remote" => "http://192.168.1.118:18789".into(),
+        "remote" => s.remote_url,
         _ => "http://127.0.0.1:18789".into(),
+    }
+}
+
+// ── TCP port probe ────────────────────────────────────────────────────────────
+
+/// Return `true` if something is accepting TCP connections on `127.0.0.1:<port>`.
+///
+/// Uses a plain socket connect with a 300 ms timeout — no WMI, no PowerShell,
+/// works on every platform. ECONNREFUSED on loopback is instantaneous, so the
+/// timeout only fires when the port is silently filtered (rare on localhost).
+async fn is_local_port_listening(port: u16) -> bool {
+    let addr = format!("127.0.0.1:{port}");
+    let connect = tokio::net::TcpStream::connect(&addr);
+    match tokio::time::timeout(Duration::from_millis(300), connect).await {
+        Ok(Ok(_)) => true,
+        _ => false,
     }
 }
 
@@ -205,13 +276,17 @@ async fn child_state(key: &'static str) -> ChildState {
         Some(child) => match child.try_wait() {
             Ok(None) => ChildState::Running,
             Ok(Some(status)) => {
+                map.remove(key);
                 if status.success() {
                     ChildState::Exited
                 } else {
                     ChildState::Failed
                 }
             }
-            Err(_) => ChildState::Failed,
+            Err(_) => {
+                map.remove(key);
+                ChildState::Failed
+            }
         },
     }
 }
@@ -273,35 +348,43 @@ fn build_frontend_command(repo: &PathBuf) -> tokio::process::Command {
 
 // ── SSH tunnel (Windows / macOS only) ────────────────────────────────────────
 
+/// Build the argv for the SSH tunnel command, reading the host from settings.
 #[cfg(not(target_os = "linux"))]
-const SSH_TUNNEL_ARGS: &[&str] = &[
-    "-o", "BatchMode=yes",
-    "-o", "ServerAliveInterval=30",
-    "-o", "ExitOnForwardFailure=yes",
-    "-N",
-    "-L", "18789:localhost:18789",
-    "laptop",
-];
+fn ssh_tunnel_argv() -> Vec<String> {
+    let host = read_openclaw_settings().ssh_host;
+    vec![
+        "-o".into(),
+        "BatchMode=yes".into(),
+        "-o".into(),
+        "ServerAliveInterval=30".into(),
+        "-o".into(),
+        "ExitOnForwardFailure=yes".into(),
+        "-N".into(),
+        "-L".into(),
+        "18789:localhost:18789".into(),
+        host,
+    ]
+}
 
 /// Ensure the SSH tunnel to the remote OpenClaw gateway is up.
 ///
 /// - If the OpenClaw target is `"local"`, returns `Ok(())` immediately.
 /// - If port 18789 already has a listener, assumes the tunnel is up.
-/// - Otherwise spawns `ssh <SSH_TUNNEL_ARGS>` and polls for up to 5 s.
+/// - Otherwise spawns `ssh <ssh_tunnel_argv()>` and polls for up to 5 s.
 #[cfg(not(target_os = "linux"))]
 async fn ensure_ssh_tunnel() -> Result<(), String> {
     use std::process::Stdio;
 
-    if read_openclaw_target() == "local" {
+    if read_openclaw_settings().target == "local" {
         return Ok(());
     }
 
-    if !pids_on_port(18789).await.is_empty() {
+    if is_local_port_listening(18789).await {
         return Ok(());
     }
 
     let mut cmd = tokio::process::Command::new("ssh");
-    cmd.args(SSH_TUNNEL_ARGS);
+    cmd.args(ssh_tunnel_argv());
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::null());
     cmd.stderr(Stdio::null());
@@ -321,7 +404,7 @@ async fn ensure_ssh_tunnel() -> Result<(), String> {
     // Poll up to 5 s (25 × 200 ms) for port 18789 to become live.
     for _ in 0..25 {
         tokio::time::sleep(Duration::from_millis(200)).await;
-        if !pids_on_port(18789).await.is_empty() {
+        if is_local_port_listening(18789).await {
             return Ok(());
         }
     }
@@ -355,18 +438,21 @@ async fn pids_on_port(port: u16) -> Vec<u32> {
     #[cfg(target_os = "windows")]
     {
         // PowerShell Get-NetTCPConnection  →  locale-independent, one PID per line
-        let out = match tokio::process::Command::new("powershell.exe")
-            .args([
-                "-NoProfile",
-                "-Command",
-                &format!(
-                    "(Get-NetTCPConnection -LocalPort {port} -State Listen \
-                     -ErrorAction SilentlyContinue).OwningProcess"
-                ),
-            ])
-            .output()
-            .await
+        let mut cmd = tokio::process::Command::new("powershell.exe");
+        cmd.args([
+            "-NoProfile",
+            "-Command",
+            &format!(
+                "(Get-NetTCPConnection -LocalPort {port} -State Listen \
+                 -ErrorAction SilentlyContinue).OwningProcess"
+            ),
+        ]);
         {
+            // CREATE_NO_WINDOW — prevents the console flash when polled every 2 s
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let out = match cmd.output().await {
             Ok(o) => o,
             Err(e) => {
                 eprintln!("[pids_on_port] PowerShell Get-NetTCPConnection error: {e}");
@@ -410,6 +496,106 @@ async fn pids_on_port(port: u16) -> Vec<u32> {
     }
 }
 
+/// Kill **all** processes whose command line matches `pattern`.
+///
+/// On Windows uses `Get-CimInstance Win32_Process` to find PIDs by command line,
+/// then `taskkill /F /T` (with `/T` to kill the entire process tree).
+/// On macOS uses `pgrep -f`.
+/// Returns the number of processes killed.
+#[cfg(not(target_os = "linux"))]
+async fn kill_by_cmdline(pattern: &str, label: &str) -> u32 {
+    let mut killed = 0u32;
+
+    #[cfg(target_os = "windows")]
+    {
+        // Get-CimInstance is fast and gives us CommandLine + ProcessId.
+        let ps_cmd = format!(
+            "(Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{}*' }}).ProcessId",
+            pattern
+        );
+        let mut cmd = tokio::process::Command::new("powershell.exe");
+        cmd.args(["-NoProfile", "-Command", &ps_cmd]);
+        {
+            // CREATE_NO_WINDOW — no console flash during stop operations
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let out = match cmd.output().await {
+            Ok(o) => o,
+            Err(e) => {
+                eprintln!("[kill_by_cmdline] PowerShell error for {label}: {e}");
+                return 0;
+            }
+        };
+        let text = String::from_utf8_lossy(&out.stdout);
+        let pids: Vec<u32> = text
+            .lines()
+            .filter_map(|l| l.trim().parse::<u32>().ok())
+            .collect();
+
+        for pid in pids {
+            // /T = kill entire process tree (catches child workers)
+            let mut kill_cmd = tokio::process::Command::new("taskkill.exe");
+            kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
+            {
+                use std::os::windows::process::CommandExt;
+                kill_cmd.creation_flags(0x08000000);
+            }
+            let result = kill_cmd.output().await;
+            match result {
+                Ok(o) if o.status.success() => {
+                    eprintln!("[kill_by_cmdline] killed {label} pid {pid}");
+                    killed += 1;
+                }
+                Ok(o) => {
+                    eprintln!(
+                        "[kill_by_cmdline] kill {label} pid {pid} failed: {}",
+                        String::from_utf8_lossy(&o.stderr).trim()
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[kill_by_cmdline] kill {label} pid {pid} error: {e}");
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let out = match tokio::process::Command::new("pgrep")
+            .args(["-f", pattern])
+            .output()
+            .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                eprintln!("[kill_by_cmdline] pgrep error for {label}: {e}");
+                return 0;
+            }
+        };
+        let pids: Vec<u32> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| l.trim().parse::<u32>().ok())
+            .collect();
+
+        for pid in pids {
+            let result = tokio::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .output()
+                .await;
+            if matches!(result, Ok(o) if o.status.success()) {
+                eprintln!("[kill_by_cmdline] killed {label} pid {pid}");
+                killed += 1;
+            }
+        }
+    }
+
+    if killed > 0 {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    killed
+}
+
 /// Kill any process currently listening on `port`.
 /// Returns `Ok(())` if at least one kill succeeded, `Err(...)` otherwise.
 #[cfg(not(target_os = "linux"))]
@@ -423,10 +609,15 @@ async fn kill_on_port(port: u16, service: &'static str) -> Result<(), String> {
 
     for pid in pids {
         #[cfg(target_os = "windows")]
-        let result = tokio::process::Command::new("taskkill.exe")
-            .args(["/F", "/PID", &pid.to_string()])
-            .output()
-            .await;
+        let result = {
+            let mut kill_cmd = tokio::process::Command::new("taskkill.exe");
+            kill_cmd.args(["/F", "/PID", &pid.to_string()]);
+            {
+                use std::os::windows::process::CommandExt;
+                kill_cmd.creation_flags(0x08000000);
+            }
+            kill_cmd.output().await
+        };
 
         #[cfg(target_os = "macos")]
         let result = tokio::process::Command::new("kill")
@@ -490,6 +681,95 @@ async fn systemctl_is_active(unit: &str) -> String {
     }
 }
 
+// ── OpenClaw CLI + token helpers ──────────────────────────────────────────────
+
+/// Extract the token value from a `#token=<TOKEN>` fragment in CLI output.
+fn extract_hash_token(text: &str) -> Option<String> {
+    text.find("#token=")
+        .map(|pos| &text[pos + "#token=".len()..])
+        .and_then(|after| {
+            let end = after
+                .find(|c: char| c.is_ascii_whitespace())
+                .unwrap_or(after.len());
+            let tok = &after[..end];
+            if tok.is_empty() { None } else { Some(tok.to_string()) }
+        })
+}
+
+/// Resolve the argv prefix for spawning the OpenClaw CLI on this machine.
+///
+/// On Windows, npm global installs create a `.cmd` shim; we resolve through
+/// to the underlying `node openclaw.mjs` so we can pass env vars cleanly.
+fn _resolve_openclaw_cli_argv() -> Option<Vec<String>> {
+    #[cfg(target_os = "windows")]
+    {
+        // Try the known nvm/npm global paths first, then fall back to PATH.
+        let candidates: Vec<PathBuf> = {
+            let mut v = Vec::new();
+            // nvm-windows style: %APPDATA%\nvm\<version>\node_modules\openclaw
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                let nvm_dir = PathBuf::from(&appdata).join("nvm");
+                if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+                    for entry in entries.flatten() {
+                        let script = entry.path()
+                            .join("node_modules")
+                            .join("openclaw")
+                            .join("openclaw.mjs");
+                        if script.exists() {
+                            v.push(script);
+                        }
+                    }
+                }
+            }
+            // npm global: %ProgramFiles%\nodejs\node_modules\openclaw
+            let pf = PathBuf::from(
+                std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into()),
+            );
+            let npm_script = pf
+                .join("nodejs")
+                .join("node_modules")
+                .join("openclaw")
+                .join("openclaw.mjs");
+            if npm_script.exists() {
+                v.push(npm_script);
+            }
+            v
+        };
+
+        if let Some(script) = candidates.first() {
+            // Find node binary
+            let node_paths = ["node.exe"];
+            for name in &node_paths {
+                if let Ok(path_var) = std::env::var("PATH") {
+                    for dir in std::env::split_paths(&path_var) {
+                        let candidate = dir.join(name);
+                        if candidate.exists() {
+                            return Some(vec![
+                                candidate.to_string_lossy().to_string(),
+                                script.to_string_lossy().to_string(),
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On Unix, just use "openclaw" from PATH.
+        if let Ok(path_var) = std::env::var("PATH") {
+            for dir in std::env::split_paths(&path_var) {
+                let candidate = dir.join("openclaw");
+                if candidate.exists() {
+                    return Some(vec![candidate.to_string_lossy().to_string()]);
+                }
+            }
+        }
+        None
+    }
+}
+
 // ── Tauri commands ────────────────────────────────────────────────────────────
 
 pub mod commands {
@@ -527,22 +807,37 @@ pub mod commands {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            let result = {
+            // 1. Kill tracked child (if any)
+            {
                 let mut map = CHILDREN.lock().await;
                 if let Some(mut child) = map.remove("backend") {
-                    child.kill().await.map_err(|e| format!("kill failed: {e}"))?;
+                    let _ = child.kill().await;
                     let _ = child.wait().await;
-                    Ok("stopped".into())
-                } else {
-                    drop(map);
-                    match kill_on_port(8766, "backend").await {
-                        Ok(()) => Ok("stopped (via port fallback)".into()),
-                        Err(_) => Ok("not running".into()),
-                    }
                 }
+            }
+
+            // 2. Kill anything still listening on port 8766
+            let _ = kill_on_port(8766, "backend").await;
+
+            // 3. Kill orphaned python processes running "-m main" (zombie cleanup)
+            let repo = repo_root().unwrap_or_default();
+            let venv_python = repo.join(".venv").to_string_lossy().to_string();
+            // Match on the venv path so we only kill JARVIS pythons, not random ones
+            let pattern = if venv_python.is_empty() {
+                "python*-m main".to_string()
+            } else {
+                // Escape backslashes for the PowerShell -like pattern
+                format!("{}*-m main", venv_python.replace('\\', "\\\\"))
             };
+            let orphans = kill_by_cmdline(&pattern, "backend-orphan").await;
+
             let _ = stop_ssh_tunnel().await;
-            result
+
+            if orphans > 0 {
+                Ok(format!("stopped (cleaned {orphans} orphan(s))"))
+            } else {
+                Ok("stopped".into())
+            }
         }
     }
 
@@ -570,11 +865,14 @@ pub mod commands {
         #[cfg(not(target_os = "linux"))]
         {
             let http_ok = check_http_jarvis().await;
-            let state = match child_state("backend").await {
-                ChildState::Running => "active".into(),
-                ChildState::Failed => "failed".into(),
-                _ if http_ok => "active".into(),
-                _ => "inactive".into(),
+            let state = if http_ok {
+                "active".into()
+            } else {
+                match child_state("backend").await {
+                    ChildState::Running => "active".into(),
+                    ChildState::Failed => "failed".into(),
+                    _ => "inactive".into(),
+                }
             };
             Ok(StatusInfo { state, http_ok })
         }
@@ -611,18 +909,27 @@ pub mod commands {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            let mut map = CHILDREN.lock().await;
-            if let Some(mut child) = map.remove("frontend") {
-                child.kill().await.map_err(|e| format!("kill failed: {e}"))?;
-                let _ = child.wait().await;
-                Ok("stopped".into())
-            } else {
-                drop(map);
-                match kill_on_port(5173, "frontend").await {
-                    Ok(()) => Ok("stopped (via port fallback)".into()),
-                    Err(_) => Ok("not running".into()),
+            // 1. Kill tracked child (if any)
+            {
+                let mut map = CHILDREN.lock().await;
+                if let Some(mut child) = map.remove("frontend") {
+                    let _ = child.kill().await;
+                    let _ = child.wait().await;
                 }
             }
+
+            // 2. Kill anything still listening on port 5173
+            let _ = kill_on_port(5173, "frontend").await;
+
+            // 3. Kill orphaned node processes running "vite" in the frontend dir
+            let repo = repo_root().unwrap_or_default();
+            let frontend_dir = repo.join("frontend").to_string_lossy().to_string();
+            if !frontend_dir.is_empty() {
+                let pattern = format!("{}*vite", frontend_dir.replace('\\', "\\\\"));
+                kill_by_cmdline(&pattern, "frontend-orphan").await;
+            }
+
+            Ok("stopped".into())
         }
     }
 
@@ -650,11 +957,14 @@ pub mod commands {
         #[cfg(not(target_os = "linux"))]
         {
             let http_ok = check_http_frontend().await;
-            let state = match child_state("frontend").await {
-                ChildState::Running => "active".into(),
-                ChildState::Failed => "failed".into(),
-                _ if http_ok => "active".into(),
-                _ => "inactive".into(),
+            let state = if http_ok {
+                "active".into()
+            } else {
+                match child_state("frontend").await {
+                    ChildState::Running => "active".into(),
+                    ChildState::Failed => "failed".into(),
+                    _ => "inactive".into(),
+                }
             };
             Ok(StatusInfo { state, http_ok })
         }
@@ -686,94 +996,135 @@ pub mod commands {
 
     /// Return the OpenClaw URL with an auth token appended as a URL hash fragment.
     ///
-    /// If `JARVIS_OPENCLAW_SSH_HOST` is set → SSH to that host, run
-    /// `openclaw dashboard`, parse the `#token=<TOKEN>` fragment from its output,
-    /// and return `<base>/#token=<TOKEN>`.
+    /// Tries multiple strategies in order:
+    /// 1. SSH to remote host → `openclaw dashboard --no-open` → parse `#token=`
+    /// 2. Local CLI → `openclaw dashboard --no-open` → parse `#token=`
+    /// 3. Local config file `~/.openclaw/openclaw.json` → `gateway.auth.token`
+    /// 4. Fallback → bare URL
     ///
-    /// Otherwise → read token from `~/.openclaw/openclaw.json` (local-file path,
-    /// Linux only) and return `<base>?token=<TOKEN>`.
-    ///
-    /// Any failure (SSH timeout, no token in output, missing file, parse error)
-    /// logs a warning and falls back to the bare base URL.
+    /// Any failure logs a warning and falls through to the next strategy.
     #[tauri::command]
     pub async fn openclaw_url() -> Result<String, String> {
-        let base = openclaw_base_url();
-        let fallback = format!("{}/", base.trim_end_matches('/'));
+        // When remote, always use localhost (via SSH tunnel) so the browser
+        // has a secure context for device-identity crypto APIs.
+        let is_remote = read_openclaw_settings().target == "remote";
+        let dashboard_base = if is_remote {
+            "http://127.0.0.1:18789".to_string()
+        } else {
+            openclaw_base_url()
+        };
+        let fallback = format!("{}/", dashboard_base.trim_end_matches('/'));
 
-        // ── Remote path: SSH to JARVIS_OPENCLAW_SSH_HOST ─────────────────────
-        if let Ok(ssh_host) = std::env::var("JARVIS_OPENCLAW_SSH_HOST") {
-            if !ssh_host.trim().is_empty() {
-                let remote_cmd = concat!(
-                    r#"export NVM_DIR="$HOME/.nvm" && "#,
-                    r#". "$NVM_DIR/nvm.sh" && "#,
-                    r#"openclaw dashboard 2>&1"#
-                );
-
-                let ssh_future = tokio::process::Command::new("ssh")
-                    .args([
-                        "-o", "BatchMode=yes",
-                        "-o", "ConnectTimeout=5",
-                        ssh_host.trim(),
-                        remote_cmd,
-                    ])
-                    .output();
-
-                let output = match tokio::time::timeout(
-                    Duration::from_secs(10),
-                    ssh_future,
-                )
-                .await
-                {
-                    Ok(Ok(o)) => o,
-                    Ok(Err(e)) => {
-                        eprintln!("[openclaw_url] WARNING: ssh spawn error: {}", e);
-                        return Ok(fallback);
-                    }
-                    Err(_) => {
-                        eprintln!("[openclaw_url] WARNING: ssh timed out after 10 s");
-                        return Ok(fallback);
-                    }
-                };
-
-                if !output.status.success() {
-                    eprintln!(
-                        "[openclaw_url] WARNING: ssh exited with {:?}",
-                        output.status.code()
-                    );
-                    return Ok(fallback);
-                }
-
-                let stdout = String::from_utf8_lossy(&output.stdout);
-
-                // Find "#token=" and take everything up to the next whitespace / EOL.
-                // The CLI prints a line like:
-                //   Dashboard URL: http://127.0.0.1:18789/#token=<TOKEN>
-                let token: Option<&str> = stdout
-                    .find("#token=")
-                    .map(|pos| &stdout[pos + "#token=".len()..])
-                    .and_then(|after| {
-                        let end = after
-                            .find(|c: char| c.is_ascii_whitespace())
-                            .unwrap_or(after.len());
-                        let tok = &after[..end];
-                        if tok.is_empty() { None } else { Some(tok) }
-                    });
-
-                return match token {
-                    Some(t) => {
-                        Ok(format!("{}/#token={}", base.trim_end_matches('/'), t))
-                    }
-                    None => {
-                        eprintln!(
-                            "[openclaw_url] WARNING: #token= not found in ssh output"
-                        );
-                        Ok(fallback)
-                    }
-                };
+        // Ensure SSH tunnel is up when remote so localhost:18789 works.
+        #[cfg(not(target_os = "linux"))]
+        if is_remote {
+            if let Err(e) = ensure_ssh_tunnel().await {
+                eprintln!("[openclaw_url] SSH tunnel failed: {}", e);
             }
         }
 
-        // ── Local path: read ~/.openclaw/openclaw.json ────────────────────────
+        // ── Strategy 1: SSH to remote host ───────────────────────────────────
+        let ssh_host_override = std::env::var("JARVIS_OPENCLAW_SSH_HOST")
+            .ok()
+            .filter(|v| !v.trim().is_empty());
+        let ssh_host: Option<String> = if ssh_host_override.is_some() {
+            ssh_host_override
+        } else if read_openclaw_settings().target == "remote" {
+            Some(read_openclaw_settings().ssh_host)
+        } else {
+            None
+        };
+
+        if let Some(host) = &ssh_host {
+            let remote_cmd = concat!(
+                r#"export NVM_DIR="$HOME/.nvm" && "#,
+                r#". "$NVM_DIR/nvm.sh" && "#,
+                r#"openclaw dashboard --no-open 2>&1"#
+            );
+
+            let ssh_future = tokio::process::Command::new("ssh")
+                .args([
+                    "-o", "BatchMode=yes",
+                    "-o", "ConnectTimeout=5",
+                    host.trim(),
+                    remote_cmd,
+                ])
+                .output();
+
+            match tokio::time::timeout(Duration::from_secs(10), ssh_future).await {
+                Ok(Ok(output)) if output.status.success() => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if let Some(token) = extract_hash_token(&stdout) {
+                        return Ok(format!(
+                            "{}/#token={}",
+                            dashboard_base.trim_end_matches('/'),
+                            token
+                        ));
+                    }
+                    eprintln!(
+                        "[openclaw_url] SSH ok but #token= not found in output"
+                    );
+                }
+                Ok(Ok(output)) => {
+                    eprintln!(
+                        "[openclaw_url] SSH exited {:?} — trying local CLI",
+                        output.status.code()
+                    );
+                }
+                Ok(Err(e)) => {
+                    eprintln!("[openclaw_url] SSH spawn error: {} — trying local CLI", e);
+                }
+                Err(_) => {
+                    eprintln!("[openclaw_url] SSH timed out — trying local CLI");
+                }
+            }
+        }
+
+        // ── Strategy 2: local CLI `openclaw dashboard --no-open` ─────────────
+        {
+            let cli_argv = _resolve_openclaw_cli_argv();
+            if let Some(argv) = cli_argv {
+                let mut cmd = tokio::process::Command::new(&argv[0]);
+                for arg in &argv[1..] {
+                    cmd.arg(arg);
+                }
+                cmd.args(["dashboard", "--no-open"]);
+                // Allow insecure private WS for LAN gateways.
+                cmd.env("OPENCLAW_ALLOW_INSECURE_PRIVATE_WS", "1");
+
+                match tokio::time::timeout(Duration::from_secs(10), cmd.output()).await {
+                    Ok(Ok(output)) if output.status.success() => {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        if let Some(token) = extract_hash_token(&stdout) {
+                            return Ok(format!(
+                                "{}/#token={}",
+                                dashboard_base.trim_end_matches('/'),
+                                token
+                            ));
+                        }
+                        eprintln!(
+                            "[openclaw_url] local CLI ok but #token= not found"
+                        );
+                    }
+                    Ok(Ok(output)) => {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        eprintln!(
+                            "[openclaw_url] local CLI exited {:?}: {}",
+                            output.status.code(),
+                            stderr.chars().take(200).collect::<String>()
+                        );
+                    }
+                    Ok(Err(e)) => {
+                        eprintln!("[openclaw_url] local CLI spawn error: {}", e);
+                    }
+                    Err(_) => {
+                        eprintln!("[openclaw_url] local CLI timed out");
+                    }
+                }
+            }
+        }
+
+        // ── Strategy 3: read ~/.openclaw/openclaw.json ───────────────────────
         let home = {
             #[cfg(target_os = "windows")]
             { std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\user".into()) }
@@ -782,48 +1133,36 @@ pub mod commands {
         };
         let path = format!("{}/.openclaw/openclaw.json", home);
 
-        let contents = match tokio::fs::read_to_string(&path).await {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[openclaw_url] WARNING: could not read {}: {}", path, e);
-                return Ok(fallback);
-            }
-        };
+        if let Ok(contents) = tokio::fs::read_to_string(&path).await {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                let token = json
+                    .get("gateway")
+                    .and_then(|g| g.get("auth"))
+                    .and_then(|a| a.get("token"))
+                    .and_then(|t| t.as_str());
 
-        let json: serde_json::Value = match serde_json::from_str(&contents) {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("[openclaw_url] WARNING: failed to parse {}: {}", path, e);
-                return Ok(fallback);
-            }
-        };
-
-        let token = json
-            .get("gateway")
-            .and_then(|g| g.get("auth"))
-            .and_then(|a| a.get("token"))
-            .and_then(|t| t.as_str());
-
-        match token {
-            Some(t) if !t.is_empty() => Ok(format!("{}?token={}", fallback, t)),
-            _ => {
-                eprintln!(
-                    "[openclaw_url] WARNING: gateway.auth.token not found or empty in {}",
-                    path
-                );
-                Ok(fallback)
+                if let Some(t) = token {
+                    if !t.is_empty() {
+                        return Ok(format!("{}?token={}", fallback, t));
+                    }
+                }
             }
         }
+
+        // ── Strategy 4: bare URL fallback ────────────────────────────────────
+        eprintln!(
+            "[openclaw_url] WARNING: no token found via any strategy — returning bare URL"
+        );
+        Ok(fallback)
     }
 
     // ── OpenClaw target toggle ────────────────────────────────────────────────
 
-    /// Return the currently persisted OpenClaw target and its resolved URL.
+    /// Return the currently persisted OpenClaw settings and the resolved URL.
     #[tauri::command]
     pub async fn get_openclaw_target() -> Result<OpenclawTargetInfo, String> {
-        let target = read_openclaw_target();
-        let url = openclaw_base_url();
-        Ok(OpenclawTargetInfo { target, url })
+        let s = read_openclaw_settings();
+        Ok(to_info(&s))
     }
 
     /// Validate and persist a new OpenClaw target, then return the updated info.
@@ -840,12 +1179,88 @@ pub mod commands {
                 ))
             }
         }
-        write_openclaw_target(&target)?;
-        let url = match target.as_str() {
-            "local" => "http://127.0.0.1:18789".into(),
-            _ => "http://192.168.1.118:18789".into(),
-        };
-        Ok(OpenclawTargetInfo { target, url })
+        let mut s = read_openclaw_settings();
+        s.target = target;
+        write_openclaw_settings(&s)?;
+        Ok(to_info(&s))
+    }
+
+    /// Persist a new SSH hostname used when opening the remote tunnel.
+    #[tauri::command]
+    pub async fn set_openclaw_ssh_host(ssh_host: String) -> Result<OpenclawTargetInfo, String> {
+        if ssh_host.trim().is_empty() {
+            return Err("ssh_host must not be empty".into());
+        }
+        let mut s = read_openclaw_settings();
+        s.ssh_host = ssh_host.trim().into();
+        write_openclaw_settings(&s)?;
+        Ok(to_info(&s))
+    }
+
+    /// Persist a new remote URL for the OpenClaw gateway.
+    #[tauri::command]
+    pub async fn set_openclaw_remote_url(remote_url: String) -> Result<OpenclawTargetInfo, String> {
+        let trimmed = remote_url.trim();
+        if trimmed.is_empty() {
+            return Err("remote_url must not be empty".into());
+        }
+        if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+            return Err("remote_url must start with http:// or https://".into());
+        }
+        let mut s = read_openclaw_settings();
+        s.remote_url = trimmed.into();
+        write_openclaw_settings(&s)?;
+        Ok(to_info(&s))
+    }
+
+    /// Report whether the SSH tunnel is active and localhost:18789 is reachable.
+    ///
+    /// On Linux the tunnel concept does not apply; returns state `"n/a"`.
+    #[tauri::command]
+    pub async fn tunnel_status() -> Result<StatusInfo, String> {
+        #[cfg(target_os = "linux")]
+        {
+            let http_ok = check_http_openclaw().await;
+            Ok(StatusInfo { state: "n/a".into(), http_ok })
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let listening = is_local_port_listening(18789).await;
+            let http_ok = check_http_url("http://127.0.0.1:18789/").await;
+            let state = if listening { "active" } else { "inactive" };
+            Ok(StatusInfo { state: state.into(), http_ok })
+        }
+    }
+
+    /// Bring the SSH tunnel up (non-Linux only; target must be `"remote"`).
+    #[tauri::command]
+    pub async fn start_tunnel() -> Result<String, String> {
+        #[cfg(target_os = "linux")]
+        {
+            Err("tunnel not applicable on Linux host".into())
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            if read_openclaw_settings().target != "remote" {
+                return Err("target is not 'remote'; nothing to tunnel".into());
+            }
+            ensure_ssh_tunnel().await?;
+            Ok("tunnel up".into())
+        }
+    }
+
+    /// Tear down the SSH tunnel (non-Linux only).
+    #[tauri::command]
+    pub async fn stop_tunnel() -> Result<String, String> {
+        #[cfg(target_os = "linux")]
+        {
+            Ok("n/a".into())
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            stop_ssh_tunnel().await?;
+            Ok("tunnel stopped".into())
+        }
     }
 
     // ── Generic HTTP check (kept for potential future use) ────────────────────
@@ -872,6 +1287,11 @@ pub fn run() {
             commands::openclaw_url,
             commands::get_openclaw_target,
             commands::set_openclaw_target,
+            commands::set_openclaw_ssh_host,
+            commands::set_openclaw_remote_url,
+            commands::tunnel_status,
+            commands::start_tunnel,
+            commands::stop_tunnel,
             commands::start_frontend,
             commands::stop_frontend,
             commands::restart_frontend,

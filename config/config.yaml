@@ -3,6 +3,10 @@ jarvis:
   wake_word: "hey jarvis"
   language: "auto"
 
+location:
+  latitude: 48.7758
+  longitude: 9.1829
+
 audio:
   input_device_index: null
   sample_rate: 16000
@@ -36,7 +40,7 @@ claude:
   max_history_turns: 10
 
 agents:
-  orchestrator_model: "claude-opus-4-5"
+  orchestrator_model: "claude-opus-4-7"
   subagent_model: "claude-sonnet-4-6"
   orchestrator_max_tokens: 150
   chat_max_tokens: 300
@@ -53,6 +57,10 @@ smart_home:
   enabled: false
 
 api:
+  # Bind address for WS (:8765) and HTTP (:8766) servers.
+  # Default is loopback — safe for a personal assistant with no auth layer.
+  # Set to "0.0.0.0" only when you need LAN/WAN access AND have added auth.
+  host: "127.0.0.1"
   cors_origins: ["http://localhost:5173"]
 
 logging:
@@ -70,7 +78,7 @@ memory:
 
 openclaw:
   enabled: true
-  gateway_url: "http://192.168.1.118:18789"
+  gateway_url: "http://192.168.1.121:18789"
   gateway_port: 18789
   managed_daemon: false  # true = JARVIS starts/stops daemon; false = assume systemd
   health_check_interval_seconds: 30

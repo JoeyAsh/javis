@@ -1,0 +1,77 @@
+/* ================================================================
+   LightTrace — standalone 4-strip circumnavigating trace.
+   Keyframes (pTraceTop/Bot/Left/Right) live in lib.css.
+   ================================================================ */
+
+.lib-lighttrace {
+    position: absolute;
+    inset: -1px;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: 2px;
+}
+
+.lib-lighttrace::before,
+.lib-lighttrace::after {
+    content: '';
+    position: absolute;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--lt-color, var(--accent)) 40%,
+        var(--accent-bright) 50%,
+        var(--lt-color, var(--accent)) 60%,
+        transparent 100%
+    );
+    box-shadow: 0 0 8px var(--accent-bright);
+    opacity: 0.55;
+}
+
+.lib-lighttrace::before {
+    top: 0;
+    left: -40%;
+    width: 40%;
+    height: 1px;
+    animation: pTraceTop 6s linear infinite;
+}
+
+.lib-lighttrace::after {
+    bottom: 0;
+    right: -40%;
+    width: 40%;
+    height: 1px;
+    animation: pTraceBot 6s linear infinite;
+    animation-delay: -3s;
+}
+
+.lib-lighttrace__l,
+.lib-lighttrace__r {
+    position: absolute;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent 0%,
+        var(--lt-color, var(--accent)) 40%,
+        var(--accent-bright) 50%,
+        var(--lt-color, var(--accent)) 60%,
+        transparent 100%
+    );
+    box-shadow: 0 0 6px var(--accent-bright);
+    opacity: 0.55;
+}
+
+.lib-lighttrace__l {
+    left: 0;
+    top: -40%;
+    height: 40%;
+    animation: pTraceLeft 6s linear infinite;
+    animation-delay: -4.5s;
+}
+
+.lib-lighttrace__r {
+    right: 0;
+    bottom: -40%;
+    height: 40%;
+    animation: pTraceRight 6s linear infinite;
+    animation-delay: -1.5s;
+}

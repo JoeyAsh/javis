@@ -1,0 +1,44 @@
+.panel {
+    padding: 0;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.compactSummary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0 6px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-family: var(--font);
+    letter-spacing: 0.05em;
+}
+
+.summaryTotal {
+    color: var(--accent-bright);
+    font-weight: 500;
+}
+
+.summarySep {
+    color: var(--text-muted);
+}
+
+.summaryOn {
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.empty {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font);
+    letter-spacing: 0.05em;
+    padding: 16px 0;
+    text-align: center;
+}

@@ -1,0 +1,26 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Type — Display &amp; JARVIS mark</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  .wrap{padding:26px 28px;display:flex;flex-direction:column;gap:18px;align-items:flex-start}
+  .mark{font-size:9px;letter-spacing:6px;text-transform:uppercase;color:var(--text-muted)}
+  .big{font-size:40px;letter-spacing:14px;color:var(--text);font-weight:500}
+  .trans{font-size:11px;letter-spacing:.1em;color:var(--text-secondary)}
+  .transient-row{display:flex;gap:18px;align-items:center}
+  .caret{width:6px;height:12px;background:var(--accent-bright);box-shadow:var(--glow);animation:flicker 1s steps(2) infinite}
+  .lbl{font-size:8px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase}
+</style></head>
+<body><div class="wrap">
+  <div class="lbl">brand mark — 9px / 6 letter-spacing</div>
+  <div class="mark">J A R V I S</div>
+  <div class="lbl">display wordmark — 40px / 14 letter-spacing</div>
+  <div class="big">JARVIS</div>
+  <div class="lbl">transient status — 11px lowercase</div>
+  <div class="transient-row">
+    <span class="trans">listening...</span>
+    <span class="trans" style="color:var(--accent-bright)">thinking...</span>
+    <span class="trans" style="color:var(--accent-speak)">speaking...</span>
+    <span class="caret" aria-hidden="true"></span>
+  </div>
+</div></body></html>

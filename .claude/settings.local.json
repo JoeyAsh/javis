@@ -1,6 +1,10 @@
 {
   "permissions": {
     "defaultMode": "bypassPermissions",
+    "deny": [
+      "mcp__claude_ai_dormakaba_AI_Platform_MCP__*",
+      "mcp__claude_ai_dormakaba_Porthos_Appengers_Documentation_MCP__*"
+    ],
     "allow": [
       "Bash(git pull:*)",
       "Bash(find D:/Repos/JARVIS -name *.py -o -name *.ts -o -name *.tsx -o -name *.json -o -name Dockerfile* -o -name docker-compose* -o -name README.md)",
@@ -42,5 +46,40 @@
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/block-orb-engine.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/ruff-on-py.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stop-policy-check.sh"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -1,0 +1,70 @@
+.row {
+    padding: 4px 0;
+}
+
+.nameRow {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 3px;
+}
+
+.name {
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    font-family: var(--font);
+}
+
+.nameRunning {
+    color: var(--text);
+}
+
+.nameStopped {
+    color: var(--text-muted);
+}
+
+.barRow {
+    display: flex;
+    gap: var(--s-2);
+    align-items: center;
+    margin-top: 3px;
+}
+
+.barLabel {
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    width: 24px;
+    font-family: var(--font);
+}
+
+.barValue {
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    width: 26px;
+    text-align: right;
+    font-family: var(--font);
+}
+
+.barTrack {
+    flex: 1;
+    height: 3px;
+    background: var(--border);
+}
+
+.barFillCpu {
+    height: 100%;
+    background: var(--accent);
+    box-shadow: var(--glow);
+}
+
+.barFillMem {
+    height: 100%;
+    background: var(--accent-bright);
+}

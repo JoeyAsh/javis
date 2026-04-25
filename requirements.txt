@@ -13,6 +13,7 @@ cryptography
 # Audio / Voice pipeline
 faster-whisper
 openWakeWord
+onnxruntime
 sounddevice
 soundfile
 numpy

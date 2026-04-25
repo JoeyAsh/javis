@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Transcript</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  .wrap{padding:16px 22px;display:flex;flex-direction:column;gap:10px;max-width:640px}
+  .turn{display:flex;flex-direction:column}
+  .lbl{font-size:9px;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase}
+  .bubble{font-size:12px;line-height:1.5;padding:2px 0}
+  .user{align-items:flex-end}
+  .user .bubble{color:var(--text-secondary)}
+  .user .lbl::after{content:'  ›';color:var(--accent)}
+  .jarvis{align-items:flex-start}
+  .jarvis .bubble{background:rgba(76,168,232,.05);border:1px solid var(--border);padding:6px 8px;border-radius:2px;color:var(--text);max-width:82%}
+  .jarvis .lbl::before{content:'J. ';color:var(--text);font-weight:500}
+</style></head>
+<body><div class="wrap">
+  <div class="turn jarvis"><div class="lbl">JARVIS  09:04</div><div class="bubble">Good morning, sir. Kaffee läuft bereits.</div></div>
+  <div class="turn user" style="align-self:flex-end"><div class="lbl">YOU  09:04</div><div class="bubble">Was steht heute an?</div></div>
+  <div class="turn jarvis"><div class="lbl">JARVIS  09:05</div><div class="bubble">Three meetings. Board at eleven, design review um 14, abend training.</div></div>
+</div></body></html>

@@ -90,7 +90,7 @@ class TTSEngine(ABC):
             audio_data: Audio samples as numpy array
             sample_rate: Sample rate in Hz
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         event = asyncio.Event()
 
         def callback(

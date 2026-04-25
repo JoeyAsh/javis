@@ -51,7 +51,7 @@ class SpeechToText:
 
     async def initialize(self) -> None:
         """Load the Whisper model."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def load_model() -> Any:
             try:

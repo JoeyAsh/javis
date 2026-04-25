@@ -78,7 +78,7 @@ class StreamSplitter:
             Complete sentences ready for TTS.
         """
         self._buffer = ""
-        last_yield_time = asyncio.get_event_loop().time()
+        last_yield_time = asyncio.get_running_loop().time()
 
         async for token in token_stream:
             self._buffer += token
@@ -93,10 +93,10 @@ class StreamSplitter:
                     if sentence:
                         logger.debug(f"Yielding sentence ({len(sentence)} chars)")
                         yield sentence
-                        last_yield_time = asyncio.get_event_loop().time()
+                        last_yield_time = asyncio.get_running_loop().time()
 
             # Check for max wait timeout
-            current_time = asyncio.get_event_loop().time()
+            current_time = asyncio.get_running_loop().time()
             elapsed_ms = (current_time - last_yield_time) * 1000
 
             if elapsed_ms > self._max_wait_ms and len(self._buffer) > self._min_chars:

@@ -195,7 +195,8 @@ def _load_gateway_token() -> str:
         cfg = json.loads(_CONFIG_FILE.read_text())
         token: str | None = cfg.get("gateway", {}).get("auth", {}).get("token")
         return token if token else ""
-    except Exception:
+    except Exception as exc:
+        logger.warning(f"Failed to load gateway token from {_CONFIG_FILE}: {exc}")
         return ""
 
 

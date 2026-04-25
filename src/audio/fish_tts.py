@@ -92,9 +92,22 @@ class FishTTSClient:
         self._api_key = api_key or os.environ.get("FISH_API_KEY", "")
         self._voice_id = voice_id or os.environ.get("FISH_VOICE_ID", "")
         self._format = format
+        self._client: httpx.AsyncClient | None = None
 
         if not self._api_key:
             logger.warning("FISH_API_KEY not set — Fish TTS will fail at runtime")
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Return the shared httpx client, creating it lazily on first call."""
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=30.0)
+        return self._client
+
+    async def aclose(self) -> None:
+        """Close the shared httpx client and release its resources. Idempotent."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def synthesize(
         self,
@@ -146,8 +159,8 @@ class FishTTSClient:
                 _prosody_energy_warned = True
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(FISH_API_URL, headers=headers, json=payload)
+            client = await self._get_client()
+            response = await client.post(FISH_API_URL, headers=headers, json=payload)
 
             if response.status_code != 200:
                 raise FishTTSError(

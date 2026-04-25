@@ -112,10 +112,10 @@ class BargeInDetector:
 
                 if is_speech:
                     if speech_start is None:
-                        speech_start = asyncio.get_event_loop().time()
+                        speech_start = asyncio.get_running_loop().time()
                     else:
                         duration_ms = (
-                            asyncio.get_event_loop().time() - speech_start
+                            asyncio.get_running_loop().time() - speech_start
                         ) * 1000
 
                         if duration_ms >= self._sensitivity_ms:

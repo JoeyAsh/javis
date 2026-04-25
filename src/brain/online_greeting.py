@@ -104,7 +104,7 @@ def render_greeting_text(ctx: GreetingContext) -> str:
             parts.append("Note: RAM under load.")
     else:
         if is_de:
-            parts.append("Alles bereit.")
+            parts.append("Alle Systeme nominal.")
         else:
             parts.append("All systems nominal.")
 

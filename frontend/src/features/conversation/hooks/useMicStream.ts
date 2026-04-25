@@ -31,6 +31,8 @@ export function useMicStream({ paused }: UseMicStreamOptions): UseMicStreamRetur
         let processorNode: ScriptProcessorNode | null = null;
         let stream: MediaStream | null = null;
         let destroyed = false;
+        let unlockListeners: (() => void) | null = null;
+        let firstFrameLogged = false;
 
         async function start(): Promise<void> {
             try {
@@ -52,6 +54,21 @@ export function useMicStream({ paused }: UseMicStreamOptions): UseMicStreamRetur
                 // Request 16 kHz explicitly; browser may not honour it — we downsample
                 // in the processor if needed.
                 audioCtx = new AudioContext({ sampleRate: 16000 });
+
+                // AudioContext starts in 'suspended' state under the autoplay policy.
+                // Resume immediately — the just-completed getUserMedia permission grant
+                // counts as a user gesture, so this should succeed without further input.
+                if (audioCtx.state === 'suspended') {
+                    try {
+                        await audioCtx.resume();
+                    } catch (err) {
+                        console.warn(
+                            '[useMicStream] AudioContext resume failed; will retry on next user gesture:',
+                            err,
+                        );
+                    }
+                }
+
                 sourceNode = audioCtx.createMediaStreamSource(stream);
 
                 // bufferSize=4096 gives ~256 ms at 16 kHz — a good balance between
@@ -67,6 +84,13 @@ export function useMicStream({ paused }: UseMicStreamOptions): UseMicStreamRetur
 
                     // Convert float32 [-1, 1] → int16 [-32768, 32767]
                     const int16 = floatToInt16(float32, inputBuffer.sampleRate);
+
+                    if (!firstFrameLogged) {
+                        console.info(
+                            `[useMicStream] First PCM frame: ${int16.length} samples, sr=${inputBuffer.sampleRate}, ctxState=${audioCtx?.state}`,
+                        );
+                        firstFrameLogged = true;
+                    }
                     wsClient.sendBinary(int16.buffer as ArrayBuffer);
                 };
 
@@ -79,12 +103,30 @@ export function useMicStream({ paused }: UseMicStreamOptions): UseMicStreamRetur
                 silentGain.connect(audioCtx.destination);
 
                 isCapturingRef.current = true;
+
+                // Belt-and-suspenders fallback: if any future tab-suspend / autoplay
+                // blip drops the context back to 'suspended', resume on next gesture.
+                const unlock = (): void => {
+                    if (audioCtx && audioCtx.state === 'suspended') {
+                        void audioCtx.resume();
+                    }
+                };
+                window.addEventListener('click', unlock);
+                window.addEventListener('keydown', unlock);
+
+                // Stash on the closure so cleanup can remove them.
+                unlockListeners = unlock;
             } catch (err) {
                 console.error('[useMicStream] Failed to start mic capture:', err);
             }
         }
 
         function stop(): void {
+            if (unlockListeners) {
+                window.removeEventListener('click', unlockListeners);
+                window.removeEventListener('keydown', unlockListeners);
+                unlockListeners = null;
+            }
             isCapturingRef.current = false;
             try {
                 processorNode?.disconnect();

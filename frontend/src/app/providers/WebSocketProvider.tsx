@@ -13,10 +13,14 @@ export function WebSocketProvider({
     url = DEFAULT_URL,
 }: WebSocketProviderProps): ReactElement {
     useEffect(() => {
+        // Singleton WS — connect is idempotent. We deliberately do NOT
+        // disconnect on unmount: under React 18 StrictMode the cleanup
+        // fires during the dev double-mount and was racing the still-
+        // CONNECTING socket, producing "closed before established" errors
+        // and the backend "Cannot write to closing transport" warnings.
+        // The socket lives for the lifetime of the tab; the browser will
+        // close it on tab-close, which is sufficient.
         wsClient.connect(url);
-        return () => {
-            wsClient.disconnect();
-        };
     }, [url]);
 
     return <>{children}</>;

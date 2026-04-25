@@ -203,6 +203,11 @@ gmail:
     - "https://www.googleapis.com/auth/gmail.readonly"
     - "https://www.googleapis.com/auth/gmail.send"
 
+greeting:
+  enabled: true
+  delay_seconds: 0.8         # wait for HUD to finish subscribing
+  mode: "status"             # "static" | "status" — status uses runtime data
+
 persona:
   enabled: true
   salutation_mode: "random"  # "random" | "fixed"

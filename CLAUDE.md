@@ -55,7 +55,9 @@ Definitionen in `.claude/agents/`.
 
 ### Workflow
 
-**Default (lightweight) — gilt für die meisten Tasks:** Branch + Code + PR + Merge. Kein GitHub-Issue. Kein `feature-planner`. Bugfixes, kleine Features, Refactors laufen direkt: Orchestrator brieft `backend-dev` / `frontend-dev`, danach `tester` (außer bei trivialen 1–2-Zeilen-Fixes), danach `reviewer`, dann PR.
+**Default (lightweight) — gilt für die meisten Tasks:** Branch + Code + PR. Kein GitHub-Issue. Kein `feature-planner`. Bugfixes, kleine Features, Refactors laufen direkt: Orchestrator brieft `backend-dev` / `frontend-dev`, danach `tester` (außer bei trivialen 1–2-Zeilen-Fixes), danach `reviewer`, dann **PR anlegen — und stoppen**.
+
+**Nach dem PR-Anlegen** zeigt der Orchestrator dem User die PR-URL und fragt: *"PR steht — soll ich self-reviewen und squash-admin-mergen, oder schaust du selbst rein?"*. Erst auf explizite User-Bestätigung läuft `gh pr review --comment` + `gh pr merge --squash --admin --delete-branch` + lokaler Sync. Niemals Auto-Merge — auch nicht bei Trivial-Fixes — außer der User hat es im selben Auftrag vorab erlaubt.
 
 **Heavy (opt-in, nur wenn der User es ausdrücklich verlangt — Schlüsselwörter wie "mach einen Spec", "leg ein Issue an", "ins Backlog"):**
 1. **Planning** — `jarvis-dev` ruft `feature-planner` auf. Planner drafted und retourniert Spec-Body + Slug + Summary. Orchestrator publisht via Skill `jarvis-publish-issue` als GitHub-Issue im Backlog. **Stopp** — keine Implementation, bis der User explizit den Auftrag erteilt.

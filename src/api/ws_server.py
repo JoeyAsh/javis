@@ -386,6 +386,8 @@ async def broadcast_mail_state(
         messages: List of serialised ``MailMessage`` dicts (camelCase keys).
         unread_count: Total number of unread messages.
     """
+    global _last_unread_count
+    _last_unread_count = unread_count
     message = json.dumps(
         {
             "type": "mail_state",
@@ -408,6 +410,8 @@ async def broadcast_calendar_state(
         events: List of serialised ``CalendarEvent`` dicts (camelCase keys).
         date_label: Human-readable date context label (e.g. ``"Today"``).
     """
+    global _last_calendar_count
+    _last_calendar_count = len(events)
     message = json.dumps(
         {
             "type": "calendar_state",
@@ -972,6 +976,19 @@ async def _on_metrics_snapshot(metrics: SystemMetrics) -> None:
     _last_metrics = metrics
     await broadcast_system_metrics(metrics)
 
+
+# ---------------------------------------------------------------------------
+# Online greeting — fire once per boot on first client connect
+# ---------------------------------------------------------------------------
+
+# Set to True as soon as the greeting task is scheduled so concurrent
+# connects (e.g. HMR reconnects) cannot trigger a second greeting.
+_greeting_played: bool = False
+
+# Cached counts updated by the respective broadcast helpers so the greeting
+# provider lambdas can read them synchronously without a live API call.
+_last_unread_count: int | None = None
+_last_calendar_count: int | None = None
 
 # ---------------------------------------------------------------------------
 # Gmail mail poller
@@ -2735,6 +2752,131 @@ async def _cancel_current_turn(ws: web.WebSocketResponse) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Online greeting helpers
+# ---------------------------------------------------------------------------
+
+
+async def _play_online_greeting() -> None:
+    """Background task: synthesise and broadcast the JARVIS online greeting.
+
+    Waits ``greeting.delay_seconds`` (default 0.8 s) so the HUD can finish
+    wiring its WebSocket subscriptions before the audio frame arrives.
+    Catches all exceptions — never crashes startup over a greeting failure.
+    """
+    from utils.config_loader import get_config as _get_cfg_og  # noqa: PLC0415
+
+    try:
+        _og_cfg = _get_cfg_og()
+        greeting_cfg = _og_cfg.get_section("greeting") or {}
+        if not greeting_cfg.get("enabled", True):
+            return
+
+        delay = float(greeting_cfg.get("delay_seconds", 0.8))
+        mode = str(greeting_cfg.get("mode", "status"))
+
+        await asyncio.sleep(delay)
+
+        if _fish_tts is None or not _fish_tts._api_key:
+            logger.warning("Online greeting skipped — Fish TTS not configured")
+            return
+
+        # --- Resolve salutation and language --------------------------------
+        salutation = get_salutation(_persona_config) if _persona_config else "Sir"
+        persona_section = _og_cfg.get_section("persona") or {}
+        language = str(persona_section.get("default_language", "en"))
+        # Fall back to config-level language key used elsewhere in the codebase.
+        if language not in ("en", "de"):
+            language = "en"
+
+        # --- Collect runtime context ----------------------------------------
+        from brain.online_greeting import (  # noqa: PLC0415
+            GreetingContext,
+            collect_greeting_context,
+            render_greeting_text,
+        )
+
+        if mode == "static":
+            # Minimal path — no data collection.
+            _lang_is_de = language == "de"
+            if _lang_is_de:
+                text = f"Bin online, {salutation}. Alles bereit."
+            else:
+                text = f"Online, {salutation}. All systems nominal."
+        else:
+            # "status" mode — best-effort collect runtime state.
+            async def _mail_provider() -> int | None:
+                return _last_unread_count
+
+            async def _calendar_provider() -> int | None:
+                return _last_calendar_count
+
+            async def _github_provider() -> int | None:
+                if _github_poller is not None and _github_poller.last_state is not None:
+                    return len(_github_poller.last_state.prs)
+                return None
+
+            async def _openclaw_provider() -> bool:
+                if _openclaw_client is not None:
+                    return await _openclaw_client.is_healthy()
+                return False
+
+            async def _metrics_provider() -> tuple[bool, bool]:
+                if _last_metrics is not None:
+                    cpu_ok = _last_metrics.cpu_percent < 80.0
+                    ram_ok = _last_metrics.ram_percent < 90.0
+                    return cpu_ok, ram_ok
+                return True, True
+
+            ctx = await collect_greeting_context(
+                salutation=salutation,
+                language=language,
+                mail_state_provider=_mail_provider,
+                calendar_state_provider=_calendar_provider,
+                github_state_provider=_github_provider,
+                openclaw_health_check=_openclaw_provider,
+                system_metrics_provider=_metrics_provider,
+            )
+            text = render_greeting_text(ctx)
+
+        # --- Synthesise and broadcast ----------------------------------------
+        await broadcast_state("speaking")
+        try:
+            audio_bytes = await _fish_tts.synthesize(text)
+        except FishTTSError as exc:
+            logger.warning(f"Online greeting TTS failed: {exc}")
+            await broadcast_state("idle")
+            return
+
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+        await broadcast_audio(audio_b64, text, channel="speech")
+        logger.info(f"Greeting played: '{text}' ({len(audio_bytes)} bytes)")
+
+        # Reset orb to idle — no fixed sleep needed; the pipeline follows the
+        # same pattern as _run_voice_pipeline_body which broadcasts idle after
+        # the audio is sent (the frontend controls actual playback duration).
+        await broadcast_state("idle")
+
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Online greeting failed — skipping: {exc}")
+        # Best-effort idle reset so the orb doesn't stay stuck on "speaking".
+        try:
+            await broadcast_state("idle")
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _schedule_online_greeting_if_needed() -> None:
+    """Schedule the greeting background task if not already done this boot."""
+    global _greeting_played
+    if _greeting_played:
+        return
+    _greeting_played = True
+    asyncio.ensure_future(_play_online_greeting())
+
+
+# ---------------------------------------------------------------------------
 # WebSocket handler
 # ---------------------------------------------------------------------------
 
@@ -2883,6 +3025,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     # can still observe "at least one client has been here".
     if not _first_client_event.is_set():
         _first_client_event.set()
+
+    # --- Online greeting: fire once per boot on the first client connect ---
+    # Guard with _greeting_played so HMR reconnects don't trigger again.
+    _schedule_online_greeting_if_needed()
 
     try:
         async for msg in ws:
@@ -3435,6 +3581,13 @@ async def start_ws_server(
     global _github_poller, _github_session
     global _gitlab_client, _gitlab_poller, _gitlab_poller_task
     global _calendar_poller_task, _cache_stats_log_task
+    global _greeting_played, _last_unread_count, _last_calendar_count
+
+    # Reset per-boot greeting flag so tests / re-initialisation get a fresh
+    # greeting each time start_ws_server is called.
+    _greeting_played = False
+    _last_unread_count = None
+    _last_calendar_count = None
 
     from dotenv import load_dotenv
 

@@ -6,8 +6,6 @@ Importing this package causes every sub-module to execute its
 
 Tool naming convention: flat snake_case with a namespace prefix, e.g.
 ``github_list_my_prs``.  OpenClaw sees the prefix as the namespace.
-The Spotify namespace (#58) is intentionally absent here and will be
-added in a separate PR.
 """
 
 from api.mcp_tools import (  # noqa: F401
@@ -15,6 +13,7 @@ from api.mcp_tools import (  # noqa: F401
     gitlab_tools,
     pc_control_tools,
     smart_home_tools,
+    spotify_tools,
     system_tools,
 )
 
@@ -23,5 +22,6 @@ __all__ = [
     "gitlab_tools",
     "pc_control_tools",
     "smart_home_tools",
+    "spotify_tools",
     "system_tools",
 ]

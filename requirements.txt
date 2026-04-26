@@ -50,5 +50,10 @@ dateparser>=1.2.0
 # Spotify integration
 spotipy>=2.23.0
 
+# MCP server — exposes JARVIS tools to OpenClaw agent runtime (Phase 3 bootstrap).
+# SSE transport (uvicorn + starlette + sse-starlette) is bundled in the base package;
+# no extras required.  Pin to 1.x to avoid breaking SDK changes.
+mcp>=1.2.0,<2.0.0
+
 # YAML editing that preserves comments (used by /api/config/repos endpoint)
 ruamel.yaml>=0.18.0

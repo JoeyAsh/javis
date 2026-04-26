@@ -16,6 +16,12 @@ from typing import Any
 import numpy as np
 from aiohttp import web
 
+from api.mcp_server import (
+    get_sse_url,
+    list_registered_tools,
+    start_mcp_server,
+    stop_mcp_server,
+)
 from api.system_metrics import SystemMetrics, SystemMetricsCollector
 from audio.fish_tts import FishTTSClient, FishTTSError, strip_markdown_for_tts
 from audio.stream_splitter import StreamSplitter
@@ -3426,6 +3432,16 @@ async def config_location_handler(request: web.Request) -> web.Response:
         )
 
 
+async def mcp_health_handler(request: web.Request) -> web.Response:
+    """GET /api/mcp/health — return MCP server status and registered tools.
+
+    Returns:
+        JSON ``{"status": "ok", "tools": [...]}`` where ``tools`` is the list
+        of currently registered tool metadata dicts.
+    """
+    return web.json_response({"status": "ok", "tools": list_registered_tools()})
+
+
 async def config_repos_get_handler(request: web.Request) -> web.Response:
     """GET /api/config/repos — return current github.repos and gitlab.projects.
 
@@ -3672,6 +3688,17 @@ async def start_ws_server(
             "'openclaw doctor' to diagnose."
         )
 
+    # --- MCP server (tool provider for OpenClaw agent runtime) ---
+    mcp_config = cfg.get_section("mcp") or {}
+    await start_mcp_server(mcp_config)
+    if (
+        mcp_config.get("auto_register_with_openclaw", True)
+        and mcp_config.get("enabled", True)
+        and _openclaw_client is not None
+    ):
+        mcp_url = get_sse_url(mcp_config)
+        await _openclaw_client.register_mcp_server(mcp_url)
+
     # --- Memory store (archive of transcripts / events) ---
     memory_cfg = cfg.get_section("memory")
     if memory_cfg.get("enabled", True):
@@ -3738,6 +3765,7 @@ async def start_ws_server(
     http_app.router.add_post("/api/config/repos", config_repos_post_handler)
     http_app.router.add_get("/api/metrics/voice", voice_metrics_handler)
     http_app.router.add_get("/api/config/location", config_location_handler)
+    http_app.router.add_get("/api/mcp/health", mcp_health_handler)
 
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)
@@ -4010,6 +4038,28 @@ async def start_ws_server(
                 await _fish_tts.aclose()
             except Exception as exc:  # noqa: BLE001
                 logger.warning(f"Fish TTS client close failed: {exc}")
+
+        # Unregister JARVIS from OpenClaw MCP registry + stop MCP server.
+        _mcp_cfg = cfg.get_section("mcp") or {}
+        if (
+            _mcp_cfg.get("auto_register_with_openclaw", True)
+            and _mcp_cfg.get("enabled", True)
+            and _openclaw_client is not None
+        ):
+            try:
+                await asyncio.wait_for(
+                    _openclaw_client.unregister_mcp_server(), timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                logger.debug("MCP unregister timed out — skipping")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"MCP unregister error (non-fatal): {exc}")
+        try:
+            await asyncio.wait_for(stop_mcp_server(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning("MCP server stop timed out after 5 s")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"MCP server stop failed: {exc}")
 
         # Close OpenClaw + MemoryStore.
         if _openclaw_client is not None:

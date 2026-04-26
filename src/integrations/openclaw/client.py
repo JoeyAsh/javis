@@ -899,3 +899,119 @@ class OpenClawClient:
             ),
         }
         return messages.get(language, messages["en"])
+
+    async def register_mcp_server(self, url: str, name: str = "jarvis") -> bool:
+        """Register a JARVIS MCP server definition with the OpenClaw CLI registry.
+
+        Shells out to ``openclaw mcp set <name> '{"url": "<url>"}'`` which
+        saves the server definition into OpenClaw's config so the agent runtime
+        can discover and invoke the tools.  Failure is non-fatal — JARVIS
+        continues even when the CLI is absent or the gateway is offline.
+
+        Args:
+            url: Full SSE endpoint URL (e.g. ``http://127.0.0.1:8767/sse``).
+            name: Server name as it will appear in ``openclaw mcp list``.
+
+        Returns:
+            ``True`` if the command succeeded, ``False`` otherwise.
+        """
+        argv_base = _resolve_cli_argv()
+        if argv_base is None:
+            logger.warning(
+                "register_mcp_server: OpenClaw CLI not found — MCP registration skipped"
+            )
+            return False
+
+        server_json = json.dumps({"url": url})
+        cmd = [*argv_base, "mcp", "set", name, server_json]
+        logger.debug(f"register_mcp_server: spawn {cmd!r}")
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=_cli_subprocess_env(),
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=10.0,
+            )
+            if proc.returncode == 0:
+                logger.info(
+                    f"MCP server '{name}' registered with OpenClaw (url={url!r})"
+                )
+                return True
+            err = stderr.decode().strip() or f"exit code {proc.returncode}"
+            logger.warning(
+                f"register_mcp_server: openclaw mcp set failed — {err}. "
+                "JARVIS will continue without OpenClaw MCP registration."
+            )
+            return False
+        except asyncio.TimeoutError:
+            logger.warning(
+                "register_mcp_server: CLI timed out — MCP registration skipped"
+            )
+            return False
+        except FileNotFoundError:
+            logger.warning(
+                "register_mcp_server: OpenClaw CLI executable not found"
+            )
+            return False
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"register_mcp_server: unexpected error — {exc}. "
+                "JARVIS will continue without OpenClaw MCP registration."
+            )
+            return False
+
+    async def unregister_mcp_server(self, name: str = "jarvis") -> bool:
+        """Remove the JARVIS MCP server definition from the OpenClaw CLI registry.
+
+        Shells out to ``openclaw mcp unset <name>``.  Failure is non-fatal —
+        a missing entry is not an error during shutdown.
+
+        Args:
+            name: Server name to remove from ``openclaw mcp list``.
+
+        Returns:
+            ``True`` if the command succeeded, ``False`` otherwise.
+        """
+        argv_base = _resolve_cli_argv()
+        if argv_base is None:
+            logger.debug(
+                "unregister_mcp_server: OpenClaw CLI not found — nothing to clean up"
+            )
+            return False
+
+        cmd = [*argv_base, "mcp", "unset", name]
+        logger.debug(f"unregister_mcp_server: spawn {cmd!r}")
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=_cli_subprocess_env(),
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=10.0,
+            )
+            if proc.returncode == 0:
+                logger.info(f"MCP server '{name}' unregistered from OpenClaw")
+                return True
+            err = stderr.decode().strip() or f"exit code {proc.returncode}"
+            logger.debug(
+                f"unregister_mcp_server: openclaw mcp unset returned non-zero — {err}"
+            )
+            return False
+        except asyncio.TimeoutError:
+            logger.debug("unregister_mcp_server: CLI timed out")
+            return False
+        except FileNotFoundError:
+            logger.debug("unregister_mcp_server: OpenClaw CLI not found")
+            return False
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"unregister_mcp_server: {exc}")
+            return False

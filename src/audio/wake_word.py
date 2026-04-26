@@ -61,23 +61,25 @@ class WakeWordDetector:
 
                 logger.info("Loading OpenWakeWord model...")
 
-                # Determine inference framework: prefer tflite (better accuracy per
-                # upstream docs), fall back to onnx. On Windows, tflite-runtime is not
-                # on PyPI — but ai-edge-litert (Google's official TFLite runtime
-                # successor) is, and is API-compatible. Alias it so openwakeword's
-                # hard-coded `import tflite_runtime.interpreter` resolves.
+                # Determine inference framework: prefer ai-edge-litert (Google's
+                # official TFLite-runtime successor, NumPy-2-compatible — the
+                # legacy tflite-runtime 2.14 is pinned to NumPy 1.x ABI and
+                # crashes under NumPy 2.x). If ai-edge-litert is unavailable,
+                # fall back to native tflite_runtime; finally fall back to
+                # onnxruntime. The `sys.modules` aliasing satisfies
+                # openwakeword's hard-coded `import tflite_runtime.interpreter`.
                 framework = "onnx"
                 try:
-                    import tflite_runtime  # noqa: F401  # native Linux / RPi
+                    import ai_edge_litert
+                    import ai_edge_litert.interpreter as _ai_interp
+                    sys.modules["tflite_runtime"] = ai_edge_litert
+                    sys.modules["tflite_runtime.interpreter"] = _ai_interp
                     framework = "tflite"
+                    logger.debug("OpenWakeWord: tflite_runtime aliased to ai_edge_litert")
                 except ImportError:
                     try:
-                        import ai_edge_litert
-                        import ai_edge_litert.interpreter as _ai_interp
-                        sys.modules["tflite_runtime"] = ai_edge_litert
-                        sys.modules["tflite_runtime.interpreter"] = _ai_interp
+                        import tflite_runtime  # noqa: F401  # legacy native Linux / RPi
                         framework = "tflite"
-                        logger.debug("OpenWakeWord: tflite_runtime aliased to ai_edge_litert")
                     except ImportError:
                         pass  # keep framework="onnx"
                 logger.debug(f"OpenWakeWord inference framework: {framework}")

@@ -5,11 +5,13 @@ Covers:
 - spotify_oauth_callback_handler: 200 success, 400 no-code, 400 bad code, 503 no client
 - _spotify_state_loop broadcasts correct shape on each tick
 - _handle_spotify_cmd: all actions dispatched, unknown action logged
+- SpotifyAuthError branch in start_ws_server: source-inspection + behaviour guards
 """
 
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -474,3 +476,50 @@ async def test_spotify_cmd_unauthenticated_does_not_call_client():
         mock_client.play.assert_not_awaited()
     finally:
         srv._spotify_client = orig
+
+
+# ---------------------------------------------------------------------------
+# SpotifyAuthError branch in start_ws_server — source-inspection guards
+# ---------------------------------------------------------------------------
+
+
+def _start_ws_server_source() -> str:
+    """Return the source of start_ws_server (cached per process)."""
+    import api.ws_server as ws
+
+    return inspect.getsource(ws.start_ws_server)
+
+
+def test_auth_error_branch_broadcasts_unauthenticated_state():
+    """start_ws_server SpotifyAuthError branch must call broadcast_spotify_state(authenticated=False."""
+    src = _start_ws_server_source()
+    assert "broadcast_spotify_state(authenticated=False" in src, (
+        "SpotifyAuthError branch must immediately broadcast authenticated=False "
+        "so the HUD renders AuthPrompt instead of the no-playback fallback."
+    )
+
+
+def test_auth_error_branch_starts_state_loop():
+    """start_ws_server SpotifyAuthError branch must start _spotify_state_loop."""
+    src = _start_ws_server_source()
+    # The substring must appear in the except-SpotifyAuthError block; verify it
+    # occurs *after* the SpotifyAuthError catch line in the source.
+    auth_err_pos = src.find("except SpotifyAuthError")
+    loop_pos = src.find("_spotify_state_loop(_spotify_client", auth_err_pos)
+    assert auth_err_pos != -1, "SpotifyAuthError branch not found in start_ws_server"
+    assert loop_pos != -1, (
+        "_spotify_state_loop(_spotify_client must be started inside the "
+        "SpotifyAuthError branch so the HUD keeps receiving auth-state updates."
+    )
+
+
+def test_auth_error_branch_wires_orchestrator():
+    """start_ws_server SpotifyAuthError branch must wire the client into the orchestrator."""
+    src = _start_ws_server_source()
+    auth_err_pos = src.find("except SpotifyAuthError")
+    orch_pos = src.find("_orchestrator.set_spotify_client(_spotify_client)", auth_err_pos)
+    assert auth_err_pos != -1, "SpotifyAuthError branch not found in start_ws_server"
+    assert orch_pos != -1, (
+        "_orchestrator.set_spotify_client(_spotify_client) must be called inside "
+        "the SpotifyAuthError branch so voice intents return a proper spoken response."
+    )

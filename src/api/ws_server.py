@@ -4281,6 +4281,16 @@ async def start_ws_server(
                     f"URL: {_spotify_client.get_auth_url()}"
                 ),
             )
+            # Even without a cached token, run the poller — it broadcasts
+            # `authenticated: false` so the HUD renders AuthPrompt; the OAuth
+            # callback will rebuild the client and start a fresh poller.
+            await broadcast_spotify_state(authenticated=False, scope_upgrade_required=False)
+            poll_interval_s = int(spotify_cfg.get("poll_interval", 10))
+            _spotify_poller_task = asyncio.create_task(
+                _spotify_state_loop(_spotify_client, poll_interval_s)
+            )
+            if _orchestrator is not None:
+                _orchestrator.set_spotify_client(_spotify_client)
         except Exception as _sp_exc:
             logger.error(f"Spotify client initialisation failed: {_sp_exc}")
     else:

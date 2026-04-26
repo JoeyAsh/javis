@@ -139,6 +139,19 @@ _spotify_scope_upgrade_pending: bool = False
 # Cached device_id announced by the HUD via spotify_device_announce WS message.
 # Set when the SDK reports ready=True; cleared on ready=False or disconnect.
 _jarvis_spotify_device_id: str | None = None
+# Sentinel used by play handlers to distinguish "key absent" from "key present but null".
+_MISSING: object = object()
+
+
+def get_spotify_client() -> SpotifyClient | None:
+    """Return the process-wide SpotifyClient singleton, or None if not initialised."""
+    return _spotify_client
+
+
+def get_spotify_device_id() -> str | None:
+    """Return the Spotify Connect device ID announced by the HUD, or None."""
+    return _jarvis_spotify_device_id
+
 
 # GitHub integration — poller singleton and aiohttp session handle.
 _github_poller: Any = None  # GitHubPoller | None
@@ -892,10 +905,6 @@ async def spotify_oauth_callback_handler(request: web.Request) -> web.Response:
     global _spotify_scope_upgrade_pending
     _spotify_scope_upgrade_pending = False
 
-    # Wire the now-authenticated client into the orchestrator's SpotifyAgent.
-    if _orchestrator is not None:
-        _orchestrator.set_spotify_client(_spotify_client)
-
     # Start the poller if it isn't already running.
     if _spotify_poller_task is None or _spotify_poller_task.done():
         _cfg = _gcfg()
@@ -1295,7 +1304,22 @@ async def spotify_play_context_handler(request: web.Request) -> web.Response:
         offset_uri: str | None = (
             body.get("offsetUri") or body.get("offset_uri") or None
         )
-        device_id: str | None = body.get("device_id") or None
+        raw_device_id = body.get("device_id", _MISSING)
+        if raw_device_id is _MISSING or raw_device_id == "":
+            device_id: str | None = get_spotify_device_id()
+            if device_id is not None:
+                logger.info(
+                    f"spotify_play_context: defaulting to JARVIS device {device_id}"
+                )
+            else:
+                logger.warning(
+                    "spotify_play_context: no JARVIS device cached, falling back to"
+                    " Spotify Connect default"
+                )
+        elif raw_device_id is None:
+            device_id = None  # explicit null → honour Spotify Connect active device
+        else:
+            device_id = raw_device_id
         await _spotify_client.play_context(
             context_uri, offset_uri=offset_uri, device_id=device_id
         )
@@ -1315,7 +1339,22 @@ async def spotify_play_uris_handler(request: web.Request) -> web.Response:
         uris: list[str] = body.get("uris", [])
         if not uris:
             return _spotify_json_error(400, {"error": "missing or empty 'uris' list"})
-        device_id: str | None = body.get("device_id") or None
+        raw_device_id = body.get("device_id", _MISSING)
+        if raw_device_id is _MISSING or raw_device_id == "":
+            device_id: str | None = get_spotify_device_id()
+            if device_id is not None:
+                logger.info(
+                    f"spotify_play_uris: defaulting to JARVIS device {device_id}"
+                )
+            else:
+                logger.warning(
+                    "spotify_play_uris: no JARVIS device cached, falling back to"
+                    " Spotify Connect default"
+                )
+        elif raw_device_id is None:
+            device_id = None  # explicit null → honour Spotify Connect active device
+        else:
+            device_id = raw_device_id
         await _spotify_client.play_uris(uris, device_id=device_id)
         return web.Response(content_type="application/json", text="{}")
     except json.JSONDecodeError:
@@ -3179,9 +3218,6 @@ async def _handle_spotify_device_announce(payload: dict[str, Any]) -> None:
     else:
         _jarvis_spotify_device_id = None
 
-    if _orchestrator is not None and hasattr(_orchestrator, "set_preferred_spotify_device"):
-        _orchestrator.set_preferred_spotify_device(device_id if ready else None)
-
 
 async def _cancel_current_turn(ws: web.WebSocketResponse) -> None:
     """Abort the in-flight voice turn for ``ws`` (idempotent).
@@ -4417,9 +4453,6 @@ async def start_ws_server(
             _spotify_poller_task = asyncio.create_task(
                 _spotify_state_loop(_spotify_client, poll_interval_s)
             )
-            # Wire the authenticated client into the orchestrator's SpotifyAgent.
-            if _orchestrator is not None:
-                _orchestrator.set_spotify_client(_spotify_client)
             logger.info(
                 f"Spotify client ready — poller started (interval={poll_interval_s}s)"
             )
@@ -4445,8 +4478,6 @@ async def start_ws_server(
             _spotify_poller_task = asyncio.create_task(
                 _spotify_state_loop(_spotify_client, poll_interval_s)
             )
-            if _orchestrator is not None:
-                _orchestrator.set_spotify_client(_spotify_client)
         except Exception as _sp_exc:
             logger.error(f"Spotify client initialisation failed: {_sp_exc}")
     else:

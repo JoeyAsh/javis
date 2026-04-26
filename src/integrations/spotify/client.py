@@ -934,6 +934,95 @@ class SpotifyClient:
 
         logger.debug(f"Spotify: play_uris({uris!r}, device_id={device_id!r})")
 
+    async def seek(self, position_ms: int, device_id: str | None = None) -> None:
+        """Seek to a position within the current track.
+
+        Args:
+            position_ms: Position in milliseconds to seek to (>= 0).
+            device_id: Optional Spotify Connect device ID to target.
+                When ``None``, Spotify targets the currently active device.
+
+        Raises:
+            SpotifyAuthError: When not authenticated.
+            SpotifyPremiumError: When the API returns 403.
+            SpotifyPollError: On rate-limit or other API errors.
+        """
+        if self._spotify is None:
+            raise SpotifyAuthError("Spotify client not initialised.")
+
+        position_ms = max(0, position_ms)
+        kwargs: dict[str, Any] = {"position_ms": position_ms}
+        if device_id:
+            kwargs["device_id"] = device_id
+
+        try:
+            await asyncio.to_thread(self._spotify.seek_track, **kwargs)
+        except Exception as exc:
+            raise self._map_spotipy_exception(exc) from exc
+
+        logger.debug(f"Spotify: seek(position_ms={position_ms}, device_id={device_id!r})")
+
+    async def set_shuffle(self, state: bool, device_id: str | None = None) -> None:
+        """Enable or disable shuffle for the current playback session.
+
+        Args:
+            state: ``True`` to enable shuffle, ``False`` to disable.
+            device_id: Optional Spotify Connect device ID to target.
+                When ``None``, Spotify targets the currently active device.
+
+        Raises:
+            SpotifyAuthError: When not authenticated.
+            SpotifyPremiumError: When the API returns 403.
+            SpotifyPollError: On rate-limit or other API errors.
+        """
+        if self._spotify is None:
+            raise SpotifyAuthError("Spotify client not initialised.")
+
+        kwargs: dict[str, Any] = {"state": state}
+        if device_id:
+            kwargs["device_id"] = device_id
+
+        try:
+            await asyncio.to_thread(self._spotify.shuffle, **kwargs)
+        except Exception as exc:
+            raise self._map_spotipy_exception(exc) from exc
+
+        logger.debug(f"Spotify: set_shuffle(state={state}, device_id={device_id!r})")
+
+    async def set_repeat(self, state: str, device_id: str | None = None) -> None:
+        """Set the repeat mode for the current playback session.
+
+        Args:
+            state: Repeat mode — one of ``"off"``, ``"track"``, ``"context"``.
+            device_id: Optional Spotify Connect device ID to target.
+                When ``None``, Spotify targets the currently active device.
+
+        Raises:
+            ValueError: When ``state`` is not one of the allowed values.
+            SpotifyAuthError: When not authenticated.
+            SpotifyPremiumError: When the API returns 403.
+            SpotifyPollError: On rate-limit or other API errors.
+        """
+        allowed = {"off", "track", "context"}
+        if state not in allowed:
+            raise ValueError(
+                f"set_repeat: invalid state {state!r}. Must be one of {sorted(allowed)}."
+            )
+
+        if self._spotify is None:
+            raise SpotifyAuthError("Spotify client not initialised.")
+
+        kwargs: dict[str, Any] = {"state": state}
+        if device_id:
+            kwargs["device_id"] = device_id
+
+        try:
+            await asyncio.to_thread(self._spotify.repeat, **kwargs)
+        except Exception as exc:
+            raise self._map_spotipy_exception(exc) from exc
+
+        logger.debug(f"Spotify: set_repeat(state={state!r}, device_id={device_id!r})")
+
     async def get_access_token(self) -> tuple[str, int]:
         """Return a valid PKCE access token and its remaining TTL in seconds.
 

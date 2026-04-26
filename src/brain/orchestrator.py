@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent
 from brain.agents.search_agent import SearchAgent
-from brain.agents.spotify_agent import SpotifyAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
 from brain.intent_parser import Intent, IntentResult
@@ -77,15 +76,12 @@ class OrchestratorDecision:
 # fall through to OpenClaw, which calls the corresponding MCP tools registered
 # in api.mcp_tools (issue #76). SystemAgent is retained for shutdown,
 # voice-change, and memory-reset — none of which have MCP equivalents.
-# Spotify extended intents (SEARCH, QUEUE, PLAY_CONTEXT) run locally via
-# SpotifyAgent — they never go through OpenClaw (issue #58).
+# Spotify intents (SEARCH, QUEUE, PLAY_CONTEXT, and all transport intents)
+# fall through to OpenClaw, which calls the spotify_* MCP tools (issue #87).
 _LOCAL_INTENTS: frozenset[Intent] = frozenset(
     {
         Intent.SYSTEM,
         Intent.WEB_SEARCH,
-        Intent.SPOTIFY_SEARCH,
-        Intent.SPOTIFY_QUEUE,
-        Intent.SPOTIFY_PLAY_CONTEXT,
     }
 )
 
@@ -103,7 +99,6 @@ class Orchestrator:
         claude_client: ClaudeClient,
         memory: Any = None,
         tts_engine: Any = None,
-        spotify_client: Any = None,
     ) -> None:
         """Initialise the orchestrator.
 
@@ -116,14 +111,10 @@ class Orchestrator:
                 :class:`brain.memory.MemoryStore` from ``ws_server``).
             tts_engine: TTS engine handle passed through to ``SystemAgent``
                 for voice-change commands.
-            spotify_client: Optional SpotifyClient instance used to wire
-                ``SpotifyAgent`` for the three Spotify extended intents.
-                When ``None``, those intents fall through to the chat path.
         """
         self.claude_client = claude_client
         self.memory = memory
         self.tts_engine = tts_engine
-        self.spotify_client = spotify_client
 
         # Config — retained for backward compatibility, but the old
         # "orchestrator_model" / "skip_on_clear_intent" knobs no longer
@@ -149,7 +140,8 @@ class Orchestrator:
 
         PcAgent and SmartHomeAgent are intentionally omitted: those intents
         now fall through to OpenClaw → MCP tools (issue #76).
-        SpotifyAgent is wired when a spotify_client is provided (issue #58).
+        SpotifyAgent is removed: all Spotify intents now fall through to
+        OpenClaw → spotify_* MCP tools (issue #87).
         """
         self._agents = {
             "chat": ChatAgent(self.claude_client),
@@ -158,53 +150,12 @@ class Orchestrator:
                 self.claude_client, memory=None, tts_engine=self.tts_engine
             ),
         }
-        if self.spotify_client is not None:
-            self._agents["spotify"] = SpotifyAgent(self.spotify_client)
-            logger.info("SpotifyAgent wired into orchestrator")
 
     def set_tts_engine(self, tts_engine: Any) -> None:
         """Set the TTS engine on the shared ``SystemAgent`` (late binding)."""
         self.tts_engine = tts_engine
         if "system" in self._agents:
             self._agents["system"].tts_engine = tts_engine
-
-    def set_spotify_client(self, spotify_client: Any) -> None:
-        """Wire (or replace) the SpotifyAgent with a new client (late binding).
-
-        Called from ``ws_server`` after Spotify initialisation completes,
-        since Spotify init runs after orchestrator construction.
-
-        Args:
-            spotify_client: Authenticated SpotifyClient instance.
-        """
-        self.spotify_client = spotify_client
-        if spotify_client is not None:
-            self._agents["spotify"] = SpotifyAgent(spotify_client)
-            logger.info("SpotifyAgent wired into orchestrator (late binding)")
-        else:
-            self._agents.pop("spotify", None)
-            logger.info("SpotifyAgent removed from orchestrator")
-
-    def set_preferred_spotify_device(self, device_id: str | None) -> None:
-        """Forward the HUD's announced Spotify device ID to the SpotifyAgent.
-
-        Called from ``ws_server`` when a ``spotify_device_announce`` WS message
-        is received so that subsequent voice-path play commands target the HUD.
-
-        Args:
-            device_id: Spotify Connect device ID, or ``None`` to clear.
-        """
-        agent = self._agents.get("spotify")
-        if agent is None:
-            logger.debug(
-                "set_preferred_spotify_device: SpotifyAgent not wired — ignoring"
-            )
-            return
-        if device_id:
-            logger.info(f"Orchestrator: preferred Spotify device set to {device_id!r}")
-        else:
-            logger.info("Orchestrator: preferred Spotify device cleared")
-        agent.set_preferred_device(device_id)  # type: ignore[union-attr]
 
     async def _build_email_context(
         self,
@@ -557,13 +508,7 @@ class Orchestrator:
                     f"(intent={intent_result.intent.value}, "
                     f"conf={intent_result.confidence:.2f})"
                 )
-                # SpotifyAgent branches on task=intent_name, not the raw utterance.
-                task_arg = (
-                    intent_result.intent.value.upper()
-                    if agent_name == "spotify"
-                    else text
-                )
-                return await agent.run(task_arg, intent_result.params, language)
+                return await agent.run(text, intent_result.params, language)
             logger.warning(
                 f"Local intent {intent_result.intent.value} had no agent wired; "
                 "falling back to chat path"
@@ -634,13 +579,7 @@ class Orchestrator:
                     f"(intent={intent_result.intent.value}, "
                     f"conf={intent_result.confidence:.2f})"
                 )
-                # SpotifyAgent branches on task=intent_name, not the raw utterance.
-                task_arg = (
-                    intent_result.intent.value.upper()
-                    if agent_name == "spotify"
-                    else text
-                )
-                result = await agent.run(task_arg, intent_result.params, language)
+                result = await agent.run(text, intent_result.params, language)
                 yield StreamChunk(
                     type="final",
                     run_id="local",
@@ -706,18 +645,12 @@ class Orchestrator:
 def _intent_to_agent_name(intent: Intent) -> str:
     """Map a classified intent to the local agent key.
 
-    PC_CONTROL and SMART_HOME are no longer in _LOCAL_INTENTS; they fall
-    through to the OpenClaw chat path which calls MCP tools (issue #76).
-    Spotify extended intents map to "spotify" (issue #58).
+    PC_CONTROL, SMART_HOME, and all Spotify intents are not in _LOCAL_INTENTS;
+    they fall through to the OpenClaw chat path which calls MCP tools
+    (issue #76 for PC/home, issue #87 for Spotify).
     """
     if intent == Intent.SYSTEM:
         return "system"
     if intent == Intent.WEB_SEARCH:
         return "search"
-    if intent in (
-        Intent.SPOTIFY_SEARCH,
-        Intent.SPOTIFY_QUEUE,
-        Intent.SPOTIFY_PLAY_CONTEXT,
-    ):
-        return "spotify"
     return "chat"

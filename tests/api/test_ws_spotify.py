@@ -513,18 +513,6 @@ def test_auth_error_branch_starts_state_loop():
     )
 
 
-def test_auth_error_branch_wires_orchestrator():
-    """start_ws_server SpotifyAuthError branch must wire the client into the orchestrator."""
-    src = _start_ws_server_source()
-    auth_err_pos = src.find("except SpotifyAuthError")
-    orch_pos = src.find("_orchestrator.set_spotify_client(_spotify_client)", auth_err_pos)
-    assert auth_err_pos != -1, "SpotifyAuthError branch not found in start_ws_server"
-    assert orch_pos != -1, (
-        "_orchestrator.set_spotify_client(_spotify_client) must be called inside "
-        "the SpotifyAuthError branch so voice intents return a proper spoken response."
-    )
-
-
 # ---------------------------------------------------------------------------
 # /oauth/spotify/start route — registration + handler behaviour
 # ---------------------------------------------------------------------------
@@ -637,59 +625,6 @@ async def test_device_announce_ready_false_clears_module_var():
             {"device_id": "some-prior-device", "name": "JARVIS", "ready": False}
         )
 
-        assert srv._jarvis_spotify_device_id is None
-    finally:
-        srv._jarvis_spotify_device_id = None
-        srv._orchestrator = orig_orch
-
-
-@pytest.mark.asyncio
-async def test_device_announce_ready_true_calls_orchestrator():
-    """spotify_device_announce with ready=True calls orchestrator.set_preferred_spotify_device."""
-    import api.ws_server as srv
-
-    orig_device = srv._jarvis_spotify_device_id
-    orig_orch = srv._orchestrator
-
-    mock_orchestrator = MagicMock()
-    mock_orchestrator.set_preferred_spotify_device = MagicMock()
-    srv._orchestrator = mock_orchestrator
-
-    try:
-        from api.ws_server import _handle_spotify_device_announce
-
-        await _handle_spotify_device_announce(
-            {"device_id": "abc12345-device", "name": "JARVIS", "ready": True}
-        )
-
-        mock_orchestrator.set_preferred_spotify_device.assert_called_once_with(
-            "abc12345-device"
-        )
-    finally:
-        srv._jarvis_spotify_device_id = orig_device
-        srv._orchestrator = orig_orch
-
-
-@pytest.mark.asyncio
-async def test_device_announce_ready_false_calls_orchestrator_with_none():
-    """spotify_device_announce with ready=False calls orchestrator.set_preferred_spotify_device(None)."""
-    import api.ws_server as srv
-
-    srv._jarvis_spotify_device_id = "existing-device"
-    orig_orch = srv._orchestrator
-
-    mock_orchestrator = MagicMock()
-    mock_orchestrator.set_preferred_spotify_device = MagicMock()
-    srv._orchestrator = mock_orchestrator
-
-    try:
-        from api.ws_server import _handle_spotify_device_announce
-
-        await _handle_spotify_device_announce(
-            {"device_id": "existing-device", "name": "JARVIS", "ready": False}
-        )
-
-        mock_orchestrator.set_preferred_spotify_device.assert_called_once_with(None)
         assert srv._jarvis_spotify_device_id is None
     finally:
         srv._jarvis_spotify_device_id = None

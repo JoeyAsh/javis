@@ -121,6 +121,8 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\bwhy\s+(is|do|does|did)\b",
             r"\bgoogle\b",
             r"\blook\s+it\s+up\b",
+            r"\bweb\b",
+            r"\bonline\b",
         ],
         "de": [
             r"\bsuche?\b",
@@ -133,6 +135,8 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\bwie\s+(viel|viele|geht)\b",
             r"\bwarum\b",
             r"\bgoogle\b",
+            r"\bim\s+web\b",
+            r"\bonline\b",
         ],
     },
     Intent.SYSTEM: {

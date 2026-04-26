@@ -22,7 +22,7 @@ interface RawPlaylist {
     id: string;
     name: string;
     owner: string;
-    track_count: number;
+    trackCount: number;
     uri: string;
 }
 
@@ -31,7 +31,7 @@ interface RawTrackResult {
     name: string;
     artist: string;
     album: string;
-    duration_ms: number;
+    durationMs: number;
     uri: string;
 }
 
@@ -40,7 +40,7 @@ interface RawAlbum {
     name: string;
     artist: string;
     uri: string;
-    track_count: number;
+    trackCount: number;
 }
 
 interface RawArtist {
@@ -78,7 +78,7 @@ function transformPlaylist(raw: RawPlaylist): SpotifyPlaylist {
         id: raw.id,
         name: raw.name,
         owner: raw.owner,
-        trackCount: raw.track_count,
+        trackCount: raw.trackCount,
         uri: raw.uri,
         monogram: deriveMonogram(raw.name),
     };
@@ -90,7 +90,7 @@ function transformTrack(raw: RawTrackResult): SpotifyTrackResult {
         name: raw.name,
         artist: raw.artist,
         album: raw.album,
-        durationMs: raw.duration_ms,
+        durationMs: raw.durationMs,
         uri: raw.uri,
         monogram: deriveMonogram(raw.name),
     };
@@ -102,7 +102,7 @@ function transformAlbum(raw: RawAlbum): SpotifyAlbum {
         name: raw.name,
         artist: raw.artist,
         uri: raw.uri,
-        trackCount: raw.track_count,
+        trackCount: raw.trackCount,
         monogram: deriveMonogram(raw.name),
     };
 }

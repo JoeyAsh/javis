@@ -66,6 +66,17 @@ class SpotifyAgent(BaseAgent):
         """
         super().__init__()
         self._client = spotify_client
+        self.preferred_device_id: str | None = None
+
+    def set_preferred_device(self, device_id: str | None) -> None:
+        """Set the preferred Spotify Connect device for playback commands.
+
+        Args:
+            device_id: Spotify Connect device ID to target, or ``None`` to
+                clear the preference and let Spotify choose the active device.
+        """
+        self.preferred_device_id = device_id
+        logger.info(f"SpotifyAgent: preferred_device_id set to {device_id!r}")
 
     async def run(
         self, task: str, params: dict[str, Any], language: str
@@ -160,7 +171,7 @@ class SpotifyAgent(BaseAgent):
                 spoken_response=msg, success=False, data={"query": query}
             )
 
-        await self._client.play_context(best.uri)
+        await self._client.play_context(best.uri, device_id=self.preferred_device_id)
         tmpl = _PLAY_CONTEXT_OK_DE if language == "de" else _PLAY_CONTEXT_OK_EN
         msg = tmpl.format(name=best.name)
         logger.info(f"SpotifyAgent: play_context → {best.name!r} ({best.uri})")
@@ -197,7 +208,7 @@ class SpotifyAgent(BaseAgent):
             )
 
         top = results.tracks[0]
-        await self._client.play_uris([top.uri])
+        await self._client.play_uris([top.uri], device_id=self.preferred_device_id)
 
         tmpl = _SEARCH_PLAY_OK_DE if language == "de" else _SEARCH_PLAY_OK_EN
         msg = tmpl.format(track=top.name, artist=top.artist)

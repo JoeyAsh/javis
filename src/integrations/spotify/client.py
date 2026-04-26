@@ -837,7 +837,10 @@ class SpotifyClient:
     # ------------------------------------------------------------------
 
     async def play_context(
-        self, context_uri: str, offset_uri: str | None = None
+        self,
+        context_uri: str,
+        offset_uri: str | None = None,
+        device_id: str | None = None,
     ) -> None:
         """Start playback of a Spotify context (album, playlist, artist).
 
@@ -845,6 +848,8 @@ class SpotifyClient:
             context_uri: Spotify context URI
                 (e.g. ``spotify:playlist:<id>``).
             offset_uri: Optional track URI to start from within the context.
+            device_id: Optional Spotify Connect device ID to target.
+                When ``None``, Spotify targets the currently active device.
 
         Raises:
             SpotifyAuthError: When not authenticated.
@@ -857,19 +862,26 @@ class SpotifyClient:
         kwargs: dict[str, Any] = {"context_uri": context_uri}
         if offset_uri:
             kwargs["offset"] = {"uri": offset_uri}
+        if device_id:
+            kwargs["device_id"] = device_id
 
         try:
             await asyncio.to_thread(self._spotify.start_playback, **kwargs)
         except Exception as exc:
             raise self._map_spotipy_exception(exc) from exc
 
-        logger.debug(f"Spotify: play_context({context_uri!r}, offset={offset_uri!r})")
+        logger.debug(
+            f"Spotify: play_context({context_uri!r}, offset={offset_uri!r},"
+            f" device_id={device_id!r})"
+        )
 
-    async def play_uris(self, uris: list[str]) -> None:
+    async def play_uris(self, uris: list[str], device_id: str | None = None) -> None:
         """Start playback of an explicit list of track URIs.
 
         Args:
             uris: List of Spotify track URIs to play.
+            device_id: Optional Spotify Connect device ID to target.
+                When ``None``, Spotify targets the currently active device.
 
         Raises:
             SpotifyAuthError: When not authenticated.
@@ -883,12 +895,77 @@ class SpotifyClient:
             logger.warning("Spotify: play_uris called with empty list — no-op")
             return
 
+        kwargs: dict[str, Any] = {"uris": uris}
+        if device_id:
+            kwargs["device_id"] = device_id
+
         try:
-            await asyncio.to_thread(self._spotify.start_playback, uris=uris)
+            await asyncio.to_thread(self._spotify.start_playback, **kwargs)
         except Exception as exc:
             raise self._map_spotipy_exception(exc) from exc
 
-        logger.debug(f"Spotify: play_uris({uris!r})")
+        logger.debug(f"Spotify: play_uris({uris!r}, device_id={device_id!r})")
+
+    async def get_access_token(self) -> tuple[str, int]:
+        """Return a valid PKCE access token and its remaining TTL in seconds.
+
+        Reads the cached token from the PKCE instance.  When the token has
+        fewer than 60 seconds left before expiry, a refresh is triggered via
+        the PKCE flow before returning.
+
+        Returns:
+            A ``(access_token, expires_in_seconds)`` tuple.
+
+        Raises:
+            SpotifyAuthError: When no PKCE instance is available, no token is
+                cached, or the token cannot be refreshed.
+        """
+        import time
+
+        if self._pkce is None:
+            raise SpotifyAuthError(
+                "SpotifyClient not initialised — call initialize() first."
+            )
+
+        try:
+            token_info: dict[str, Any] | None = await asyncio.to_thread(
+                self._pkce.get_cached_token
+            )
+        except Exception as exc:
+            raise SpotifyAuthError(f"Failed to read Spotify token cache: {exc}") from exc
+
+        if token_info is None:
+            raise SpotifyAuthError("No cached Spotify token — user must authenticate first.")
+
+        access_token: str = token_info.get("access_token", "")
+        expires_at: float = float(token_info.get("expires_at", 0))
+        now = time.time()
+        remaining = expires_at - now
+
+        if remaining < 60:
+            # Refresh the token via PKCE.
+            logger.info("Spotify access token expiring soon — refreshing")
+            try:
+                refreshed: dict[str, Any] | None = await asyncio.to_thread(
+                    self._pkce.refresh_access_token,
+                    token_info.get("refresh_token", ""),
+                )
+            except Exception as exc:
+                raise SpotifyAuthError(f"Spotify token refresh failed: {exc}") from exc
+
+            if refreshed is None:
+                raise SpotifyAuthError("Spotify token refresh returned no data.")
+
+            access_token = refreshed.get("access_token", "")
+            expires_at = float(refreshed.get("expires_at", 0))
+            remaining = expires_at - time.time()
+
+        if not access_token:
+            raise SpotifyAuthError("Spotify access token is empty after refresh attempt.")
+
+        expires_in = max(0, int(remaining))
+        logger.debug(f"Spotify: get_access_token — expires_in={expires_in}s")
+        return access_token, expires_in
 
 
 # ------------------------------------------------------------------

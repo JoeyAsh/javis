@@ -348,3 +348,50 @@ async def test_process_de_spotify_search_task_is_uppercased():
 
     assert agent_calls[0][0] == "SPOTIFY_SEARCH"
     assert agent_calls[0][2] == "de"
+
+
+# ---------------------------------------------------------------------------
+# set_preferred_spotify_device (issue #84)
+# ---------------------------------------------------------------------------
+
+
+def test_set_preferred_spotify_device_forwards_to_agent():
+    """set_preferred_spotify_device('abc') forwards to SpotifyAgent.set_preferred_device."""
+    from brain.orchestrator import Orchestrator
+
+    mock_claude = _make_mock_claude()
+    mock_spotify = _make_mock_spotify_client()
+
+    orch = Orchestrator(claude_client=mock_claude, spotify_client=mock_spotify)
+    agent = orch._agents["spotify"]
+
+    orch.set_preferred_spotify_device("abc-device-id")
+
+    assert agent.preferred_device_id == "abc-device-id"
+
+
+def test_set_preferred_spotify_device_none_clears_agent():
+    """set_preferred_spotify_device(None) clears SpotifyAgent.preferred_device_id."""
+    from brain.orchestrator import Orchestrator
+
+    mock_claude = _make_mock_claude()
+    mock_spotify = _make_mock_spotify_client()
+
+    orch = Orchestrator(claude_client=mock_claude, spotify_client=mock_spotify)
+    # First set a value, then clear it.
+    orch.set_preferred_spotify_device("abc-device-id")
+    orch.set_preferred_spotify_device(None)
+
+    assert orch._agents["spotify"].preferred_device_id is None
+
+
+def test_set_preferred_spotify_device_no_op_without_agent():
+    """set_preferred_spotify_device does not raise when SpotifyAgent is not wired."""
+    from brain.orchestrator import Orchestrator
+
+    mock_claude = _make_mock_claude()
+    orch = Orchestrator(claude_client=mock_claude, spotify_client=None)
+    assert "spotify" not in orch._agents
+
+    # Must not raise.
+    orch.set_preferred_spotify_device("some-id")

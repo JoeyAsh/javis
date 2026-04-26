@@ -74,7 +74,7 @@ async def test_play_context_en_fuzzy_match_exact_substring():
 
     assert result.success is True
     assert "Coding Sessions" in result.spoken_response
-    client.play_context.assert_called_once_with("spotify:playlist:pl1")
+    client.play_context.assert_called_once_with("spotify:playlist:pl1", device_id=None)
 
 
 @pytest.mark.asyncio
@@ -169,7 +169,7 @@ async def test_search_play_en_plays_top_track():
     assert result.success is True
     assert "Midnight City" in result.spoken_response
     assert "M83" in result.spoken_response
-    client.play_uris.assert_called_once_with(["spotify:track:t1"])
+    client.play_uris.assert_called_once_with(["spotify:track:t1"], device_id=None)
 
 
 @pytest.mark.asyncio
@@ -436,3 +436,102 @@ async def test_play_context_no_active_device_returns_generic_error():
 
     assert result.success is False
     assert "issue" in result.spoken_response.lower() or "problem" in result.spoken_response.lower()
+
+
+# ---------------------------------------------------------------------------
+# set_preferred_device + device_id forwarding (issue #84)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_set_preferred_device_is_used_in_play_context():
+    """set_preferred_device('abc') → play_context is called with device_id='abc'."""
+    from brain.agents.spotify_agent import SpotifyAgent
+
+    client = _make_client()
+    client.list_playlists = AsyncMock(
+        return_value=[_make_playlist("Coding Sessions", "spotify:playlist:pl1")]
+    )
+
+    agent = SpotifyAgent(client)
+    agent.set_preferred_device("abc-device-123")
+
+    await agent.run("SPOTIFY_PLAY_CONTEXT", {"query": "coding"}, "en")
+
+    client.play_context.assert_called_once_with(
+        "spotify:playlist:pl1", device_id="abc-device-123"
+    )
+
+
+@pytest.mark.asyncio
+async def test_default_preferred_device_is_none_for_play_context():
+    """Without set_preferred_device, play_context is called with device_id=None."""
+    from brain.agents.spotify_agent import SpotifyAgent
+
+    client = _make_client()
+    client.list_playlists = AsyncMock(
+        return_value=[_make_playlist("Coding Sessions", "spotify:playlist:pl1")]
+    )
+
+    agent = SpotifyAgent(client)
+    # No set_preferred_device call — default must be None.
+    await agent.run("SPOTIFY_PLAY_CONTEXT", {"query": "coding"}, "en")
+
+    client.play_context.assert_called_once_with(
+        "spotify:playlist:pl1", device_id=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_preferred_device_is_used_in_search_play():
+    """set_preferred_device('abc') → play_uris is called with device_id='abc'."""
+    from brain.agents.spotify_agent import SpotifyAgent
+
+    client = _make_client()
+    client.search = AsyncMock(
+        return_value=_make_search_results(
+            [_make_track("Song", "Artist", "spotify:track:t1")]
+        )
+    )
+
+    agent = SpotifyAgent(client)
+    agent.set_preferred_device("abc-device-123")
+
+    await agent.run("SPOTIFY_SEARCH", {"query": "Song"}, "en")
+
+    client.play_uris.assert_called_once_with(
+        ["spotify:track:t1"], device_id="abc-device-123"
+    )
+
+
+@pytest.mark.asyncio
+async def test_default_preferred_device_is_none_for_search_play():
+    """Without set_preferred_device, play_uris is called with device_id=None."""
+    from brain.agents.spotify_agent import SpotifyAgent
+
+    client = _make_client()
+    client.search = AsyncMock(
+        return_value=_make_search_results(
+            [_make_track("Song", "Artist", "spotify:track:t1")]
+        )
+    )
+
+    agent = SpotifyAgent(client)
+    await agent.run("SPOTIFY_SEARCH", {"query": "Song"}, "en")
+
+    client.play_uris.assert_called_once_with(["spotify:track:t1"], device_id=None)
+
+
+def test_set_preferred_device_updates_attribute():
+    """set_preferred_device sets the preferred_device_id attribute."""
+    from brain.agents.spotify_agent import SpotifyAgent
+
+    client = _make_client()
+    agent = SpotifyAgent(client)
+    assert agent.preferred_device_id is None
+
+    agent.set_preferred_device("my-device")
+    assert agent.preferred_device_id == "my-device"
+
+    agent.set_preferred_device(None)
+    assert agent.preferred_device_id is None

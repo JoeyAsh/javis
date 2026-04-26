@@ -879,3 +879,211 @@ def test_extract_tracks_from_items_handles_wrapped_and_raw():
     assert len(result) == 2
     assert result[0].name == "Song A"
     assert result[1].name == "Song B"
+
+
+# ---------------------------------------------------------------------------
+# play_context — device_id targeting (issue #84)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_play_context_passes_device_id_when_provided():
+    """play_context(context_uri, device_id='abc123') passes device_id to start_playback."""
+    client = _make_client()
+    captured: list[dict] = []
+
+    async def _fake(fn: Any, **kwargs: Any) -> None:
+        captured.append(kwargs)
+
+    with patch("integrations.spotify.client.asyncio.to_thread", side_effect=_fake):
+        await client.play_context("spotify:playlist:pl1", device_id="abc123")
+
+    assert captured[0]["context_uri"] == "spotify:playlist:pl1"
+    assert captured[0]["device_id"] == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_play_context_no_device_id_omits_key():
+    """play_context() without device_id does not pass device_id kwarg to start_playback."""
+    client = _make_client()
+    captured: list[dict] = []
+
+    async def _fake(fn: Any, **kwargs: Any) -> None:
+        captured.append(kwargs)
+
+    with patch("integrations.spotify.client.asyncio.to_thread", side_effect=_fake):
+        await client.play_context("spotify:playlist:pl1")
+
+    assert "device_id" not in captured[0]
+
+
+# ---------------------------------------------------------------------------
+# play_uris — device_id targeting (issue #84)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_play_uris_passes_device_id_when_provided():
+    """play_uris(uris, device_id='abc123') passes device_id to start_playback."""
+    client = _make_client()
+    captured: list[dict] = []
+
+    async def _fake(fn: Any, **kwargs: Any) -> None:
+        captured.append(kwargs)
+
+    with patch("integrations.spotify.client.asyncio.to_thread", side_effect=_fake):
+        await client.play_uris(["spotify:track:t1"], device_id="abc123")
+
+    assert captured[0]["uris"] == ["spotify:track:t1"]
+    assert captured[0]["device_id"] == "abc123"
+
+
+@pytest.mark.asyncio
+async def test_play_uris_no_device_id_omits_key():
+    """play_uris() without device_id does not pass device_id kwarg to start_playback."""
+    client = _make_client()
+    captured: list[dict] = []
+
+    async def _fake(fn: Any, **kwargs: Any) -> None:
+        captured.append(kwargs)
+
+    with patch("integrations.spotify.client.asyncio.to_thread", side_effect=_fake):
+        await client.play_uris(["spotify:track:t1"])
+
+    assert "device_id" not in captured[0]
+
+
+# ---------------------------------------------------------------------------
+# get_access_token (issue #84)
+# ---------------------------------------------------------------------------
+
+
+def _make_pkce_client() -> Any:
+    """Return a SpotifyClient with _pkce and _spotify pre-wired but no real token."""
+    from integrations.spotify.client import SpotifyClient
+
+    import time
+
+    client = SpotifyClient(_make_config())
+    client._pkce = MagicMock()
+    client._spotify = MagicMock()
+    client._authenticated = True
+    return client
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_returns_token_and_expires_in():
+    """get_access_token() returns (access_token, expires_in) from cached token."""
+    import time
+
+    client = _make_pkce_client()
+    future_expires = time.time() + 3600  # 1 hour left
+
+    token_info = {
+        "access_token": "test-token-abc",
+        "expires_at": future_expires,
+        "refresh_token": "refresh-tok",
+    }
+
+    with patch(
+        "integrations.spotify.client.asyncio.to_thread",
+        new=AsyncMock(return_value=token_info),
+    ):
+        access_token, expires_in = await client.get_access_token()
+
+    assert access_token == "test-token-abc"
+    assert 3590 <= expires_in <= 3601  # allow minor timing slack
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_refreshes_when_about_to_expire():
+    """get_access_token() triggers a refresh when fewer than 60 s remain."""
+    import time
+
+    client = _make_pkce_client()
+    near_expires = time.time() + 30  # only 30 s left — must refresh
+
+    old_token_info = {
+        "access_token": "old-token",
+        "expires_at": near_expires,
+        "refresh_token": "refresh-tok",
+    }
+    new_token_info = {
+        "access_token": "new-token",
+        "expires_at": time.time() + 3600,
+        "refresh_token": "refresh-tok",
+    }
+
+    call_count = 0
+
+    async def _fake_to_thread(fn: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First call: get_cached_token
+            return old_token_info
+        # Second call: refresh_access_token
+        return new_token_info
+
+    with patch("integrations.spotify.client.asyncio.to_thread", side_effect=_fake_to_thread):
+        access_token, expires_in = await client.get_access_token()
+
+    assert access_token == "new-token"
+    assert expires_in > 3500
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_raises_when_no_token_cached():
+    """get_access_token() raises SpotifyAuthError when no token is cached."""
+    from integrations.spotify.client import SpotifyAuthError
+
+    client = _make_pkce_client()
+
+    with patch(
+        "integrations.spotify.client.asyncio.to_thread",
+        new=AsyncMock(return_value=None),
+    ):
+        with pytest.raises(SpotifyAuthError):
+            await client.get_access_token()
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_raises_when_no_pkce():
+    """get_access_token() raises SpotifyAuthError when _pkce is None."""
+    from integrations.spotify.client import SpotifyAuthError, SpotifyClient
+
+    client = SpotifyClient(_make_config())  # _pkce is None
+
+    with pytest.raises(SpotifyAuthError, match="not initialised"):
+        await client.get_access_token()
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_raises_on_refresh_failure():
+    """get_access_token() raises SpotifyAuthError when the refresh call fails."""
+    import time
+
+    from integrations.spotify.client import SpotifyAuthError
+
+    client = _make_pkce_client()
+    near_expires = time.time() + 10  # must refresh
+
+    old_token_info = {
+        "access_token": "old-token",
+        "expires_at": near_expires,
+        "refresh_token": "refresh-tok",
+    }
+
+    call_count = 0
+
+    async def _fake_to_thread(fn: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return old_token_info
+        raise RuntimeError("network error during refresh")
+
+    with patch("integrations.spotify.client.asyncio.to_thread", side_effect=_fake_to_thread):
+        with pytest.raises(SpotifyAuthError, match="refresh failed"):
+            await client.get_access_token()

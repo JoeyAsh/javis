@@ -592,3 +592,138 @@ async def test_oauth_start_no_client_returns_503():
         assert "not ready" in response.text.lower()
     finally:
         srv._spotify_client = orig
+
+
+# ---------------------------------------------------------------------------
+# spotify_device_announce — WS message handler  (issue #84)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_device_announce_ready_true_sets_module_var():
+    """spotify_device_announce with ready=True stores device_id in _jarvis_spotify_device_id."""
+    import api.ws_server as srv
+
+    orig = srv._jarvis_spotify_device_id
+    orig_orch = srv._orchestrator
+    srv._orchestrator = None  # no orchestrator for this test
+
+    try:
+        from api.ws_server import _handle_spotify_device_announce
+
+        await _handle_spotify_device_announce(
+            {"device_id": "abc12345-device", "name": "JARVIS", "ready": True}
+        )
+
+        assert srv._jarvis_spotify_device_id == "abc12345-device"
+    finally:
+        srv._jarvis_spotify_device_id = orig
+        srv._orchestrator = orig_orch
+
+
+@pytest.mark.asyncio
+async def test_device_announce_ready_false_clears_module_var():
+    """spotify_device_announce with ready=False clears _jarvis_spotify_device_id."""
+    import api.ws_server as srv
+
+    srv._jarvis_spotify_device_id = "some-prior-device"
+    orig_orch = srv._orchestrator
+    srv._orchestrator = None
+
+    try:
+        from api.ws_server import _handle_spotify_device_announce
+
+        await _handle_spotify_device_announce(
+            {"device_id": "some-prior-device", "name": "JARVIS", "ready": False}
+        )
+
+        assert srv._jarvis_spotify_device_id is None
+    finally:
+        srv._jarvis_spotify_device_id = None
+        srv._orchestrator = orig_orch
+
+
+@pytest.mark.asyncio
+async def test_device_announce_ready_true_calls_orchestrator():
+    """spotify_device_announce with ready=True calls orchestrator.set_preferred_spotify_device."""
+    import api.ws_server as srv
+
+    orig_device = srv._jarvis_spotify_device_id
+    orig_orch = srv._orchestrator
+
+    mock_orchestrator = MagicMock()
+    mock_orchestrator.set_preferred_spotify_device = MagicMock()
+    srv._orchestrator = mock_orchestrator
+
+    try:
+        from api.ws_server import _handle_spotify_device_announce
+
+        await _handle_spotify_device_announce(
+            {"device_id": "abc12345-device", "name": "JARVIS", "ready": True}
+        )
+
+        mock_orchestrator.set_preferred_spotify_device.assert_called_once_with(
+            "abc12345-device"
+        )
+    finally:
+        srv._jarvis_spotify_device_id = orig_device
+        srv._orchestrator = orig_orch
+
+
+@pytest.mark.asyncio
+async def test_device_announce_ready_false_calls_orchestrator_with_none():
+    """spotify_device_announce with ready=False calls orchestrator.set_preferred_spotify_device(None)."""
+    import api.ws_server as srv
+
+    srv._jarvis_spotify_device_id = "existing-device"
+    orig_orch = srv._orchestrator
+
+    mock_orchestrator = MagicMock()
+    mock_orchestrator.set_preferred_spotify_device = MagicMock()
+    srv._orchestrator = mock_orchestrator
+
+    try:
+        from api.ws_server import _handle_spotify_device_announce
+
+        await _handle_spotify_device_announce(
+            {"device_id": "existing-device", "name": "JARVIS", "ready": False}
+        )
+
+        mock_orchestrator.set_preferred_spotify_device.assert_called_once_with(None)
+        assert srv._jarvis_spotify_device_id is None
+    finally:
+        srv._jarvis_spotify_device_id = None
+        srv._orchestrator = orig_orch
+
+
+@pytest.mark.asyncio
+async def test_device_announce_no_orchestrator_does_not_raise():
+    """spotify_device_announce with _orchestrator=None does not raise."""
+    import api.ws_server as srv
+
+    orig = srv._jarvis_spotify_device_id
+    orig_orch = srv._orchestrator
+    srv._orchestrator = None
+
+    try:
+        from api.ws_server import _handle_spotify_device_announce
+
+        # Must complete without error even without an orchestrator.
+        await _handle_spotify_device_announce(
+            {"device_id": "test-dev", "name": "JARVIS", "ready": True}
+        )
+        assert srv._jarvis_spotify_device_id == "test-dev"
+    finally:
+        srv._jarvis_spotify_device_id = orig
+        srv._orchestrator = orig_orch
+
+
+def test_device_announce_type_handled_in_dispatch_loop():
+    """Source-inspection: 'spotify_device_announce' is handled in the WS dispatch loop."""
+    import api.ws_server as ws
+
+    src = inspect.getsource(ws._handle_command)
+    assert "spotify_device_announce" in src, (
+        "The WS command dispatch loop must handle 'spotify_device_announce' so the "
+        "HUD SDK can register the JARVIS device."
+    )

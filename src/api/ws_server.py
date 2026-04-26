@@ -125,6 +125,9 @@ _spotify_poller_task: asyncio.Task[None] | None = None
 # after a successful authentication. The poller picks it up on the next tick
 # and emits scope_upgrade_required=True in the WS spotify_state broadcast.
 _spotify_scope_upgrade_pending: bool = False
+# Cached device_id announced by the HUD via spotify_device_announce WS message.
+# Set when the SDK reports ready=True; cleared on ready=False or disconnect.
+_jarvis_spotify_device_id: str | None = None
 
 # GitHub integration — poller singleton and aiohttp session handle.
 _github_poller: Any = None  # GitHubPoller | None
@@ -1240,6 +1243,32 @@ async def spotify_queue_post_handler(request: web.Request) -> web.Response:
         return _spotify_handle_exception(exc, scope_gated=True)
 
 
+async def spotify_token_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/spotify/token — return a valid access token for the Web Playback SDK.
+
+    Returns JSON ``{"access_token": "<str>", "expires_in": <int>}`` on success.
+    The token is refreshed automatically when it has fewer than 60 seconds left.
+    """
+    from integrations.spotify.client import SpotifyAuthError  # noqa: PLC0415
+
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        if _spotify_client is not None:
+            _spotify_scope_upgrade_pending_set()
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    try:
+        access_token, expires_in = await _spotify_client.get_access_token()
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"access_token": access_token, "expires_in": expires_in}),
+        )
+    except SpotifyAuthError as exc:
+        logger.warning(f"spotify_token_handler: auth error — {exc}")
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    except Exception as exc:
+        logger.error(f"spotify_token_handler: unexpected error — {exc}")
+        return _spotify_json_error(500, {"error": str(exc)})
+
+
 async def spotify_play_context_handler(request: web.Request) -> web.Response:
     """Handle POST /api/spotify/play/context — start playback of a context URI."""
     if _spotify_client is None or not _spotify_client.is_authenticated():
@@ -1255,7 +1284,10 @@ async def spotify_play_context_handler(request: web.Request) -> web.Response:
         offset_uri: str | None = (
             body.get("offsetUri") or body.get("offset_uri") or None
         )
-        await _spotify_client.play_context(context_uri, offset_uri=offset_uri)
+        device_id: str | None = body.get("device_id") or None
+        await _spotify_client.play_context(
+            context_uri, offset_uri=offset_uri, device_id=device_id
+        )
         return web.Response(content_type="application/json", text="{}")
     except json.JSONDecodeError:
         return _spotify_json_error(400, {"error": "invalid JSON body"})
@@ -1272,7 +1304,8 @@ async def spotify_play_uris_handler(request: web.Request) -> web.Response:
         uris: list[str] = body.get("uris", [])
         if not uris:
             return _spotify_json_error(400, {"error": "missing or empty 'uris' list"})
-        await _spotify_client.play_uris(uris)
+        device_id: str | None = body.get("device_id") or None
+        await _spotify_client.play_uris(uris, device_id=device_id)
         return web.Response(content_type="application/json", text="{}")
     except json.JSONDecodeError:
         return _spotify_json_error(400, {"error": "invalid JSON body"})
@@ -3063,6 +3096,9 @@ async def _handle_command(
     elif cmd_type == "spotify_cmd":
         await _handle_spotify_cmd(payload)
 
+    elif cmd_type == "spotify_device_announce":
+        await _handle_spotify_device_announce(payload)
+
     else:
         logger.warning(f"Unknown command type: {cmd_type}")
 
@@ -3103,6 +3139,37 @@ async def _handle_spotify_cmd(payload: dict[str, Any]) -> None:
             logger.warning(f"Unknown spotify_cmd action: {action!r}")
     except Exception as exc:
         logger.error(f"spotify_cmd action={action!r} failed: {exc}")
+
+
+async def _handle_spotify_device_announce(payload: dict[str, Any]) -> None:
+    """Handle a ``spotify_device_announce`` WebSocket message from the HUD SDK.
+
+    When ``ready`` is ``True`` the HUD's Web Playback SDK device is registered
+    and the device_id is stored in ``_jarvis_spotify_device_id`` so the voice
+    path can target it.  When ``ready`` is ``False`` the slot is cleared.
+
+    Args:
+        payload: ``{"device_id": str, "name": str, "ready": bool}``
+    """
+    global _jarvis_spotify_device_id
+
+    device_id: str = payload.get("device_id", "")
+    name: str = payload.get("name", "JARVIS")
+    ready: bool = bool(payload.get("ready", False))
+
+    # Log first 8 chars of device_id to avoid leaking the full token-like ID.
+    short_id = device_id[:8] if device_id else ""
+    logger.info(
+        f"Spotify device announce: {name!r} device_id={short_id!r}... ready={ready}"
+    )
+
+    if ready:
+        _jarvis_spotify_device_id = device_id
+    else:
+        _jarvis_spotify_device_id = None
+
+    if _orchestrator is not None and hasattr(_orchestrator, "set_preferred_spotify_device"):
+        _orchestrator.set_preferred_spotify_device(device_id if ready else None)
 
 
 async def _cancel_current_turn(ws: web.WebSocketResponse) -> None:
@@ -4221,6 +4288,7 @@ async def start_ws_server(
     http_app.router.add_post("/api/spotify/queue", spotify_queue_post_handler)
     http_app.router.add_post("/api/spotify/play/context", spotify_play_context_handler)
     http_app.router.add_post("/api/spotify/play/uris", spotify_play_uris_handler)
+    http_app.router.add_get("/api/spotify/token", spotify_token_handler)
 
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)

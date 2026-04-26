@@ -42,6 +42,7 @@ async def _build_app() -> web.Application:
         spotify_queue_post_handler,
         spotify_play_context_handler,
         spotify_play_uris_handler,
+        spotify_token_handler,
     )
 
     app = web.Application()
@@ -55,6 +56,7 @@ async def _build_app() -> web.Application:
     app.router.add_post("/api/spotify/queue", spotify_queue_post_handler)
     app.router.add_post("/api/spotify/play/context", spotify_play_context_handler)
     app.router.add_post("/api/spotify/play/uris", spotify_play_uris_handler)
+    app.router.add_get("/api/spotify/token", spotify_token_handler)
     return app
 
 
@@ -515,7 +517,9 @@ async def test_post_play_context_happy_path():
             headers={"Content-Type": "application/json"},
         )
         assert resp.status == 200
-        mock.play_context.assert_called_once_with("spotify:playlist:pl1", offset_uri=None)
+        mock.play_context.assert_called_once_with(
+            "spotify:playlist:pl1", offset_uri=None, device_id=None
+        )
 
 
 @pytest.mark.asyncio
@@ -581,7 +585,7 @@ async def test_post_play_uris_happy_path():
             headers={"Content-Type": "application/json"},
         )
         assert resp.status == 200
-        mock.play_uris.assert_called_once_with(["spotify:track:t1"])
+        mock.play_uris.assert_called_once_with(["spotify:track:t1"], device_id=None)
 
 
 @pytest.mark.asyncio
@@ -656,3 +660,148 @@ async def test_post_play_uris_500_on_generic_exception():
             headers={"Content-Type": "application/json"},
         )
         assert resp.status == 500
+
+
+# ---------------------------------------------------------------------------
+# GET /api/spotify/token  (issue #84)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_token_happy_path():
+    """GET /api/spotify/token returns 200 with access_token and expires_in."""
+    mock = _make_mock_client()
+    mock.get_access_token = AsyncMock(return_value=("tok-abc-123", 3600))
+
+    async with _client_ctx(mock) as client:
+        resp = await client.get("/api/spotify/token")
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["access_token"] == "tok-abc-123"
+        assert body["expires_in"] == 3600
+
+
+@pytest.mark.asyncio
+async def test_get_token_401_when_unauthenticated():
+    """GET /api/spotify/token returns 401 when client is not authenticated."""
+    mock = _make_mock_client(authenticated=False)
+
+    async with _client_ctx(mock) as client:
+        resp = await client.get("/api/spotify/token")
+        assert resp.status == 401
+        body = await resp.json()
+        assert body["error"] == "unauthenticated"
+
+
+@pytest.mark.asyncio
+async def test_get_token_401_on_spotify_auth_error():
+    """GET /api/spotify/token returns 401 when get_access_token raises SpotifyAuthError."""
+    from integrations.spotify.client import SpotifyAuthError
+
+    mock = _make_mock_client()
+    mock.get_access_token = AsyncMock(side_effect=SpotifyAuthError("no token"))
+
+    async with _client_ctx(mock) as client:
+        resp = await client.get("/api/spotify/token")
+        assert resp.status == 401
+        body = await resp.json()
+        assert body["error"] == "unauthenticated"
+
+
+@pytest.mark.asyncio
+async def test_get_token_500_on_generic_error():
+    """GET /api/spotify/token returns 500 on unexpected exception."""
+    mock = _make_mock_client()
+    mock.get_access_token = AsyncMock(side_effect=RuntimeError("internal failure"))
+
+    async with _client_ctx(mock) as client:
+        resp = await client.get("/api/spotify/token")
+        assert resp.status == 500
+        body = await resp.json()
+        assert "internal failure" in body["error"]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/spotify/play/context — device_id targeting  (issue #84)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_post_play_context_with_device_id_passes_through():
+    """POST /api/spotify/play/context with device_id calls play_context with device_id."""
+    mock = _make_mock_client()
+    mock.play_context = AsyncMock()
+
+    async with _client_ctx(mock) as client:
+        resp = await client.post(
+            "/api/spotify/play/context",
+            data=json.dumps(
+                {"context_uri": "spotify:playlist:pl1", "device_id": "dev-abc123"}
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status == 200
+        mock.play_context.assert_called_once_with(
+            "spotify:playlist:pl1", offset_uri=None, device_id="dev-abc123"
+        )
+
+
+@pytest.mark.asyncio
+async def test_post_play_context_without_device_id_passes_none():
+    """POST /api/spotify/play/context without device_id calls play_context(device_id=None)."""
+    mock = _make_mock_client()
+    mock.play_context = AsyncMock()
+
+    async with _client_ctx(mock) as client:
+        resp = await client.post(
+            "/api/spotify/play/context",
+            data=json.dumps({"context_uri": "spotify:playlist:pl1"}),
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status == 200
+        mock.play_context.assert_called_once_with(
+            "spotify:playlist:pl1", offset_uri=None, device_id=None
+        )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/spotify/play/uris — device_id targeting  (issue #84)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_post_play_uris_with_device_id_passes_through():
+    """POST /api/spotify/play/uris with device_id calls play_uris with device_id."""
+    mock = _make_mock_client()
+    mock.play_uris = AsyncMock()
+
+    async with _client_ctx(mock) as client:
+        resp = await client.post(
+            "/api/spotify/play/uris",
+            data=json.dumps(
+                {"uris": ["spotify:track:t1"], "device_id": "dev-abc123"}
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status == 200
+        mock.play_uris.assert_called_once_with(
+            ["spotify:track:t1"], device_id="dev-abc123"
+        )
+
+
+@pytest.mark.asyncio
+async def test_post_play_uris_without_device_id_passes_none():
+    """POST /api/spotify/play/uris without device_id calls play_uris(device_id=None)."""
+    mock = _make_mock_client()
+    mock.play_uris = AsyncMock()
+
+    async with _client_ctx(mock) as client:
+        resp = await client.post(
+            "/api/spotify/play/uris",
+            data=json.dumps({"uris": ["spotify:track:t1"]}),
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status == 200
+        mock.play_uris.assert_called_once_with(
+            ["spotify:track:t1"], device_id=None
+        )

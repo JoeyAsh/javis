@@ -185,6 +185,27 @@ class Orchestrator:
             self._agents.pop("spotify", None)
             logger.info("SpotifyAgent removed from orchestrator")
 
+    def set_preferred_spotify_device(self, device_id: str | None) -> None:
+        """Forward the HUD's announced Spotify device ID to the SpotifyAgent.
+
+        Called from ``ws_server`` when a ``spotify_device_announce`` WS message
+        is received so that subsequent voice-path play commands target the HUD.
+
+        Args:
+            device_id: Spotify Connect device ID, or ``None`` to clear.
+        """
+        agent = self._agents.get("spotify")
+        if agent is None:
+            logger.debug(
+                "set_preferred_spotify_device: SpotifyAgent not wired — ignoring"
+            )
+            return
+        if device_id:
+            logger.info(f"Orchestrator: preferred Spotify device set to {device_id!r}")
+        else:
+            logger.info("Orchestrator: preferred Spotify device cleared")
+        agent.set_preferred_device(device_id)  # type: ignore[union-attr]
+
     async def _build_email_context(
         self,
         intent_result: IntentResult,

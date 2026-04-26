@@ -9,9 +9,19 @@ Three pillars:
 - **Programming peer** — pairs with Claude Code and OpenClaw skills to triage PRs, summarise repo activity, capture ADRs by voice, and run review/refactor sessions.
 
 ## Stack at a glance
-- **JARVIS** owns the voice pipeline (mic, STT, TTS, barge-in, prosody), the React HUD (Orb + panels), realtime integrations (Spotify, Google, GitHub/GitLab), the proactive scheduler, and persistence (SQLite).
-- **OpenClaw** (local clone at `D:/Repos/openclaw`, runtime under `~/.openclaw/`) owns the agent runtime: sessions, memory, model routing, tool use, channels (WhatsApp/Telegram/Slack/Signal/iMessage/…), skills, and automation (cron, webhooks).
+- **JARVIS** owns the voice pipeline (mic, STT, TTS, barge-in, prosody), the React HUD (Orb + panels), the proactive scheduler, persistence (SQLite), and a **local MCP server** that exposes device-specific or non-OpenClaw-covered tools (Spotify, GitHub/GitLab, Home Assistant, PC control, system metrics).
+- **OpenClaw** (local clone at `D:/Repos/openclaw`, runtime gateway on the user's Linux laptop, reached via Tailscale) owns the agent runtime: sessions, memory, model routing, tool use, channels (WhatsApp/Telegram/Slack/Signal/iMessage/…), skills, and automation (cron, webhooks). It is the **single source of intelligence** — every voice turn is dispatched here.
 - **Claude Code** is the heavyweight coding peer. JARVIS routes non-trivial coding asks through OpenClaw → Claude Code and reads the result back conversationally.
+
+## OpenClaw-First Policy (hard rule)
+
+**Use what OpenClaw offers — do not develop our own when OpenClaw has it.** Single source of truth for agent intelligence. Concretely:
+
+- **For every new feature**, first check `D:/Repos/openclaw/extensions/` (or the docs under `D:/Repos/openclaw/docs/`) whether OpenClaw already provides the capability via a built-in skill, channel, or extension. If yes: integrate via OpenClaw, no parallel implementation in JARVIS.
+- **Where OpenClaw does NOT have an equivalent** (Spotify, GitHub, GitLab, Home Assistant, PC control, system metrics): expose the tool as an **MCP server inside the JARVIS backend process** so OpenClaw's agent can call it through the standard MCP protocol. JARVIS is the *tool provider*, OpenClaw is the *intelligence layer*. No tool ever bypasses OpenClaw on the voice path.
+- **HUD-Polling stays in JARVIS** for snappy panel UX, but the underlying data fetch should call the same MCP tool (or OpenClaw skill for Google/Web) so there is one code path per data source.
+- **Migrate existing parallel implementations** (currently: `src/integrations/google/*`, `src/actions/web_search.py`) to OpenClaw skills.
+- The full architectural rationale + MCP placement decision lives in `docs/adr/0001-openclaw-first.md`.
 
 ## Conventions
 - **Async-first**: all I/O and API calls `async`. Entrypoint: `python -m main` (aiohttp WS server on 8765 / HTTP on 8766; FastAPI is NOT used).

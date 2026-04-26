@@ -1,0 +1,49 @@
+/* Corner-bracket active-tab accent requires pseudo-element positioning that Tailwind cannot express cleanly with a single utility class chain */
+
+.tab {
+    position: relative;
+    padding: 4px 10px;
+    font-family: var(--font);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-1);
+    cursor: pointer;
+    transition:
+        color var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease);
+}
+
+.tab:hover {
+    color: var(--text-secondary);
+}
+
+.tabActive {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Corner brackets on active tab */
+.tabActive::before,
+.tabActive::after {
+    content: '';
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border-color: var(--accent-bright);
+    border-style: solid;
+}
+
+.tabActive::before {
+    top: -1px;
+    left: -1px;
+    border-width: 1px 0 0 1px;
+}
+
+.tabActive::after {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 1px 1px 0;
+}

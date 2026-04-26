@@ -1,4 +1,12 @@
-import type { SpotifyStatePayload, NowPlayingTrack } from './types';
+import type {
+    SpotifyStatePayload,
+    NowPlayingTrack,
+    SpotifyTrackResult,
+    SpotifyQueueItem,
+    SpotifyPlaylist,
+    SpotifyAlbum,
+    SpotifyArtist,
+} from './types';
 
 export function payloadToTrack(payload: SpotifyStatePayload): NowPlayingTrack | null {
     const { track } = payload;
@@ -13,10 +21,35 @@ export function payloadToTrack(payload: SpotifyStatePayload): NowPlayingTrack | 
         progressMs: track.progressMs,
         durationMs: track.durationMs,
         playing: track.isPlaying,
-        shuffle: false,
-        repeat: 'off',
+        shuffle: track.shuffle,
+        repeat: track.repeat,
         device: payload.device?.name ?? '',
     };
+}
+
+export function isTrackResult(track: SpotifyTrackResult | SpotifyQueueItem): track is SpotifyTrackResult {
+    return 'durationMs' in track;
+}
+
+export function isSearchTrack(item: SpotifyTrackResult | SpotifyArtist | SpotifyAlbum | SpotifyPlaylist): item is SpotifyTrackResult {
+    return 'durationMs' in item;
+}
+
+export function isSearchPlaylist(item: SpotifyTrackResult | SpotifyArtist | SpotifyAlbum | SpotifyPlaylist): item is SpotifyPlaylist {
+    return 'trackCount' in item && 'owner' in item;
+}
+
+export function isSearchAlbum(item: SpotifyTrackResult | SpotifyArtist | SpotifyAlbum | SpotifyPlaylist): item is SpotifyAlbum {
+    return 'trackCount' in item && !('owner' in item);
+}
+
+/**
+ * Derives a 3-character monogram from a string.
+ * Strips non-alphanumeric chars, takes first 3, uppercases, and pads with
+ * middle-dot if the result is shorter than 3 characters.
+ */
+export function deriveMonogram(s: string): string {
+    return s.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase().padEnd(3, '·');
 }
 
 export function formatMs(ms: number): string {

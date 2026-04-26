@@ -35,3 +35,14 @@
     border-color: var(--accent-bright);
     box-shadow: var(--glow);
 }
+
+.upgradeBanner {
+    font-size: 9px;
+    color: var(--warn, #f0a030);
+    letter-spacing: 1px;
+    font-family: var(--font);
+    text-align: center;
+    border: 1px solid var(--warn, #f0a030);
+    padding: 4px var(--s-3);
+    margin-bottom: var(--s-2);
+}

@@ -136,6 +136,9 @@ spotify:
   scopes:
     - "user-read-playback-state"
     - "user-modify-playback-state"
+    - "playlist-read-private"
+    - "playlist-read-collaborative"
+    - "user-library-read"
 
 github:
   # Token-gated: requires GITHUB_TOKEN in .env (classic PAT, scopes

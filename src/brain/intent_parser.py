@@ -34,6 +34,9 @@ class Intent(Enum):
     CALENDAR_UPDATE = "calendar_update"
     CALENDAR_DELETE = "calendar_delete"
     DRIVE_SEARCH = "drive_search"
+    SPOTIFY_SEARCH = "spotify_search"
+    SPOTIFY_QUEUE = "spotify_queue"
+    SPOTIFY_PLAY_CONTEXT = "spotify_play_context"
 
 
 @dataclass
@@ -408,6 +411,66 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\böffne?\s+(das\s+)?(dokument|datei|doc)\b",
         ],
     },
+    # ------------------------------------------------------------------
+    # Spotify extended intents — search, queue, context play.
+    #
+    # SPOTIFY_SEARCH requires an explicit Spotify anchor to disambiguate
+    # from WEB_SEARCH.  Anchors:
+    #   EN: "on spotify", "von <artist>" / "by <artist>" after a search verb
+    #   DE: "auf spotify", "von <artist>"
+    # A bare "search for X" in English still routes to WEB_SEARCH.
+    # ------------------------------------------------------------------
+    Intent.SPOTIFY_SEARCH: {
+        "en": [
+            r"\bsearch\s+(for\s+)?.+\s+on\s+spotify\b",
+            r"\bfind\s+.+\s+on\s+spotify\b",
+            r"\bspotify\s+search\b",
+            r"\bsearch\s+spotify\s+for\b",
+            # "search for X by <artist>" — artist anchor makes it Spotify-specific
+            r"\bsearch\s+(for\s+)?.+\s+by\s+\w",
+            r"\bplay\s+.+\s+by\s+\w.+\s+on\s+spotify\b",
+        ],
+        "de": [
+            r"\bsuche?\s+.+\s+auf\s+spotify\b",
+            r"\bspotify\s+suche?\b",
+            r"\bspotify\s+suchen\b",
+            r"\bfinde?\s+.+\s+auf\s+spotify\b",
+            # "suche X von <artist>" — artist anchor
+            r"\bsuche?\s+.+\s+von\s+\w",
+        ],
+    },
+    Intent.SPOTIFY_QUEUE: {
+        "en": [
+            r"\badd\s+.+\s+to\s+(the\s+)?queue\b",
+            r"\bqueue\s+(up\s+)?.+\b",
+            r"\bnext\s+up\s+.+\b",
+            r"\badd\s+.+\s+to\s+(my\s+)?playlist\b",
+            r"\benqueue\b",
+        ],
+        "de": [
+            r"\bzur\s+warteschlange\s+hinzufügen\b",
+            r"\bwarteschlange\b.{0,20}\b(hinzufügen|hinzu|ergänzen)\b",
+            r"\b(füge?|hinzufügen)\b.{0,30}\bzur\s+warteschlange\b",
+            r"\bals\s+nächstes\s+spielen\b",
+            r"\benqueue\b",
+        ],
+    },
+    Intent.SPOTIFY_PLAY_CONTEXT: {
+        "en": [
+            r"\bplay\s+(the\s+)?(playlist|album|artist)\b",
+            r"\bstart\s+(the\s+)?(playlist|album)\b",
+            r"\bplay\s+(playlist|album)\s+.+\b",
+            r"\bput\s+on\s+(the\s+)?(playlist|album)\b",
+            r"\bplay\s+.+\s+(playlist|album)\b",
+        ],
+        "de": [
+            r"\bspiele?\s+(die\s+)?(playlist|album|wiedergabeliste)\b",
+            r"\bstarte?\s+(die\s+)?(playlist|album|wiedergabeliste)\b",
+            r"\b(playlist|album|wiedergabeliste)\s+.+\s+(spielen|abspielen|starten)\b",
+            r"\bmach\s+(die\s+)?(playlist|album)\s+an\b",
+            r"\bspiele?\s+.+\s+(playlist|album)\b",
+        ],
+    },
 }
 
 # App name aliases for PC control
@@ -508,6 +571,9 @@ class IntentParser:
             Intent.SPOTIFY_NEXT,
             Intent.SPOTIFY_PREV,
             Intent.SPOTIFY_VOLUME,
+            Intent.SPOTIFY_SEARCH,
+            Intent.SPOTIFY_QUEUE,
+            Intent.SPOTIFY_PLAY_CONTEXT,
             Intent.CALENDAR_LIST,
             Intent.CALENDAR_CREATE,
             Intent.CALENDAR_UPDATE,
@@ -581,6 +647,9 @@ class IntentParser:
             Intent.SPOTIFY_NEXT,
             Intent.SPOTIFY_PREV,
             Intent.SPOTIFY_VOLUME,
+            Intent.SPOTIFY_SEARCH,
+            Intent.SPOTIFY_QUEUE,
+            Intent.SPOTIFY_PLAY_CONTEXT,
         )
         _CALENDAR_INTENTS = (
             Intent.CALENDAR_LIST,
@@ -619,6 +688,12 @@ class IntentParser:
             params = self._extract_calendar_params(text, intent)
         elif intent == Intent.DRIVE_SEARCH:
             params = self._extract_drive_params(text)
+        elif intent in (
+            Intent.SPOTIFY_SEARCH,
+            Intent.SPOTIFY_QUEUE,
+            Intent.SPOTIFY_PLAY_CONTEXT,
+        ):
+            params = self._extract_spotify_params(text, intent)
 
         return confidence, params
 
@@ -878,6 +953,75 @@ class IntentParser:
                     params["query"] = hint
                     break
 
+        return params
+
+    def _extract_spotify_params(self, text: str, intent: Intent) -> dict[str, Any]:
+        """Extract query and optional artist from Spotify extended intents.
+
+        Strips well-known command prefixes so ``params["query"]`` contains
+        the music subject, and populates ``params["artist"]`` when an
+        "by <artist>" / "von <artist>" anchor is present.
+
+        Args:
+            text: Lowercase user text.
+            intent: One of SPOTIFY_SEARCH, SPOTIFY_QUEUE, SPOTIFY_PLAY_CONTEXT.
+
+        Returns:
+            Dict with ``query`` and (optionally) ``artist`` keys.
+        """
+        params: dict[str, Any] = {}
+
+        query = text
+
+        # Strip leading trigger phrases.
+        strip_patterns = [
+            # EN
+            r"^(?:search\s+(?:for\s+)?(?:spotify\s+for\s+)?)",
+            r"^(?:find\s+(?:on\s+spotify\s+)?(?:for\s+)?)",
+            r"^(?:spotify\s+search\s+(?:for\s+)?)",
+            r"^(?:add\s+)",
+            r"^(?:queue\s+(?:up\s+)?)",
+            r"^(?:enqueue\s+)",
+            r"^(?:play\s+(?:the\s+)?(?:playlist\s+|album\s+)?)",
+            r"^(?:start\s+(?:the\s+)?(?:playlist\s+|album\s+)?)",
+            r"^(?:put\s+on\s+(?:the\s+)?(?:playlist\s+|album\s+)?)",
+            # DE
+            r"^(?:suche?\s+(?:nach\s+)?(?:auf\s+spotify\s+)?)",
+            r"^(?:finde?\s+(?:auf\s+spotify\s+)?)",
+            r"^(?:spiele?\s+(?:die\s+)?(?:playlist\s+|album\s+|wiedergabeliste\s+)?)",
+            r"^(?:starte?\s+(?:die\s+)?(?:playlist\s+|album\s+)?)",
+            r"^(?:füge?\s+)",
+            r"^(?:zur\s+warteschlange\s+hinzufügen\s+)",
+        ]
+        for pat in strip_patterns:
+            query = re.sub(pat, "", query, flags=re.IGNORECASE).strip()
+
+        # Remove trailing "on spotify" / "auf spotify" / "to the queue" anchors.
+        trail_patterns = [
+            r"\s+on\s+spotify$",
+            r"\s+auf\s+spotify$",
+            r"\s+to\s+(?:the\s+)?(?:my\s+)?queue$",
+            r"\s+zur\s+warteschlange$",
+            r"\s+(?:playlist|album|wiedergabeliste)$",
+        ]
+        for pat in trail_patterns:
+            query = re.sub(pat, "", query, flags=re.IGNORECASE).strip()
+
+        # Extract "by <artist>" / "von <artist>" anchor.
+        artist_match = re.search(
+            r"\b(?:by|von)\s+([A-Za-zÄäÖöÜüß0-9][A-Za-zÄäÖöÜüß0-9\s\-&'.]{1,40}?)(?:\s+on\s+spotify|\s+auf\s+spotify|[,?!]|$)",
+            query,
+            re.IGNORECASE,
+        )
+        if artist_match:
+            artist = artist_match.group(1).strip()
+            params["artist"] = artist
+            # Remove the "by/von <artist>" clause from the query so it isn't duplicated.
+            query = re.sub(
+                r"\s+(?:by|von)\s+" + re.escape(artist), "", query, flags=re.IGNORECASE
+            ).strip()
+
+        params["query"] = query.strip()
         return params
 
     def _extract_system_params(self, text: str) -> dict[str, Any]:

@@ -30,32 +30,41 @@ const wsClient = _mockWsClientImpl;
 
 const livePayload: SpotifyStatePayload = {
     authenticated: true,
-    track: {
-        name: 'Midnight City',
-        artist: 'M83',
-        album: "Hurry Up, We're Dreaming",
-        albumArtUrl: undefined,
-        durationMs: 241_000,
-        progressMs: 113_000,
-        isPlaying: true,
-        shuffle: false,
-        repeat: 'off',
-    },
-    device: {
-        name: 'Studio Monitors',
-        type: 'Speaker',
-        volumePercent: 72,
-    },
+    playing: true,
+    title: 'Midnight City',
+    artist: 'M83',
+    album: "Hurry Up, We're Dreaming",
+    duration_ms: 241_000,
+    progress_ms: 113_000,
+    shuffle: false,
+    repeat: 'off',
+    device: 'Studio Monitors',
 };
 
 const unauthPayload: SpotifyStatePayload = {
     authenticated: false,
+    playing: false,
+    title: '',
+    artist: '',
+    album: '',
+    progress_ms: 0,
+    duration_ms: 0,
+    shuffle: false,
+    repeat: 'off',
+    device: '',
 };
 
 const noTrackPayload: SpotifyStatePayload = {
     authenticated: true,
-    track: undefined,
-    device: undefined,
+    playing: false,
+    title: '',
+    artist: '',
+    album: '',
+    progress_ms: 0,
+    duration_ms: 0,
+    shuffle: false,
+    repeat: 'off',
+    device: '',
 };
 
 beforeEach(() => {

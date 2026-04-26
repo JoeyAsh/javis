@@ -44,13 +44,13 @@ export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): Re
     // True when JARVIS is the active Spotify Connect device.
     const jarvisIsActive =
         sdkPlayer.isReady &&
-        payload?.device?.name === JARVIS_DEVICE_NAME;
+        payload?.device === JARVIS_DEVICE_NAME;
 
     // When JARVIS is the active device, use the lower-latency SDK state.
     // Otherwise fall back to the polled WS payload.
     const effectiveTrack =
         jarvisIsActive && sdkPlayer.sdkPlayerState !== null
-            ? sdkStateToTrack(sdkPlayer.sdkPlayerState, payload?.device?.name ?? JARVIS_DEVICE_NAME)
+            ? sdkStateToTrack(sdkPlayer.sdkPlayerState, payload?.device ?? JARVIS_DEVICE_NAME)
             : payload !== null
               ? payloadToTrack(payload)
               : null;

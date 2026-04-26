@@ -42,7 +42,18 @@ describe('selectNowPlayingPayload', () => {
     });
 
     it('returns the payload when set', () => {
-        const payload = { authenticated: true } as const;
+        const payload = {
+            authenticated: true,
+            playing: false,
+            title: '',
+            artist: '',
+            album: '',
+            progress_ms: 0,
+            duration_ms: 0,
+            shuffle: false,
+            repeat: 'off' as const,
+            device: '',
+        };
         expect(selectNowPlayingPayload(makeState({ payload }))).toEqual(payload);
     });
 });

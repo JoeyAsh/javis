@@ -21,8 +21,6 @@ export type {
 } from '@features/mail/types';
 export type {
     SpotifyStatePayload,
-    SpotifyTrackPayload,
-    SpotifyDevicePayload,
     SpotifyCmdAction,
     NowPlayingTrack,
 } from '@features/nowplaying/types';

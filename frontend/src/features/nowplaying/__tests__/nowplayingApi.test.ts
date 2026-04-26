@@ -723,22 +723,21 @@ describe('streamNowplaying', () => {
         await vi.advanceTimersByTimeAsync(0);
         await flushMicrotasks();
 
-        // Simulate backend pushing a spotify_state WS message.
+        // Simulate backend pushing a spotify_state WS message (flat snake_case).
         mockSubscribeCallback!({
             type: 'spotify_state',
             payload: {
                 authenticated: true,
                 scope_upgrade_required: true,
-                track: {
-                    name: 'Test Track',
-                    artist: 'Test Artist',
-                    album: 'Test Album',
-                    durationMs: 200000,
-                    progressMs: 60000,
-                    isPlaying: true,
-                    shuffle: false,
-                    repeat: 'off',
-                },
+                playing: true,
+                title: 'Test Track',
+                artist: 'Test Artist',
+                album: 'Test Album',
+                duration_ms: 200000,
+                progress_ms: 60000,
+                shuffle: false,
+                repeat: 'off',
+                device: 'Test Device',
             },
         });
 
@@ -780,7 +779,18 @@ describe('streamNowplaying', () => {
 
         mockSubscribeCallback!({
             type: 'spotify_state',
-            payload: { authenticated: false },
+            payload: {
+                authenticated: false,
+                playing: false,
+                title: '',
+                artist: '',
+                album: '',
+                duration_ms: 0,
+                progress_ms: 0,
+                shuffle: false,
+                repeat: 'off',
+                device: '',
+            },
         });
 
         const state = store.getState() as { nowplaying: { payload: { authenticated: boolean } | null; hasLiveData: boolean } };

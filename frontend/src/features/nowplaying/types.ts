@@ -16,34 +16,24 @@ export interface NowPlayingTrack {
     device: string;
 }
 
-export interface SpotifyTrackPayload {
-    name: string;
-    artist: string;
-    album: string;
-    albumArtUrl?: string;
-    durationMs: number;
-    progressMs: number;
-    isPlaying: boolean;
-    shuffle: boolean;
-    repeat: 'off' | 'all' | 'one';
-}
-
-export interface SpotifyDevicePayload {
-    name: string;
-    type: string;
-    volumePercent: number;
-}
-
 /**
- * Broadcast every `poll_interval_seconds` from the backend Spotify loop.
- * When `authenticated` is false, track and device are absent.
+ * Flat, snake_case broadcast from `broadcast_spotify_state` in the backend.
+ * All track fields are empty strings / zero when no track is active.
  */
 export interface SpotifyStatePayload {
     authenticated: boolean;
-    track?: SpotifyTrackPayload;
-    device?: SpotifyDevicePayload;
-    error?: string;
+    playing: boolean;
+    title: string;
+    artist: string;
+    album: string;
+    progress_ms: number;
+    duration_ms: number;
+    shuffle: boolean;
+    repeat: 'off' | 'context' | 'track';
+    device: string;
     scope_upgrade_required?: boolean;
+    album_art_url?: string;
+    error?: string;
 }
 
 export type SpotifyCmdAction = 'play' | 'pause' | 'next' | 'prev' | 'volume';

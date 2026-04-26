@@ -60,15 +60,48 @@ describe('nowplayingSlice — initial state', () => {
 
 describe('spotifyStateReceived', () => {
     it('sets payload and marks hasLiveData=true', () => {
-        const payload: SpotifyStatePayload = { authenticated: true };
+        const payload: SpotifyStatePayload = {
+            authenticated: true,
+            playing: false,
+            title: '',
+            artist: '',
+            album: '',
+            progress_ms: 0,
+            duration_ms: 0,
+            shuffle: false,
+            repeat: 'off',
+            device: '',
+        };
         const state = reducer(initialState, spotifyStateReceived(payload));
         expect(state.payload).toEqual(payload);
         expect(state.hasLiveData).toBe(true);
     });
 
     it('updates payload on subsequent calls', () => {
-        const p1: SpotifyStatePayload = { authenticated: true };
-        const p2: SpotifyStatePayload = { authenticated: false };
+        const p1: SpotifyStatePayload = {
+            authenticated: true,
+            playing: false,
+            title: '',
+            artist: '',
+            album: '',
+            progress_ms: 0,
+            duration_ms: 0,
+            shuffle: false,
+            repeat: 'off',
+            device: '',
+        };
+        const p2: SpotifyStatePayload = {
+            authenticated: false,
+            playing: false,
+            title: '',
+            artist: '',
+            album: '',
+            progress_ms: 0,
+            duration_ms: 0,
+            shuffle: false,
+            repeat: 'off',
+            device: '',
+        };
         const s1 = reducer(initialState, spotifyStateReceived(p1));
         const s2 = reducer(s1, spotifyStateReceived(p2));
         expect(s2.payload?.authenticated).toBe(false);

@@ -594,17 +594,15 @@ describe('SpotifyFullPanel', () => {
 describe('NowPlayingPanel compact — regression', () => {
     const livePayload: SpotifyStatePayload = {
         authenticated: true,
-        track: {
-            name: 'Midnight City',
-            artist: 'M83',
-            album: "Hurry Up, We're Dreaming",
-            durationMs: 241_000,
-            progressMs: 113_000,
-            isPlaying: true,
-            shuffle: false,
-            repeat: 'off',
-        },
-        device: { name: 'Studio Monitors', type: 'Speaker', volumePercent: 72 },
+        playing: true,
+        title: 'Midnight City',
+        artist: 'M83',
+        album: "Hurry Up, We're Dreaming",
+        duration_ms: 241_000,
+        progress_ms: 113_000,
+        shuffle: false,
+        repeat: 'off',
+        device: 'Studio Monitors',
     };
 
     it('renders track title in compact mode after receiving live payload', () => {
@@ -624,7 +622,18 @@ describe('NowPlayingPanel compact — regression', () => {
             reducers: { nowplaying: nowplayingReducer },
         });
         act(() => {
-            store.dispatch(spotifyStateReceived({ authenticated: false }));
+            store.dispatch(spotifyStateReceived({
+                authenticated: false,
+                playing: false,
+                title: '',
+                artist: '',
+                album: '',
+                progress_ms: 0,
+                duration_ms: 0,
+                shuffle: false,
+                repeat: 'off',
+                device: '',
+            }));
         });
         expect(screen.getByRole('button', { name: /log in to spotify/i })).toBeInTheDocument();
     });
@@ -637,7 +646,16 @@ describe('NowPlayingPanel compact — regression', () => {
 describe('NowPlayingPanel — authenticated, no track playing', () => {
     const noTrackPayload: SpotifyStatePayload = {
         authenticated: true,
-        // track and device intentionally omitted — no active playback
+        // empty title + artist signals no active playback per runtime contract
+        playing: false,
+        title: '',
+        artist: '',
+        album: '',
+        progress_ms: 0,
+        duration_ms: 0,
+        shuffle: false,
+        repeat: 'off',
+        device: '',
     };
 
     it('expanded mode renders SpotifyFullPanel (TabBar visible) instead of NoPlaybackState', () => {

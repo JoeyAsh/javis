@@ -10,21 +10,19 @@ import type {
 import type { SpotifySdkPlayerState } from './spotifySdk';
 
 export function payloadToTrack(payload: SpotifyStatePayload): NowPlayingTrack | null {
-    const { track } = payload;
-    if (!track) return null;
-    const monogram = track.artist.slice(0, 3).toUpperCase();
+    if (!payload.title && !payload.artist) return null;
     return {
-        title: track.name,
-        artist: track.artist,
-        album: track.album,
-        monogram,
-        albumArtUrl: track.albumArtUrl,
-        progressMs: track.progressMs,
-        durationMs: track.durationMs,
-        playing: track.isPlaying,
-        shuffle: track.shuffle,
-        repeat: track.repeat,
-        device: payload.device?.name ?? '',
+        title: payload.title,
+        artist: payload.artist,
+        album: payload.album,
+        monogram: deriveMonogram(payload.artist),
+        albumArtUrl: payload.album_art_url,
+        progressMs: payload.progress_ms,
+        durationMs: payload.duration_ms,
+        playing: payload.playing,
+        shuffle: payload.shuffle,
+        repeat: payload.repeat === 'context' ? 'all' : payload.repeat === 'track' ? 'one' : 'off',
+        device: payload.device,
     };
 }
 

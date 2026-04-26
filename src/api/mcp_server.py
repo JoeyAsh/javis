@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
+import sys
 from collections.abc import Callable
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from utils.device import load_device_identity, resolve_advertise_host
 from utils.logger import get_logger
 
 logger = get_logger("mcp_server")
@@ -39,6 +42,10 @@ _server_task: asyncio.Task[None] | None = None
 # start_mcp_server time, so this dict is the single source of truth for
 # list_registered_tools().
 _tool_registry: dict[str, dict[str, Any]] = {}
+
+# Device context set at start_mcp_server time — used by the device://info resource.
+_device_slug: str = "jarvis"
+_device_sse_url: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +114,7 @@ def register_tool(
 # ---------------------------------------------------------------------------
 
 
-async def start_mcp_server(config: dict[str, Any]) -> None:
+async def start_mcp_server(config: dict[str, Any], device_slug: str) -> None:
     """Start the MCP SSE server and wire the tool registry into FastMCP.
 
     Reads ``mcp.enabled``, ``mcp.bind_host``, ``mcp.bind_port``.  If
@@ -115,17 +122,23 @@ async def start_mcp_server(config: dict[str, Any]) -> None:
     message.  Any bind error is caught and logged as a warning so the JARVIS
     boot sequence continues even when the MCP port is unavailable.
 
+    The server is named ``jarvis-{device_slug}`` so the MCP ``serverInfo.name``
+    field identifies this instance uniquely to the OpenClaw agent runtime.
+
     This function does **not** block; the uvicorn server runs inside a
     background ``asyncio.Task`` stored in ``_server_task``.
 
     Args:
         config: The ``mcp`` section from ``config.yaml``.
+        device_slug: Sanitized device identifier (e.g. ``"laptop-paps"``).
     """
-    global _server, _server_task
+    global _server, _server_task, _device_slug, _device_sse_url
 
     if not config.get("enabled", True):
         logger.info("MCP server disabled (mcp.enabled: false)")
         return
+
+    _device_slug = device_slug
 
     # ---------------------------------------------------------------------------
     # Phase-4 tool registrations (issue #76).
@@ -144,16 +157,38 @@ async def start_mcp_server(config: dict[str, Any]) -> None:
 
     bind_host: str = config.get("bind_host", "127.0.0.1")
     bind_port: int = int(config.get("bind_port", 8767))
+    advertise_host: str = resolve_advertise_host(config)
 
-    logger.info(f"Starting MCP server on {bind_host}:{bind_port} (SSE transport)...")
+    # Resolve the advertised SSE URL now (used in device://info resource).
+    _device_sse_url = f"http://{advertise_host}:{bind_port}/sse"
+
+    mcp_name = f"jarvis-{device_slug}"
+    instructions = (
+        f"JARVIS MCP tools — host: {device_slug} ({sys.platform}). "
+        "Route device-specific tools to this server."
+    )
+
+    logger.info(
+        f"Starting MCP server '{mcp_name}' on {bind_host}:{bind_port} "
+        f"(SSE transport, advertise: {advertise_host})..."
+    )
+
+    # If the advertise host differs from bind host (Tailscale scenario), try
+    # binding on the advertise host; fall back to bind_host on socket errors.
+    effective_bind = advertise_host if advertise_host != bind_host else bind_host
 
     try:
         _server = FastMCP(
-            name="jarvis",
-            host=bind_host,
+            name=mcp_name,
+            instructions=instructions,
+            host=effective_bind,
             port=bind_port,
             log_level="WARNING",  # suppress uvicorn noise; loguru handles JARVIS logs
         )
+
+        # Register the device://info resource so the OpenClaw agent can query
+        # identity on demand via the standard MCP resources/read protocol.
+        _register_device_info_resource(_server, device_slug, bind_port)
 
         # Wire all tools that were registered before the server started.
         for entry in _tool_registry.values():
@@ -171,14 +206,88 @@ async def start_mcp_server(config: dict[str, Any]) -> None:
         )
 
         logger.info(
-            f"MCP server listening on http://{bind_host}:{bind_port}/sse (SSE transport)"
+            f"MCP server listening on http://{effective_bind}:{bind_port}/sse "
+            f"(name={mcp_name!r}, SSE transport)"
         )
+
+    except OSError as exc:
+        if effective_bind != bind_host:
+            logger.error(
+                f"MCP server failed to bind on {effective_bind}:{bind_port} — "
+                f"falling back to {bind_host}: {exc}"
+            )
+            try:
+                _server = FastMCP(
+                    name=mcp_name,
+                    instructions=instructions,
+                    host=bind_host,
+                    port=bind_port,
+                    log_level="WARNING",
+                )
+                _register_device_info_resource(_server, device_slug, bind_port)
+                for entry in _tool_registry.values():
+                    _server.add_tool(
+                        entry["fn"],
+                        name=entry["name"],
+                        description=entry["description"],
+                    )
+                _server_task = asyncio.create_task(
+                    _run_server_task(_server),
+                    name="mcp-server",
+                )
+                logger.info(
+                    f"MCP server listening on http://{bind_host}:{bind_port}/sse "
+                    f"(fallback bind, name={mcp_name!r})"
+                )
+            except Exception as fallback_exc:  # noqa: BLE001
+                logger.warning(
+                    f"MCP server failed to start on fallback bind — "
+                    f"JARVIS will continue without MCP: {fallback_exc}"
+                )
+                _server = None
+                _server_task = None
+        else:
+            logger.warning(
+                f"MCP server failed to start — JARVIS will continue without MCP: {exc}"
+            )
+            _server = None
+            _server_task = None
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             f"MCP server failed to start — JARVIS will continue without MCP: {exc}"
         )
         _server = None
         _server_task = None
+
+
+def _register_device_info_resource(
+    server: FastMCP,
+    device_slug: str,
+    bind_port: int,
+) -> None:
+    """Register the ``device://info`` MCP resource on ``server``.
+
+    Args:
+        server: The FastMCP instance to register the resource on.
+        device_slug: Sanitized device slug for this instance.
+        bind_port: The MCP server port (for constructing the SSE URL).
+    """
+
+    @server.resource("device://info", mime_type="application/json")
+    async def device_info_resource() -> str:
+        """Return device identity JSON for the OpenClaw agent."""
+        identity = load_device_identity()
+        device_id: str = identity.get("deviceId", identity.get("id", ""))
+        mcp_server_name = f"jarvis-{_device_slug}"
+        payload = {
+            "slug": _device_slug,
+            "platform": sys.platform,
+            "hostname": socket.gethostname(),
+            "deviceId": device_id,
+            "mcpServerName": mcp_server_name,
+            "sseUrl": _device_sse_url,
+        }
+        return json.dumps(payload)
 
 
 async def _run_server_task(server: FastMCP) -> None:
@@ -236,12 +345,12 @@ def list_registered_tools() -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# SSE URL helper
+# SSE URL helpers
 # ---------------------------------------------------------------------------
 
 
 def get_sse_url(config: dict[str, Any]) -> str:
-    """Return the full SSE endpoint URL for this MCP server.
+    """Return the full SSE endpoint URL using the bind host for this MCP server.
 
     Args:
         config: The ``mcp`` section from ``config.yaml``.
@@ -250,6 +359,23 @@ def get_sse_url(config: dict[str, Any]) -> str:
         URL string such as ``http://127.0.0.1:8767/sse``.
     """
     host: str = config.get("bind_host", "127.0.0.1")
+    port: int = int(config.get("bind_port", 8767))
+    return f"http://{host}:{port}/sse"
+
+
+def get_sse_advertise_url(config: dict[str, Any]) -> str:
+    """Return the advertised SSE endpoint URL for MCP registration with OpenClaw.
+
+    Uses ``resolve_advertise_host`` (env var → config key → bind_host) so the
+    URL reflects the Tailscale IP or MagicDNS hostname when configured.
+
+    Args:
+        config: The ``mcp`` section from ``config.yaml``.
+
+    Returns:
+        URL string such as ``http://laptop-paps.tailnet.ts.net:8767/sse``.
+    """
+    host: str = resolve_advertise_host(config)
     port: int = int(config.get("bind_port", 8767))
     return f"http://{host}:{port}/sse"
 
@@ -272,4 +398,4 @@ def build_openclaw_mcp_json(config: dict[str, Any]) -> str:
     Returns:
         Compact JSON string.
     """
-    return json.dumps({"url": get_sse_url(config)})
+    return json.dumps({"url": get_sse_advertise_url(config)})

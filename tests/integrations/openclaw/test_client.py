@@ -61,10 +61,13 @@ class TestOpenClawClientInitialization:
 
     def test_init_with_defaults(self):
         """Test that init uses defaults for missing config."""
-        client = OpenClawClient({})
+        with patch(
+            "integrations.openclaw.client.resolve_device_slug", return_value="test-host"
+        ):
+            client = OpenClawClient({})
 
         assert client.gateway_url == "http://127.0.0.1:18789"
-        assert client.session_id == "jarvis-main"
+        assert client.session_id == "jarvis-test-host"
         # Default thinking level maps to a valid OpenClaw CLI value.
         assert client._thinking == "medium"
         assert client._timeout == 30

@@ -13,6 +13,7 @@ import lightsReducer from '@features/lights/lightsSlice';
 import orbStateReducer from '@features/orbState/orbStateSlice';
 import conversationReducer from '@features/conversation/conversationSlice';
 import audioPlaybackReducer from '@core/audio/audioPlaybackSlice';
+import deviceReducer from '@features/device/deviceSlice';
 
 export const rootReducer = combineReducers({
     [baseApi.reducerPath]: baseApi.reducer,
@@ -29,6 +30,7 @@ export const rootReducer = combineReducers({
     orbState: orbStateReducer,
     conversation: conversationReducer,
     audioPlayback: audioPlaybackReducer,
+    device: deviceReducer,
     // github has no slice — RTK Query cache only.
 });
 

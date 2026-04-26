@@ -185,8 +185,15 @@ def _build_device_auth_payload_v3(
 
 
 def _load_device_identity() -> dict[str, Any]:
-    """Load device identity from ~/.openclaw/identity/device.json."""
-    return json.loads(_DEVICE_FILE.read_text())
+    """Load device identity from ~/.openclaw/identity/device.json.
+
+    Delegates to :func:`utils.device.load_device_identity` which provides
+    error handling; kept here as a private alias for backwards compat with
+    call sites inside this module.
+    """
+    from utils.device import load_device_identity  # noqa: PLC0415
+
+    return load_device_identity()
 
 
 def _load_gateway_token() -> str:

@@ -76,6 +76,14 @@ export default tseslint.config(
                     caughtErrorsIgnorePattern: '^_',
                 },
             ],
+
+            // Allow empty interfaces — Props types declared in .types.ts files
+            // may legitimately have zero properties (e.g. zero-prop components
+            // that source all data from Redux).
+            '@typescript-eslint/no-empty-object-type': [
+                'error',
+                { allowInterfaces: 'always' },
+            ],
         },
     },
 

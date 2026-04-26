@@ -33,6 +33,7 @@ export type {
 } from '@features/agenda/types';
 export type { GitLabStatePayload } from '@features/gitlab/types';
 export type { LogLinePayload, TurnTimingPayload } from '@features/log/types';
+export type { DeviceInfoPayload } from '@features/device/types';
 
 import type { OrbState } from '@common/types';
 import type { SystemMetricsPayload } from '@features/system/types';
@@ -46,6 +47,7 @@ import type { GitHubStatePayload } from '@features/dev/types';
 import type { CalendarStatePayload, CalendarOpPreviewPayload, CalendarOpDonePayload } from '@features/agenda/types';
 import type { GitLabStatePayload } from '@features/gitlab/types';
 import type { LogLinePayload, TurnTimingPayload } from '@features/log/types';
+import type { DeviceInfoPayload } from '@features/device/types';
 
 export type WsIncoming =
     | {
@@ -90,7 +92,9 @@ export type WsIncoming =
     /** Backend log line from the loguru WS sink. */
     | { type: 'log_line'; payload: LogLinePayload }
     /** Per-voice-turn latency waterfall emitted at end of each turn. */
-    | { type: 'turn_timing'; payload: TurnTimingPayload };
+    | { type: 'turn_timing'; payload: TurnTimingPayload }
+    /** One-shot device identity push sent at WS client connect. */
+    | { type: 'device_info'; payload: DeviceInfoPayload };
 
 export type WsOutgoing =
     | { type: 'transcript'; text: string; isFinal: boolean }

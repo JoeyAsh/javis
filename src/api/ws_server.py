@@ -9,6 +9,8 @@ and Fish Audio TTS — then streams the MP3 response back to the frontend.
 import asyncio
 import base64
 import json
+import socket
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -17,11 +19,12 @@ import numpy as np
 from aiohttp import web
 
 from api.mcp_server import (
-    get_sse_url,
+    get_sse_advertise_url,
     list_registered_tools,
     start_mcp_server,
     stop_mcp_server,
 )
+from utils.device import resolve_device_slug
 from api.system_metrics import SystemMetrics, SystemMetricsCollector
 from audio.fish_tts import FishTTSClient, FishTTSError, strip_markdown_for_tts
 from audio.stream_splitter import StreamSplitter
@@ -38,6 +41,14 @@ from integrations.spotify import SpotifyClient
 from utils.logger import get_logger
 
 logger = get_logger("ws_server")
+
+# ---------------------------------------------------------------------------
+# Device identity — resolved once at module startup
+# ---------------------------------------------------------------------------
+
+# Stable slug for this JARVIS instance (e.g. "laptop-paps").  Derived from
+# JARVIS_DEVICE_NAME env var or sanitized hostname via resolve_device_slug().
+_device_slug: str = resolve_device_slug()
 
 # ---------------------------------------------------------------------------
 # Global state
@@ -3437,6 +3448,20 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     await ws.send_str(json.dumps({"type": "status", "state": "idle"}))
     await broadcast_system_metrics()
 
+    # Push device identity so the HUD can render the DeviceBadge immediately.
+    await ws.send_str(
+        json.dumps(
+            {
+                "type": "device_info",
+                "payload": {
+                    "slug": _device_slug,
+                    "platform": sys.platform,
+                    "hostname": socket.gethostname(),
+                },
+            }
+        )
+    )
+
     # Per-client "welcome" notification — stable id ensures the frontend
     # dedups across reconnects within the same session, yet a fresh
     # browser tab always sees the HUD pipe is live.
@@ -4196,14 +4221,35 @@ async def start_ws_server(
 
     # --- MCP server (tool provider for OpenClaw agent runtime) ---
     mcp_config = cfg.get_section("mcp") or {}
-    await start_mcp_server(mcp_config)
+
+    # Operator hygiene prompt: always remind about the legacy "jarvis" entry.
+    logger.info(
+        "Legacy 'jarvis' MCP entry may exist. Remove with: openclaw mcp unset jarvis"
+    )
+    logger.info(
+        f"Paste the following into ~/.openclaw/workspace/TOOLS.md to register this "
+        f"device in the agent's fleet registry:\n"
+        f"## Device: {_device_slug}\n"
+        f"- MCP server name: jarvis-{_device_slug}\n"
+        f"- Platform: {sys.platform}\n"
+        f"- SSE URL: {get_sse_advertise_url(mcp_config)}\n"
+        f"- Session ID: jarvis-{_device_slug}"
+    )
+
+    await start_mcp_server(mcp_config, device_slug=_device_slug)
     if (
         mcp_config.get("auto_register_with_openclaw", True)
         and mcp_config.get("enabled", True)
         and _openclaw_client is not None
     ):
-        mcp_url = get_sse_url(mcp_config)
-        await _openclaw_client.register_mcp_server(mcp_url)
+        mcp_url = get_sse_advertise_url(mcp_config)
+        mcp_name = f"jarvis-{_device_slug}"
+        _openclaw_headers = mcp_config.get("openclaw_headers") or {}
+        await _openclaw_client.register_mcp_server(
+            url=mcp_url,
+            name=mcp_name,
+            headers=_openclaw_headers if _openclaw_headers else None,
+        )
 
     # --- Memory store (archive of transcripts / events) ---
     memory_cfg = cfg.get_section("memory")
@@ -4597,7 +4643,10 @@ async def start_ws_server(
         ):
             try:
                 await asyncio.wait_for(
-                    _openclaw_client.unregister_mcp_server(), timeout=5.0
+                    _openclaw_client.unregister_mcp_server(
+                        name=f"jarvis-{_device_slug}"
+                    ),
+                    timeout=5.0,
                 )
             except asyncio.TimeoutError:
                 logger.debug("MCP unregister timed out — skipping")

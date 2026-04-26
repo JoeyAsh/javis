@@ -76,6 +76,18 @@ memory:
     keep_days: 14
     schedule: "0 3 * * *"  # 3 AM daily (cron format)
 
+mcp:
+  # MCP server exposes JARVIS-native tools (Spotify, HA, PC control, …) to the
+  # OpenClaw agent runtime over SSE transport.  Phase 3: infrastructure only —
+  # no tools registered until Phase 4 (#76) + Spotify (#58).
+  enabled: true
+  bind_host: "127.0.0.1"
+  bind_port: 8767
+  # When true, JARVIS registers itself with the local OpenClaw CLI registry
+  # at startup (openclaw mcp set jarvis ...) and removes the entry on shutdown.
+  # Set to false when OpenClaw is fully remote and CLI is unavailable locally.
+  auto_register_with_openclaw: true
+
 openclaw:
   enabled: true
   # For remote OpenClaw via Tailscale, use the gateway host's tailnet URL,

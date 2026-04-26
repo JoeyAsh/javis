@@ -173,6 +173,28 @@ class SpotifyClient:
         """Return True when a valid token is cached and the client is ready."""
         return self._authenticated
 
+    def cached_scopes(self) -> set[str]:
+        """Return the set of OAuth scopes stored in the cached token file.
+
+        Reads the ``scope`` field from the token JSON on disk (spotipy stores it
+        as a space-separated string).  Returns an empty set when the token cache
+        does not exist, cannot be parsed, or has no ``scope`` field.
+
+        Returns:
+            Set of scope strings from the cached token.
+        """
+        try:
+            if not self._token_cache_path.exists():
+                return set()
+            import json  # noqa: PLC0415
+
+            data = json.loads(self._token_cache_path.read_text(encoding="utf-8"))
+            scope_str: str = data.get("scope", "")
+            return set(scope_str.split()) if scope_str else set()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"cached_scopes: could not read token cache: {exc}")
+            return set()
+
     async def initialize(self) -> None:
         """Initialise the PKCE flow and load any cached token.
 
@@ -494,7 +516,10 @@ class SpotifyClient:
                     id=item.get("id", ""),
                     name=item.get("name", ""),
                     owner=item.get("owner", {}).get("display_name", ""),
-                    track_count=item.get("tracks", {}).get("total", 0),
+                    track_count=(
+                        item.get("items", {}).get("total")
+                        or item.get("tracks", {}).get("total", 0)
+                    ),
                     uri=item.get("uri", ""),
                 )
             )
@@ -752,7 +777,10 @@ class SpotifyClient:
                 id=p.get("id", ""),
                 name=p.get("name", ""),
                 owner=p.get("owner", {}).get("display_name", ""),
-                track_count=p.get("tracks", {}).get("total", 0),
+                track_count=(
+                    p.get("items", {}).get("total")
+                    or p.get("tracks", {}).get("total", 0)
+                ),
                 uri=p.get("uri", ""),
             )
             for p in playlist_items
@@ -989,9 +1017,15 @@ def _extract_tracks_from_items(items: list[Any]) -> list[SpotifyTrackResult]:
     for item in items:
         if item is None:
             continue
-        # playlist_tracks / saved_tracks wrap the track under "track" key.
-        track = item.get("track", item) if isinstance(item, dict) else item
-        if track is None:
+        # New Spotify API shape uses "item" key; legacy shape uses "track"; album_tracks
+        # returns flat track objects with no wrapper key at all.
+        if "item" in item or "track" in item:
+            # Row is a playlist/saved-tracks wrapper — extract inner track dict.
+            track = item.get("item") or item.get("track")
+        else:
+            # Row IS the track (album_tracks flat shape).
+            track = item
+        if track is None or not isinstance(track, dict):
             continue
         artists = track.get("artists", [])
         artist_str = ", ".join(a.get("name", "") for a in artists)

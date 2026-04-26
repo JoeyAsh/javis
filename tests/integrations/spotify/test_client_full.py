@@ -7,7 +7,7 @@ All spotipy calls are mocked at the module boundary — no network access.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import spotipy
@@ -64,7 +64,7 @@ def _rate_limited_exc(retry_after: int = 5) -> spotipy.SpotifyException:
 
 @pytest.mark.asyncio
 async def test_list_playlists_happy_path_returns_dataclasses():
-    """list_playlists() maps the spotipy response to SpotifyPlaylist dataclasses."""
+    """list_playlists() maps the new 'items.total' spotipy response to SpotifyPlaylist dataclasses."""
     from integrations.spotify.client import SpotifyClient, SpotifyPlaylist
 
     client = _make_client()
@@ -74,7 +74,7 @@ async def test_list_playlists_happy_path_returns_dataclasses():
                 "id": "pl1",
                 "name": "Coding Sessions",
                 "owner": {"display_name": "user1"},
-                "tracks": {"total": 42},
+                "items": {"total": 42},
                 "uri": "spotify:playlist:pl1",
             }
         ]
@@ -94,6 +94,65 @@ async def test_list_playlists_happy_path_returns_dataclasses():
     assert pl.owner == "user1"
     assert pl.track_count == 42
     assert pl.uri == "spotify:playlist:pl1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "playlist_item,expected_count",
+    [
+        # New Spotify API shape: "items.total"
+        (
+            {
+                "id": "pl1",
+                "name": "New Shape",
+                "owner": {"display_name": "u"},
+                "items": {"total": 8},
+                "uri": "spotify:playlist:pl1",
+            },
+            8,
+        ),
+        # Legacy shape: "tracks.total"
+        (
+            {
+                "id": "pl2",
+                "name": "Legacy Shape",
+                "owner": {"display_name": "u"},
+                "tracks": {"total": 15},
+                "uri": "spotify:playlist:pl2",
+            },
+            15,
+        ),
+        # Both present: "items.total" wins (new key has priority)
+        (
+            {
+                "id": "pl3",
+                "name": "Both",
+                "owner": {"display_name": "u"},
+                "items": {"total": 3},
+                "tracks": {"total": 99},
+                "uri": "spotify:playlist:pl3",
+            },
+            3,
+        ),
+    ],
+)
+async def test_list_playlists_track_count_shapes(
+    playlist_item: dict, expected_count: int
+) -> None:
+    """list_playlists() reads track_count from 'items.total' (new) or 'tracks.total' (legacy)."""
+    from integrations.spotify.client import SpotifyClient
+
+    client = _make_client()
+    response = {"items": [playlist_item]}
+
+    with patch(
+        "integrations.spotify.client.asyncio.to_thread",
+        new=AsyncMock(return_value=response),
+    ):
+        result = await client.list_playlists()
+
+    assert len(result) == 1
+    assert result[0].track_count == expected_count
 
 
 @pytest.mark.asyncio
@@ -121,7 +180,18 @@ async def test_list_playlists_skips_none_items():
     from integrations.spotify.client import SpotifyClient
 
     client = _make_client()
-    response = {"items": [None, {"id": "pl2", "name": "X", "owner": {"display_name": "u"}, "tracks": {"total": 1}, "uri": "u:pl2"}]}
+    response = {
+        "items": [
+            None,
+            {
+                "id": "pl2",
+                "name": "X",
+                "owner": {"display_name": "u"},
+                "items": {"total": 1},
+                "uri": "u:pl2",
+            },
+        ]
+    }
 
     with patch("integrations.spotify.client.asyncio.to_thread", new=AsyncMock(return_value=response)):
         result = await client.list_playlists()
@@ -194,7 +264,37 @@ async def test_list_playlists_raises_poll_error_on_429():
 
 @pytest.mark.asyncio
 async def test_playlist_tracks_happy_path():
-    """playlist_tracks() returns SpotifyTrackResult list from wrapped track items."""
+    """playlist_tracks() returns SpotifyTrackResult list using new 'item' wrapper key."""
+    from integrations.spotify.client import SpotifyTrackResult
+
+    client = _make_client()
+    response = {
+        "items": [
+            {
+                "item": {
+                    "id": "t1",
+                    "name": "Midnight City",
+                    "artists": [{"name": "M83"}],
+                    "album": {"name": "Hurry Up"},
+                    "duration_ms": 241000,
+                    "uri": "spotify:track:t1",
+                }
+            }
+        ]
+    }
+
+    with patch("integrations.spotify.client.asyncio.to_thread", new=AsyncMock(return_value=response)):
+        result = await client.playlist_tracks("pl1")
+
+    assert len(result) == 1
+    assert isinstance(result[0], SpotifyTrackResult)
+    assert result[0].name == "Midnight City"
+    assert result[0].artist == "M83"
+
+
+@pytest.mark.asyncio
+async def test_playlist_tracks_legacy_track_key():
+    """playlist_tracks() still unwraps correctly when the legacy 'track' key is present."""
     from integrations.spotify.client import SpotifyTrackResult
 
     client = _make_client()
@@ -217,9 +317,7 @@ async def test_playlist_tracks_happy_path():
         result = await client.playlist_tracks("pl1")
 
     assert len(result) == 1
-    assert isinstance(result[0], SpotifyTrackResult)
     assert result[0].name == "Midnight City"
-    assert result[0].artist == "M83"
 
 
 @pytest.mark.asyncio
@@ -304,7 +402,36 @@ async def test_album_tracks_raises_on_401():
 
 @pytest.mark.asyncio
 async def test_saved_tracks_happy_path():
-    """saved_tracks() maps saved_tracks API response to SpotifyTrackResult list."""
+    """saved_tracks() maps saved_tracks API response using new 'item' wrapper key."""
+    from integrations.spotify.client import SpotifyTrackResult
+
+    client = _make_client()
+    response = {
+        "items": [
+            {
+                "item": {
+                    "id": "t3",
+                    "name": "Oblivion",
+                    "artists": [{"name": "Grimes"}],
+                    "album": {"name": "Visions"},
+                    "duration_ms": 253000,
+                    "uri": "spotify:track:t3",
+                }
+            }
+        ]
+    }
+
+    with patch("integrations.spotify.client.asyncio.to_thread", new=AsyncMock(return_value=response)):
+        result = await client.saved_tracks()
+
+    assert len(result) == 1
+    assert isinstance(result[0], SpotifyTrackResult)
+    assert result[0].name == "Oblivion"
+
+
+@pytest.mark.asyncio
+async def test_saved_tracks_legacy_track_key():
+    """saved_tracks() still unwraps correctly when the legacy 'track' key is present."""
     from integrations.spotify.client import SpotifyTrackResult
 
     client = _make_client()
@@ -327,7 +454,6 @@ async def test_saved_tracks_happy_path():
         result = await client.saved_tracks()
 
     assert len(result) == 1
-    assert isinstance(result[0], SpotifyTrackResult)
     assert result[0].name == "Oblivion"
 
 
@@ -844,41 +970,101 @@ def test_map_spotipy_exception_non_spotify_exc_returns_poll_error():
 # ---------------------------------------------------------------------------
 
 
-def test_extract_tracks_from_items_handles_wrapped_and_raw():
-    """_extract_tracks_from_items() handles both {track: {...}} and raw track dicts."""
+def _make_track_dict(name: str, track_id: str) -> dict:
+    return {
+        "id": track_id,
+        "name": name,
+        "artists": [{"name": "Artist"}],
+        "album": {"name": "Album"},
+        "duration_ms": 180000,
+        "uri": f"spotify:track:{track_id}",
+    }
+
+
+def test_extract_tracks_from_items_new_item_key():
+    """_extract_tracks_from_items() unwraps track from new 'item' key."""
+    from integrations.spotify.client import _extract_tracks_from_items
+
+    items = [{"item": _make_track_dict("Song A", "t1")}]
+    result = _extract_tracks_from_items(items)
+    assert len(result) == 1
+    assert result[0].name == "Song A"
+
+
+def test_extract_tracks_from_items_legacy_track_key():
+    """_extract_tracks_from_items() unwraps track from legacy 'track' key."""
+    from integrations.spotify.client import _extract_tracks_from_items
+
+    items = [{"track": _make_track_dict("Song B", "t2")}]
+    result = _extract_tracks_from_items(items)
+    assert len(result) == 1
+    assert result[0].name == "Song B"
+
+
+def test_extract_tracks_from_items_flat_album_shape():
+    """_extract_tracks_from_items() handles flat track dict (album_tracks shape)."""
+    from integrations.spotify.client import _extract_tracks_from_items
+
+    items = [_make_track_dict("Song C", "t3")]
+    result = _extract_tracks_from_items(items)
+    assert len(result) == 1
+    assert result[0].name == "Song C"
+
+
+def test_extract_tracks_from_items_skips_none_row():
+    """_extract_tracks_from_items() skips None rows."""
+    from integrations.spotify.client import _extract_tracks_from_items
+
+    result = _extract_tracks_from_items([None])
+    assert result == []
+
+
+def test_extract_tracks_from_items_skips_item_key_with_none_value():
+    """_extract_tracks_from_items() skips rows where 'item' value is None."""
+    from integrations.spotify.client import _extract_tracks_from_items
+
+    result = _extract_tracks_from_items([{"item": None}])
+    assert result == []
+
+
+def test_extract_tracks_from_items_skips_track_key_with_none_value():
+    """_extract_tracks_from_items() skips rows where 'track' value is None."""
+    from integrations.spotify.client import _extract_tracks_from_items
+
+    result = _extract_tracks_from_items([{"track": None}])
+    assert result == []
+
+
+def test_extract_tracks_from_items_item_key_wins_over_track_key():
+    """_extract_tracks_from_items() prefers 'item' over 'track' when both are present."""
     from integrations.spotify.client import _extract_tracks_from_items
 
     items = [
-        # wrapped (playlist_tracks / saved_tracks)
         {
-            "track": {
-                "id": "t1",
-                "name": "Song A",
-                "artists": [{"name": "Artist A"}],
-                "album": {"name": "Album A"},
-                "duration_ms": 180000,
-                "uri": "spotify:track:t1",
-            }
-        },
-        # raw (hypothetical)
-        {
-            "id": "t2",
-            "name": "Song B",
-            "artists": [{"name": "Artist B"}],
-            "album": {"name": "Album B"},
-            "duration_ms": 200000,
-            "uri": "spotify:track:t2",
-        },
-        # None entry should be skipped
+            "item": _make_track_dict("New Song", "new"),
+            "track": _make_track_dict("Old Song", "old"),
+        }
+    ]
+    result = _extract_tracks_from_items(items)
+    assert len(result) == 1
+    assert result[0].name == "New Song"
+
+
+def test_extract_tracks_from_items_mixed_shapes():
+    """_extract_tracks_from_items() handles a mix of 'item', 'track', flat, and None rows."""
+    from integrations.spotify.client import _extract_tracks_from_items
+
+    items: list = [
+        {"item": _make_track_dict("Via item", "t1")},
+        {"track": _make_track_dict("Via track", "t2")},
+        _make_track_dict("Flat", "t3"),
         None,
-        # wrapped with track=None should be skipped
+        {"item": None},
         {"track": None},
     ]
-
     result = _extract_tracks_from_items(items)
-    assert len(result) == 2
-    assert result[0].name == "Song A"
-    assert result[1].name == "Song B"
+    assert len(result) == 3
+    assert [r.name for r in result] == ["Via item", "Via track", "Flat"]
 
 
 # ---------------------------------------------------------------------------

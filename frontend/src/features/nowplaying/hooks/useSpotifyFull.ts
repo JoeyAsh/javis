@@ -18,6 +18,7 @@ import {
     selectSelectedAlbumUri,
     selectSearchQuery,
     selectPremiumError,
+    selectSdkDeviceId,
 } from '../nowplayingSelectors';
 import {
     useGetPlaylistsQuery,
@@ -42,6 +43,7 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
     const selectedAlbumUri = useAppSelector(selectSelectedAlbumUri);
     const searchQuery = useAppSelector(selectSearchQuery);
     const premiumError = useAppSelector(selectPremiumError);
+    const sdkDeviceId = useAppSelector(selectSdkDeviceId);
 
     // Single call with the correct page limit — LibraryTab reads data from here
     const { data: playlistsPage, isLoading: isLoadingPlaylists } = useGetPlaylistsQuery(
@@ -108,35 +110,57 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
 
     const handleAddToQueue = useCallback(
         (uri: string): void => {
-            addToQueueMutation({ uri })
+            addToQueueMutation({ uri, device_id: sdkDeviceId ?? undefined })
                 .unwrap()
-                .catch(() => {
-                    dispatch(setPremiumError(true));
+                .catch((err: unknown) => {
+                    const status =
+                        err !== null && typeof err === 'object' && 'status' in err
+                            ? (err as { status?: number }).status
+                            : undefined;
+                    if (status === 402) {
+                        dispatch(setPremiumError(true));
+                    }
                 });
         },
-        [addToQueueMutation, dispatch],
+        [addToQueueMutation, dispatch, sdkDeviceId],
     );
 
     const handlePlayContext = useCallback(
         (contextUri: string, offsetUri?: string): void => {
-            playContextMutation({ context_uri: contextUri, offset_uri: offsetUri })
+            playContextMutation({
+                context_uri: contextUri,
+                offset_uri: offsetUri,
+                device_id: sdkDeviceId ?? undefined,
+            })
                 .unwrap()
-                .catch(() => {
-                    dispatch(setPremiumError(true));
+                .catch((err: unknown) => {
+                    const status =
+                        err !== null && typeof err === 'object' && 'status' in err
+                            ? (err as { status?: number }).status
+                            : undefined;
+                    if (status === 402) {
+                        dispatch(setPremiumError(true));
+                    }
                 });
         },
-        [playContextMutation, dispatch],
+        [playContextMutation, dispatch, sdkDeviceId],
     );
 
     const handlePlayUris = useCallback(
         (uris: string[]): void => {
-            playUrisMutation({ uris })
+            playUrisMutation({ uris, device_id: sdkDeviceId ?? undefined })
                 .unwrap()
-                .catch(() => {
-                    dispatch(setPremiumError(true));
+                .catch((err: unknown) => {
+                    const status =
+                        err !== null && typeof err === 'object' && 'status' in err
+                            ? (err as { status?: number }).status
+                            : undefined;
+                    if (status === 402) {
+                        dispatch(setPremiumError(true));
+                    }
                 });
         },
-        [playUrisMutation, dispatch],
+        [playUrisMutation, dispatch, sdkDeviceId],
     );
 
     const isLoadingLibrary = isLoadingPlaylists || isLoadingPlaylistTracks;

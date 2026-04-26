@@ -241,7 +241,7 @@ export const nowplayingApi = baseApi.injectEndpoints({
             providesTags: ['queue'],
         }),
 
-        addToQueue: builder.mutation<void, { uri: string }>({
+        addToQueue: builder.mutation<void, { uri: string; device_id?: string }>({
             query: (body) => ({
                 url: '/api/spotify/queue',
                 method: 'POST',

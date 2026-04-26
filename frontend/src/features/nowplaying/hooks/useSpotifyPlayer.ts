@@ -153,24 +153,24 @@ export function useSpotifyPlayer(): UseSpotifyPlayerReturn {
     // getToken is stable (no deps). The only actual reactive dep is tokenData.
     }, [tokenData, getToken]);
 
-    const setVolume = useCallback((value: number): void => {
-        playerHandleRef.current?.setVolume(value);
+    const setVolume = useCallback((value: number): Promise<void> => {
+        return playerHandleRef.current?.setVolume(value) ?? Promise.resolve();
     }, []);
 
-    const togglePlay = useCallback((): void => {
-        playerHandleRef.current?.togglePlay();
+    const togglePlay = useCallback((): Promise<void> => {
+        return playerHandleRef.current?.togglePlay() ?? Promise.resolve();
     }, []);
 
-    const nextTrack = useCallback((): void => {
-        playerHandleRef.current?.nextTrack();
+    const nextTrack = useCallback((): Promise<void> => {
+        return playerHandleRef.current?.nextTrack() ?? Promise.resolve();
     }, []);
 
-    const previousTrack = useCallback((): void => {
-        playerHandleRef.current?.previousTrack();
+    const previousTrack = useCallback((): Promise<void> => {
+        return playerHandleRef.current?.previousTrack() ?? Promise.resolve();
     }, []);
 
-    const seek = useCallback((positionMs: number): void => {
-        playerHandleRef.current?.seek(positionMs);
+    const seek = useCallback((positionMs: number): Promise<void> => {
+        return playerHandleRef.current?.seek(positionMs) ?? Promise.resolve();
     }, []);
 
     return {

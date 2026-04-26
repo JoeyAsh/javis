@@ -1,3 +1,6 @@
+/* Tailwind insufficient: pseudo-element thumb on .barFill needs position:absolute
+   outside overflow:hidden scope, and hover-on-parent state coupling. */
+
 .progress {
     margin-top: 8px;
     margin-bottom: var(--s-1);
@@ -6,16 +9,55 @@
 .bar {
     height: 2px;
     background: var(--border);
-    overflow: hidden;
     position: relative;
     margin: 4px 0;
+    /* taller hit area for pointer interactions without changing visual height */
+    padding: 6px 0;
+    cursor: default;
+}
+
+.bar::before {
+    content: '';
+    position: absolute;
+    inset: 6px 0;
+    background: var(--border);
+}
+
+.bar[data-seekable='true'] {
+    cursor: pointer;
 }
 
 .barFill {
-    height: 100%;
+    position: absolute;
+    inset: 6px auto 6px 0;
     background: var(--accent);
     box-shadow: var(--glow);
     transition: width 120ms linear;
+}
+
+.bar[data-dragging='true'] .barFill {
+    transition: none;
+}
+
+/* Thumb: a small circle at the right edge of the fill track, visible when seekable */
+.barFill::after {
+    content: '';
+    position: absolute;
+    right: -3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    transition: width 80ms ease, height 80ms ease;
+}
+
+.bar[data-seekable='true']:hover .barFill::after,
+.bar[data-dragging='true'] .barFill::after {
+    width: 8px;
+    height: 8px;
+    right: -4px;
 }
 
 .times {

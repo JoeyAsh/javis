@@ -8,13 +8,13 @@ import {
     selectAlbum,
     setSelectedAlbumUri,
     setSearchQuery,
-    setPremiumError,
 } from '../nowplayingSlice';
 import {
     selectActiveTab,
     selectLibraryView,
     selectSelectedPlaylistId,
     selectSelectedPlaylistUri,
+    selectSelectedAlbumId,
     selectSelectedAlbumUri,
     selectSearchQuery,
     selectPremiumError,
@@ -23,6 +23,7 @@ import {
 import {
     useGetPlaylistsQuery,
     useGetPlaylistTracksQuery,
+    useGetAlbumTracksQuery,
     useSearchSpotifyQuery,
     useGetQueueQuery,
     useAddToQueueMutation,
@@ -40,6 +41,7 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
     const libraryView = useAppSelector(selectLibraryView);
     const selectedPlaylistId = useAppSelector(selectSelectedPlaylistId);
     const selectedPlaylistUri = useAppSelector(selectSelectedPlaylistUri);
+    const selectedAlbumId = useAppSelector(selectSelectedAlbumId);
     const selectedAlbumUri = useAppSelector(selectSelectedAlbumUri);
     const searchQuery = useAppSelector(selectSearchQuery);
     const premiumError = useAppSelector(selectPremiumError);
@@ -54,6 +56,11 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
     const { isLoading: isLoadingPlaylistTracks } = useGetPlaylistTracksQuery(
         { id: selectedPlaylistId ?? '', limit: LIBRARY_PAGE_LIMIT },
         { skip: libraryView !== 'playlist-tracks' || selectedPlaylistId === null },
+    );
+
+    const { isLoading: isLoadingAlbumTracks } = useGetAlbumTracksQuery(
+        { id: selectedAlbumId ?? '', limit: LIBRARY_PAGE_LIMIT },
+        { skip: libraryView !== 'album-tracks' || selectedAlbumId === null },
     );
 
     const { data: searchResults, isLoading: isLoadingSearch } = useSearchSpotifyQuery(
@@ -118,11 +125,14 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
                             ? (err as { status?: number }).status
                             : undefined;
                     if (status === 402) {
-                        dispatch(setPremiumError(true));
+                        // Per-resource 402 (Spotify playlist/track restriction) — do NOT flip the
+                        // global premiumError flag. The SDK account_error event is the single
+                        // source of truth for "user is not Premium".
+                        console.warn('[JARVIS] Spotify add-to-queue denied (402) — resource may be restricted:', err);
                     }
                 });
         },
-        [addToQueueMutation, dispatch, sdkDeviceId],
+        [addToQueueMutation, sdkDeviceId],
     );
 
     const handlePlayContext = useCallback(
@@ -139,11 +149,13 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
                             ? (err as { status?: number }).status
                             : undefined;
                     if (status === 402) {
-                        dispatch(setPremiumError(true));
+                        // Per-resource 402 — do NOT flip premiumError. The user IS premium;
+                        // this particular context URI is restricted by Spotify.
+                        console.warn('[JARVIS] Spotify play-context denied (402) — resource may be restricted:', err);
                     }
                 });
         },
-        [playContextMutation, dispatch, sdkDeviceId],
+        [playContextMutation, sdkDeviceId],
     );
 
     const handlePlayUris = useCallback(
@@ -156,14 +168,15 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
                             ? (err as { status?: number }).status
                             : undefined;
                     if (status === 402) {
-                        dispatch(setPremiumError(true));
+                        // Per-resource 402 — do NOT flip premiumError.
+                        console.warn('[JARVIS] Spotify play-uris denied (402) — resource may be restricted:', err);
                     }
                 });
         },
-        [playUrisMutation, dispatch, sdkDeviceId],
+        [playUrisMutation, sdkDeviceId],
     );
 
-    const isLoadingLibrary = isLoadingPlaylists || isLoadingPlaylistTracks;
+    const isLoadingLibrary = isLoadingPlaylists || isLoadingPlaylistTracks || isLoadingAlbumTracks;
 
     return {
         activeTab,
@@ -192,5 +205,7 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
 
         premiumError,
         isLoadingLibrary,
+        isLoadingPlaylistTracks,
+        isLoadingAlbumTracks,
     };
 }

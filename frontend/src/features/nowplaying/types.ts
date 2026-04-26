@@ -36,7 +36,7 @@ export interface SpotifyStatePayload {
     error?: string;
 }
 
-export type SpotifyCmdAction = 'play' | 'pause' | 'next' | 'prev' | 'volume';
+export type SpotifyCmdAction = 'play' | 'pause' | 'next' | 'prev' | 'volume' | 'seek';
 
 export interface SpotifyPlaylist {
     id: string;

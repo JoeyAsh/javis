@@ -7,3 +7,9 @@ export const JARVIS_DEVICE_NAME = 'JARVIS';
 export const SDK_INITIAL_VOLUME = 0.5;
 /** Initial UI volume level (0..100 scale matching TransportControls slider). */
 export const INITIAL_UI_VOLUME = 50;
+/**
+ * "Prev" button restart threshold (ms). Matches Spotify mobile/desktop UX:
+ * - If current position > threshold → restart the current song (seek to 0).
+ * - Otherwise → go to the previous track.
+ */
+export const PREV_RESTART_THRESHOLD_MS = 3_000;

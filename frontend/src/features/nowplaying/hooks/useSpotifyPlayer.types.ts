@@ -5,9 +5,9 @@ export interface UseSpotifyPlayerReturn {
     isReady: boolean;
     error: SpotifySdkError | null;
     sdkPlayerState: SpotifySdkPlayerState | null;
-    setVolume: (value: number) => void;
-    togglePlay: () => void;
-    nextTrack: () => void;
-    previousTrack: () => void;
-    seek: (positionMs: number) => void;
+    setVolume: (value: number) => Promise<void>;
+    togglePlay: () => Promise<void>;
+    nextTrack: () => Promise<void>;
+    previousTrack: () => Promise<void>;
+    seek: (positionMs: number) => Promise<void>;
 }

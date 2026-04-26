@@ -23,6 +23,8 @@ export function LibraryTab(_props: LibraryTabProps): ReactElement {
         addToQueue,
         premiumError,
         isLoadingLibrary,
+        isLoadingPlaylistTracks,
+        isLoadingAlbumTracks,
         playlistsPage,
         selectedPlaylistUri,
         selectedAlbumUri,
@@ -49,7 +51,7 @@ export function LibraryTab(_props: LibraryTabProps): ReactElement {
         [openPlaylist],
     );
 
-    // Fix 1: use playContext so playback joins the correct queue context.
+    // use playContext so playback joins the correct queue context.
     // playlist-tracks and album-tracks both supply a context URI;
     // saved-tracks (no parent context) falls back to playUris.
     const handleTrackClick = useCallback(
@@ -81,26 +83,54 @@ export function LibraryTab(_props: LibraryTabProps): ReactElement {
         );
     }
 
-    if (libraryView === 'playlist-tracks' && tracksPage !== undefined) {
+    // Always enter this branch when libraryView === 'playlist-tracks' so a click on a playlist
+    // is never silently ignored. When tracksPage is undefined we show an appropriate sub-state.
+    if (libraryView === 'playlist-tracks') {
         const selectedName =
             playlistsPage?.items.find((p: SpotifyPlaylist) => p.id === selectedPlaylistId)?.name ??
             'PLAYLIST';
 
+        const backButton = (
+            <div className="flex items-center gap-2 mb-2 px-2 flex-shrink-0">
+                <button
+                    type="button"
+                    aria-label="Back to playlists"
+                    className="text-[9px] text-[var(--accent)] font-[var(--font)] tracking-widest hover:text-[var(--accent-bright)] transition-colors duration-[var(--dur-fast)] cursor-pointer bg-transparent border-none p-0"
+                    onClick={goBack}
+                >
+                    ← BACK
+                </button>
+                <span className="text-[9px] text-[var(--text-muted)] font-[var(--font)] tracking-widest truncate">
+                    {selectedName.toUpperCase()}
+                </span>
+            </div>
+        );
+
+        if (tracksPage === undefined && isLoadingPlaylistTracks) {
+            return (
+                <div className="flex flex-col overflow-hidden flex-1">
+                    {backButton}
+                    <div className="flex items-center justify-center py-4 text-[10px] text-[var(--text-muted)] font-[var(--font)] tracking-wide">
+                        LOADING...
+                    </div>
+                </div>
+            );
+        }
+
+        if (tracksPage === undefined) {
+            return (
+                <div className="flex flex-col overflow-hidden flex-1">
+                    {backButton}
+                    <div className="flex items-center justify-center py-4 text-[10px] text-[var(--text-muted)] font-[var(--font)] tracking-wide">
+                        PLAYLIST NICHT VERFÜGBAR
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="flex flex-col overflow-hidden flex-1">
-                <div className="flex items-center gap-2 mb-2 px-2 flex-shrink-0">
-                    <button
-                        type="button"
-                        aria-label="Back to playlists"
-                        className="text-[9px] text-[var(--accent)] font-[var(--font)] tracking-widest hover:text-[var(--accent-bright)] transition-colors duration-[var(--dur-fast)] cursor-pointer bg-transparent border-none p-0"
-                        onClick={goBack}
-                    >
-                        ← BACK
-                    </button>
-                    <span className="text-[9px] text-[var(--text-muted)] font-[var(--font)] tracking-widest truncate">
-                        {selectedName.toUpperCase()}
-                    </span>
-                </div>
+                {backButton}
                 <div className="overflow-y-auto flex-1">
                     {tracksPage.items.map((track: SpotifyTrackResult, idx: number) => (
                         <TrackRow
@@ -121,22 +151,49 @@ export function LibraryTab(_props: LibraryTabProps): ReactElement {
         );
     }
 
-    if (libraryView === 'album-tracks' && albumTracksPage !== undefined) {
+    // Always enter this branch when libraryView === 'album-tracks'.
+    if (libraryView === 'album-tracks') {
+        const backButton = (
+            <div className="flex items-center gap-2 mb-2 px-2 flex-shrink-0">
+                <button
+                    type="button"
+                    aria-label="Back to playlists"
+                    className="text-[9px] text-[var(--accent)] font-[var(--font)] tracking-widest hover:text-[var(--accent-bright)] transition-colors duration-[var(--dur-fast)] cursor-pointer bg-transparent border-none p-0"
+                    onClick={goBack}
+                >
+                    ← BACK
+                </button>
+                <span className="text-[9px] text-[var(--text-muted)] font-[var(--font)] tracking-widest truncate">
+                    ALBUM
+                </span>
+            </div>
+        );
+
+        if (albumTracksPage === undefined && isLoadingAlbumTracks) {
+            return (
+                <div className="flex flex-col overflow-hidden flex-1">
+                    {backButton}
+                    <div className="flex items-center justify-center py-4 text-[10px] text-[var(--text-muted)] font-[var(--font)] tracking-wide">
+                        LOADING...
+                    </div>
+                </div>
+            );
+        }
+
+        if (albumTracksPage === undefined) {
+            return (
+                <div className="flex flex-col overflow-hidden flex-1">
+                    {backButton}
+                    <div className="flex items-center justify-center py-4 text-[10px] text-[var(--text-muted)] font-[var(--font)] tracking-wide">
+                        PLAYLIST NICHT VERFÜGBAR
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="flex flex-col overflow-hidden flex-1">
-                <div className="flex items-center gap-2 mb-2 px-2 flex-shrink-0">
-                    <button
-                        type="button"
-                        aria-label="Back to playlists"
-                        className="text-[9px] text-[var(--accent)] font-[var(--font)] tracking-widest hover:text-[var(--accent-bright)] transition-colors duration-[var(--dur-fast)] cursor-pointer bg-transparent border-none p-0"
-                        onClick={goBack}
-                    >
-                        ← BACK
-                    </button>
-                    <span className="text-[9px] text-[var(--text-muted)] font-[var(--font)] tracking-widest truncate">
-                        ALBUM
-                    </span>
-                </div>
+                {backButton}
                 <div className="overflow-y-auto flex-1">
                     {albumTracksPage.items.map((track: SpotifyTrackResult, idx: number) => (
                         <TrackRow

@@ -36,4 +36,6 @@ export interface UseSpotifyFullReturn {
 
     premiumError: boolean;
     isLoadingLibrary: boolean;
+    isLoadingPlaylistTracks: boolean;
+    isLoadingAlbumTracks: boolean;
 }

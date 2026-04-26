@@ -21,6 +21,13 @@ export function NowPlayingStrip({ track, onCmd }: NowPlayingStripProps): ReactEl
         [onCmd],
     );
 
+    const handleSeek = useCallback(
+        (positionMs: number): void => {
+            onCmd('seek', positionMs);
+        },
+        [onCmd],
+    );
+
     if (track === null) {
         return (
             <div className="flex flex-col gap-0 border-b border-[var(--border)] pb-2 mb-2 flex-shrink-0">
@@ -34,7 +41,7 @@ export function NowPlayingStrip({ track, onCmd }: NowPlayingStripProps): ReactEl
     return (
         <div className="flex flex-col gap-0 border-b border-[var(--border)] pb-2 mb-2 flex-shrink-0">
             <TrackInfo track={track} />
-            <ProgressBar track={track} />
+            <ProgressBar track={track} onSeek={handleSeek} />
             <TransportControls
                 track={track}
                 onCmd={onCmd}

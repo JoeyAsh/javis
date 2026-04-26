@@ -5,7 +5,7 @@ import { useNowPlaying } from '../../hooks/useNowPlaying';
 import { useSpotifyPlayer } from '../../hooks/useSpotifyPlayer';
 import { sendSpotifyCmd } from '../../nowplayingApi';
 import { payloadToTrack, sdkStateToTrack } from '../../utils';
-import { AVAILABILITY_TIMEOUT_MS, JARVIS_DEVICE_NAME, PREV_RESTART_THRESHOLD_MS } from '../../constants';
+import { AVAILABILITY_TIMEOUT_MS, JARVIS_DEVICE_NAME } from '../../constants';
 import { AuthPrompt } from '../AuthPrompt';
 import { SpotifyFullPanel } from '../SpotifyFullPanel';
 import { NowPlayingCompact } from '../NowPlayingCompact';
@@ -75,18 +75,9 @@ export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): Re
                     return;
                 }
                 if (action === 'prev') {
-                    // Mobile-app parity: if more than PREV_RESTART_THRESHOLD_MS into the track,
-                    // restart from the beginning instead of jumping to the previous track.
-                    const positionMs = sdkPlayer.sdkPlayerState?.positionMs ?? 0;
-                    if (positionMs > PREV_RESTART_THRESHOLD_MS) {
-                        sdkPlayer.seek(0).catch((err: unknown) => {
-                            console.warn('[JARVIS] SDK seek(0) for restart failed:', err);
-                        });
-                    } else {
-                        sdkPlayer.previousTrack().catch((err: unknown) => {
-                            console.warn('[JARVIS] SDK previousTrack failed:', err);
-                        });
-                    }
+                    sdkPlayer.previousTrack().catch((err: unknown) => {
+                        console.warn('[JARVIS] SDK previousTrack failed:', err);
+                    });
                     return;
                 }
                 if (action === 'seek' && value !== undefined) {

@@ -74,26 +74,12 @@
           <div class="target-url" id="openclaw-target-url"></div>
 
           <section class="openclaw-advanced">
-            <label class="field-label" for="openclaw-ssh-host">SSH HOST</label>
+            <label class="field-label" for="openclaw-remote-url">OPENCLAW GATEWAY URL</label>
             <div class="field-row">
-              <input type="text" id="openclaw-ssh-host" class="text-input" placeholder="laptop" />
-              <button class="btn btn-small" id="btn-save-ssh-host">Save</button>
-            </div>
-
-            <label class="field-label" for="openclaw-remote-url">REMOTE URL</label>
-            <div class="field-row">
-              <input type="text" id="openclaw-remote-url" class="text-input" placeholder="http://192.168.1.121:18789" />
+              <input type="text" id="openclaw-remote-url" class="text-input" placeholder="http://100.84.x.y:18789" />
               <button class="btn btn-small" id="btn-save-remote-url">Save</button>
             </div>
-
-            <div class="tunnel-row">
-              <div class="status-pill tunnel-pill" id="tunnel-status-pill">
-                <span class="dot" id="tunnel-dot"></span>
-                <span class="state-text" id="tunnel-state-text">checking...</span>
-              </div>
-              <button class="btn btn-start" id="btn-tunnel-start" disabled>TUNNEL UP</button>
-              <button class="btn btn-stop"  id="btn-tunnel-stop"  disabled>TUNNEL DOWN</button>
-            </div>
+            <p class="field-hint">Running OpenClaw on a different machine? Install Tailscale on both, bind the OpenClaw gateway on the tailnet, paste your Tailscale URL above.</p>
           </section>
 
           <section class="controls">

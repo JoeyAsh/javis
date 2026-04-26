@@ -24,17 +24,14 @@ struct OpenclawSettings {
 struct OpenclawSection {
     /// `"local"` or `"remote"`.
     target: String,
-    /// SSH hostname used when target is `"remote"`.
-    #[serde(default = "default_ssh_host")]
-    ssh_host: String,
-    /// LAN/WAN URL of the remote OpenClaw gateway (used when building the
-    /// tunnel but also exposed to the frontend for informational purposes).
+    /// LAN/tailnet URL of the remote OpenClaw gateway.
+    /// For Tailscale setups: `http://<tailscale-ip>:18789`
+    /// For local OpenClaw: `http://127.0.0.1:18789`
     #[serde(default = "default_remote_url")]
     remote_url: String,
-}
-
-fn default_ssh_host() -> String {
-    "laptop".into()
+    // NOTE: `ssh_host` was removed — SSH-tunnel management is no longer part of the
+    // Controller. Remote access is now handled by Tailscale. Old settings files that
+    // still contain `ssh_host` are silently ignored via serde's unknown-field handling.
 }
 
 fn default_remote_url() -> String {
@@ -48,9 +45,7 @@ pub struct OpenclawTargetInfo {
     pub target: String,
     /// The resolved base URL for that target.
     pub url: String,
-    /// SSH hostname used when opening the tunnel.
-    pub ssh_host: String,
-    /// Configured remote URL (LAN address of the gateway).
+    /// Configured remote URL (Tailscale or LAN address of the gateway).
     pub remote_url: String,
 }
 
@@ -90,7 +85,6 @@ fn read_openclaw_settings() -> OpenclawSection {
         Err(_) => {
             return OpenclawSection {
                 target: "remote".into(),
-                ssh_host: default_ssh_host(),
                 remote_url: default_remote_url(),
             }
         }
@@ -100,7 +94,6 @@ fn read_openclaw_settings() -> OpenclawSection {
         Err(_) => {
             return OpenclawSection {
                 target: "remote".into(),
-                ssh_host: default_ssh_host(),
                 remote_url: default_remote_url(),
             }
         }
@@ -111,7 +104,6 @@ fn read_openclaw_settings() -> OpenclawSection {
     };
     OpenclawSection {
         target,
-        ssh_host: settings.openclaw.ssh_host,
         remote_url: settings.openclaw.remote_url,
     }
 }
@@ -127,7 +119,6 @@ fn write_openclaw_settings(section: &OpenclawSection) -> Result<(), String> {
     let settings = OpenclawSettings {
         openclaw: OpenclawSection {
             target: section.target.clone(),
-            ssh_host: section.ssh_host.clone(),
             remote_url: section.remote_url.clone(),
         },
     };
@@ -147,7 +138,6 @@ fn to_info(s: &OpenclawSection) -> OpenclawTargetInfo {
     OpenclawTargetInfo {
         target: s.target.clone(),
         url,
-        ssh_host: s.ssh_host.clone(),
         remote_url: s.remote_url.clone(),
     }
 }
@@ -186,7 +176,7 @@ fn repo_root() -> Result<PathBuf, String> {
 /// Precedence:
 /// 1. `JARVIS_OPENCLAW_URL` env var (explicit override).
 /// 2. Settings file `target`: `"local"` → `http://127.0.0.1:18789`,
-///    `"remote"` → the configured `remote_url` field.
+///    `"remote"` → the configured `remote_url` field (Tailscale or LAN URL).
 /// 3. Hardcoded fallback `http://127.0.0.1:18789`.
 fn openclaw_base_url() -> String {
     if let Ok(v) = std::env::var("JARVIS_OPENCLAW_URL") {
@@ -199,22 +189,6 @@ fn openclaw_base_url() -> String {
         "local" => "http://127.0.0.1:18789".into(),
         "remote" => s.remote_url,
         _ => "http://127.0.0.1:18789".into(),
-    }
-}
-
-// ── TCP port probe ────────────────────────────────────────────────────────────
-
-/// Return `true` if something is accepting TCP connections on `127.0.0.1:<port>`.
-///
-/// Uses a plain socket connect with a 300 ms timeout — no WMI, no PowerShell,
-/// works on every platform. ECONNREFUSED on loopback is instantaneous, so the
-/// timeout only fires when the port is silently filtered (rare on localhost).
-async fn is_local_port_listening(port: u16) -> bool {
-    let addr = format!("127.0.0.1:{port}");
-    let connect = tokio::net::TcpStream::connect(&addr);
-    match tokio::time::timeout(Duration::from_millis(300), connect).await {
-        Ok(Ok(_)) => true,
-        _ => false,
     }
 }
 
@@ -344,89 +318,6 @@ fn build_frontend_command(repo: &PathBuf) -> tokio::process::Command {
     }
 
     cmd
-}
-
-// ── SSH tunnel (Windows / macOS only) ────────────────────────────────────────
-
-/// Build the argv for the SSH tunnel command, reading the host from settings.
-#[cfg(not(target_os = "linux"))]
-fn ssh_tunnel_argv() -> Vec<String> {
-    let host = read_openclaw_settings().ssh_host;
-    vec![
-        "-o".into(),
-        "BatchMode=yes".into(),
-        "-o".into(),
-        "ServerAliveInterval=30".into(),
-        "-o".into(),
-        "ExitOnForwardFailure=yes".into(),
-        "-N".into(),
-        "-L".into(),
-        "18789:localhost:18789".into(),
-        host,
-    ]
-}
-
-/// Ensure the SSH tunnel to the remote OpenClaw gateway is up.
-///
-/// - If the OpenClaw target is `"local"`, returns `Ok(())` immediately.
-/// - If port 18789 already has a listener, assumes the tunnel is up.
-/// - Otherwise spawns `ssh <ssh_tunnel_argv()>` and polls for up to 5 s.
-#[cfg(not(target_os = "linux"))]
-async fn ensure_ssh_tunnel() -> Result<(), String> {
-    use std::process::Stdio;
-
-    if read_openclaw_settings().target == "local" {
-        return Ok(());
-    }
-
-    if is_local_port_listening(18789).await {
-        return Ok(());
-    }
-
-    let mut cmd = tokio::process::Command::new("ssh");
-    cmd.args(ssh_tunnel_argv());
-    cmd.stdin(Stdio::null());
-    cmd.stdout(Stdio::null());
-    cmd.stderr(Stdio::null());
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
-    }
-
-    let child = cmd
-        .spawn()
-        .map_err(|e| format!("failed to spawn SSH tunnel: {e}"))?;
-
-    CHILDREN.lock().await.insert("ssh_tunnel", child);
-
-    // Poll up to 5 s (25 × 200 ms) for port 18789 to become live.
-    for _ in 0..25 {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        if is_local_port_listening(18789).await {
-            return Ok(());
-        }
-    }
-
-    // Timed out — kill the child and report failure.
-    let mut map = CHILDREN.lock().await;
-    if let Some(mut child) = map.remove("ssh_tunnel") {
-        let _ = child.kill().await;
-        let _ = child.wait().await;
-    }
-    Err("SSH tunnel did not come up within 5s".into())
-}
-
-/// Tear down the tracked SSH tunnel child, if any.
-#[cfg(not(target_os = "linux"))]
-async fn stop_ssh_tunnel() -> Result<(), String> {
-    let mut map = CHILDREN.lock().await;
-    if let Some(mut child) = map.remove("ssh_tunnel") {
-        let _ = child.kill().await;
-        let _ = child.wait().await;
-    }
-    Ok(())
 }
 
 // ── Port-based kill helpers (Windows / macOS) ────────────────────────────────
@@ -790,7 +681,6 @@ pub mod commands {
             if state == ChildState::Running {
                 return Ok("already running".into());
             }
-            ensure_ssh_tunnel().await?;
             let child = build_backend_command(&repo)
                 .spawn()
                 .map_err(|e| format!("failed to spawn backend: {e}"))?;
@@ -830,8 +720,6 @@ pub mod commands {
                 format!("{}*-m main", venv_python.replace('\\', "\\\\"))
             };
             let orphans = kill_by_cmdline(&pattern, "backend-orphan").await;
-
-            let _ = stop_ssh_tunnel().await;
 
             if orphans > 0 {
                 Ok(format!("stopped (cleaned {orphans} orphan(s))"))
@@ -997,90 +885,17 @@ pub mod commands {
     /// Return the OpenClaw URL with an auth token appended as a URL hash fragment.
     ///
     /// Tries multiple strategies in order:
-    /// 1. SSH to remote host → `openclaw dashboard --no-open` → parse `#token=`
-    /// 2. Local CLI → `openclaw dashboard --no-open` → parse `#token=`
-    /// 3. Local config file `~/.openclaw/openclaw.json` → `gateway.auth.token`
-    /// 4. Fallback → bare URL
+    /// 1. Local CLI → `openclaw dashboard --no-open` → parse `#token=`
+    /// 2. Local config file `~/.openclaw/openclaw.json` → `gateway.auth.token`
+    /// 3. Fallback → bare URL
     ///
     /// Any failure logs a warning and falls through to the next strategy.
     #[tauri::command]
     pub async fn openclaw_url() -> Result<String, String> {
-        // When remote, always use localhost (via SSH tunnel) so the browser
-        // has a secure context for device-identity crypto APIs.
-        let is_remote = read_openclaw_settings().target == "remote";
-        let dashboard_base = if is_remote {
-            "http://127.0.0.1:18789".to_string()
-        } else {
-            openclaw_base_url()
-        };
+        let dashboard_base = openclaw_base_url();
         let fallback = format!("{}/", dashboard_base.trim_end_matches('/'));
 
-        // Ensure SSH tunnel is up when remote so localhost:18789 works.
-        #[cfg(not(target_os = "linux"))]
-        if is_remote {
-            if let Err(e) = ensure_ssh_tunnel().await {
-                eprintln!("[openclaw_url] SSH tunnel failed: {}", e);
-            }
-        }
-
-        // ── Strategy 1: SSH to remote host ───────────────────────────────────
-        let ssh_host_override = std::env::var("JARVIS_OPENCLAW_SSH_HOST")
-            .ok()
-            .filter(|v| !v.trim().is_empty());
-        let ssh_host: Option<String> = if ssh_host_override.is_some() {
-            ssh_host_override
-        } else if read_openclaw_settings().target == "remote" {
-            Some(read_openclaw_settings().ssh_host)
-        } else {
-            None
-        };
-
-        if let Some(host) = &ssh_host {
-            let remote_cmd = concat!(
-                r#"export NVM_DIR="$HOME/.nvm" && "#,
-                r#". "$NVM_DIR/nvm.sh" && "#,
-                r#"openclaw dashboard --no-open 2>&1"#
-            );
-
-            let ssh_future = tokio::process::Command::new("ssh")
-                .args([
-                    "-o", "BatchMode=yes",
-                    "-o", "ConnectTimeout=5",
-                    host.trim(),
-                    remote_cmd,
-                ])
-                .output();
-
-            match tokio::time::timeout(Duration::from_secs(10), ssh_future).await {
-                Ok(Ok(output)) if output.status.success() => {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    if let Some(token) = extract_hash_token(&stdout) {
-                        return Ok(format!(
-                            "{}/#token={}",
-                            dashboard_base.trim_end_matches('/'),
-                            token
-                        ));
-                    }
-                    eprintln!(
-                        "[openclaw_url] SSH ok but #token= not found in output"
-                    );
-                }
-                Ok(Ok(output)) => {
-                    eprintln!(
-                        "[openclaw_url] SSH exited {:?} — trying local CLI",
-                        output.status.code()
-                    );
-                }
-                Ok(Err(e)) => {
-                    eprintln!("[openclaw_url] SSH spawn error: {} — trying local CLI", e);
-                }
-                Err(_) => {
-                    eprintln!("[openclaw_url] SSH timed out — trying local CLI");
-                }
-            }
-        }
-
-        // ── Strategy 2: local CLI `openclaw dashboard --no-open` ─────────────
+        // ── Strategy 1: local CLI `openclaw dashboard --no-open` ─────────────
         {
             let cli_argv = _resolve_openclaw_cli_argv();
             if let Some(argv) = cli_argv {
@@ -1124,7 +939,7 @@ pub mod commands {
             }
         }
 
-        // ── Strategy 3: read ~/.openclaw/openclaw.json ───────────────────────
+        // ── Strategy 2: read ~/.openclaw/openclaw.json ───────────────────────
         let home = {
             #[cfg(target_os = "windows")]
             { std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\Users\\user".into()) }
@@ -1149,7 +964,7 @@ pub mod commands {
             }
         }
 
-        // ── Strategy 4: bare URL fallback ────────────────────────────────────
+        // ── Strategy 3: bare URL fallback ────────────────────────────────────
         eprintln!(
             "[openclaw_url] WARNING: no token found via any strategy — returning bare URL"
         );
@@ -1185,19 +1000,9 @@ pub mod commands {
         Ok(to_info(&s))
     }
 
-    /// Persist a new SSH hostname used when opening the remote tunnel.
-    #[tauri::command]
-    pub async fn set_openclaw_ssh_host(ssh_host: String) -> Result<OpenclawTargetInfo, String> {
-        if ssh_host.trim().is_empty() {
-            return Err("ssh_host must not be empty".into());
-        }
-        let mut s = read_openclaw_settings();
-        s.ssh_host = ssh_host.trim().into();
-        write_openclaw_settings(&s)?;
-        Ok(to_info(&s))
-    }
-
-    /// Persist a new remote URL for the OpenClaw gateway.
+    /// Persist a new remote URL for the OpenClaw gateway (Tailscale or LAN URL).
+    ///
+    /// Example: `http://100.84.x.y:18789` for a Tailscale-reachable gateway.
     #[tauri::command]
     pub async fn set_openclaw_remote_url(remote_url: String) -> Result<OpenclawTargetInfo, String> {
         let trimmed = remote_url.trim();
@@ -1211,56 +1016,6 @@ pub mod commands {
         s.remote_url = trimmed.into();
         write_openclaw_settings(&s)?;
         Ok(to_info(&s))
-    }
-
-    /// Report whether the SSH tunnel is active and localhost:18789 is reachable.
-    ///
-    /// On Linux the tunnel concept does not apply; returns state `"n/a"`.
-    #[tauri::command]
-    pub async fn tunnel_status() -> Result<StatusInfo, String> {
-        #[cfg(target_os = "linux")]
-        {
-            let http_ok = check_http_openclaw().await;
-            Ok(StatusInfo { state: "n/a".into(), http_ok })
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            let listening = is_local_port_listening(18789).await;
-            let http_ok = check_http_url("http://127.0.0.1:18789/").await;
-            let state = if listening { "active" } else { "inactive" };
-            Ok(StatusInfo { state: state.into(), http_ok })
-        }
-    }
-
-    /// Bring the SSH tunnel up (non-Linux only; target must be `"remote"`).
-    #[tauri::command]
-    pub async fn start_tunnel() -> Result<String, String> {
-        #[cfg(target_os = "linux")]
-        {
-            Err("tunnel not applicable on Linux host".into())
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            if read_openclaw_settings().target != "remote" {
-                return Err("target is not 'remote'; nothing to tunnel".into());
-            }
-            ensure_ssh_tunnel().await?;
-            Ok("tunnel up".into())
-        }
-    }
-
-    /// Tear down the SSH tunnel (non-Linux only).
-    #[tauri::command]
-    pub async fn stop_tunnel() -> Result<String, String> {
-        #[cfg(target_os = "linux")]
-        {
-            Ok("n/a".into())
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            stop_ssh_tunnel().await?;
-            Ok("tunnel stopped".into())
-        }
     }
 
     // ── Generic HTTP check (kept for potential future use) ────────────────────
@@ -1287,11 +1042,7 @@ pub fn run() {
             commands::openclaw_url,
             commands::get_openclaw_target,
             commands::set_openclaw_target,
-            commands::set_openclaw_ssh_host,
             commands::set_openclaw_remote_url,
-            commands::tunnel_status,
-            commands::start_tunnel,
-            commands::stop_tunnel,
             commands::start_frontend,
             commands::stop_frontend,
             commands::restart_frontend,

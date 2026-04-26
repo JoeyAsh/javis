@@ -65,7 +65,15 @@ Definitionen in `.claude/agents/`.
 
 ### Workflow
 
-**Default (lightweight) — gilt für die meisten Tasks:** Branch + Code + PR. Kein GitHub-Issue. Kein `feature-planner`. Bugfixes, kleine Features, Refactors laufen direkt: Orchestrator brieft `backend-dev` / `frontend-dev`, danach `tester` (außer bei trivialen 1–2-Zeilen-Fixes), danach `reviewer`, dann **PR anlegen — und stoppen**.
+**Default (lightweight) — gilt für die meisten Tasks:** Branch + Code + **Manual-Test-Pause** + PR. Kein GitHub-Issue. Kein `feature-planner`. Bugfixes, kleine Features, Refactors laufen so:
+1. Orchestrator brieft `backend-dev` / `frontend-dev`.
+2. Orchestrator restartet die betroffenen Services (Backend + Frontend bei UI-Änderungen, nur Backend bei reinen Backend-Änderungen) und sagt dem User in einer kurzen Zeile, was geändert wurde + bittet ihn um einen manuellen Test (Sprache des Users).
+3. **Stopp und warten** bis der User explizit OK gibt (`"passt so"`, `"ok"`, `"ja"`, `"looks good"`, etc.) ODER Feedback zur Iteration kommt. Bei Feedback: zurück zu Schritt 1.
+4. Erst nach explizitem User-OK: `tester` (außer bei trivialen 1–2-Zeilen-Fixes), danach `reviewer`, dann **PR anlegen — und stoppen**.
+
+Begründung der Reihenfolge: Tester + Reviewer mocken alles und können UX-Lücken (nicht-getestete Code-Pfade, fehlende Acceptance Criteria) nicht entdecken. Ein 30-Sekunden-Manual-Test des Users hingegen schon. Tests + Review zuerst kostet Tokens für etwas, das der User nachher eh nochmal anfasst.
+
+**Skip-Manual-Test-Ausnahme:** Wenn der User explizit sagt `"weiter ohne manuellen Test"`, `"skip manual"`, oder die Änderung NULL User-Surface hat (rein interner Refactor ohne UI/REST/WS/Voice-Auswirkung), darf der Orchestrator direkt zu Tester + Reviewer übergehen. Default ist *manual test first*. Im Zweifel: pausieren und fragen.
 
 **Nach dem PR-Anlegen** zeigt der Orchestrator dem User die PR-URL und fragt: *"PR steht — soll ich self-reviewen und squash-admin-mergen, oder schaust du selbst rein?"*. Erst auf explizite User-Bestätigung läuft `gh pr review --comment` + `gh pr merge --squash --admin --delete-branch` + lokaler Sync. Niemals Auto-Merge — auch nicht bei Trivial-Fixes — außer der User hat es im selben Auftrag vorab erlaubt.
 

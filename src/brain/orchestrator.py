@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent
 from brain.agents.pc_agent import PcAgent
+from brain.agents.search_agent import SearchAgent
 from brain.agents.smart_home_agent import SmartHomeAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
@@ -74,7 +75,7 @@ class OrchestratorDecision:
 # Intents that can be handled locally without any LLM round-trip. Anything
 # outside this set falls through to the conversational chat path (OpenClaw).
 _LOCAL_INTENTS: frozenset[Intent] = frozenset(
-    {Intent.PC_CONTROL, Intent.SMART_HOME, Intent.SYSTEM}
+    {Intent.PC_CONTROL, Intent.SMART_HOME, Intent.SYSTEM, Intent.WEB_SEARCH}
 )
 
 
@@ -128,15 +129,11 @@ class Orchestrator:
         self._init_agents()
 
     def _init_agents(self) -> None:
-        """Wire up local agents.
-
-        ``SearchAgent`` is intentionally absent — factual lookups now land
-        on the OpenClaw ``jarvis-main`` session via the chat path, which
-        has direct access to the agent's own tools and long-term memory.
-        """
+        """Wire up local agents."""
         self._agents = {
             "chat": ChatAgent(self.claude_client),
             "pc": PcAgent(self.claude_client),
+            "search": SearchAgent(self.claude_client),
             "smart_home": SmartHomeAgent(self.claude_client),
             "system": SystemAgent(
                 self.claude_client, memory=None, tts_engine=self.tts_engine
@@ -642,4 +639,6 @@ def _intent_to_agent_name(intent: Intent) -> str:
         return "smart_home"
     if intent == Intent.SYSTEM:
         return "system"
+    if intent == Intent.WEB_SEARCH:
+        return "search"
     return "chat"

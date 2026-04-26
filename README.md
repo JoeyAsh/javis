@@ -34,12 +34,13 @@ cd frontend && npm install && npm run dev
 
 ## Setup — OpenClaw + Google Workspace (gog)
 
-### Remote OpenClaw gateway
+### Remote OpenClaw gateway via Tailscale
 
 JARVIS routes Claude API calls through the OpenClaw gateway (port 18789). The gateway can run locally or on a remote machine.
 
 - Install on all machines: `npm install -g openclaw`
-- For a remote gateway (e.g., Linux laptop reached from Windows), start it with `--bind lan` or expose it via SSH tunnel. The JARVIS Controller auto-spawns the SSH tunnel on Backend Start when `JARVIS_OPENCLAW_URL` points to a remote host.
+- For a remote gateway (e.g., Linux laptop reached from Windows PC): install [Tailscale](https://tailscale.com) on both machines, then bind the OpenClaw gateway on the tailnet (`--bind tailscale` or configure `gateway.bind: "tailscale"` in `~/.openclaw/openclaw.json`).
+- In the JARVIS Controller settings panel, paste the gateway's Tailscale IP as the **OpenClaw Gateway URL** (e.g. `http://100.84.x.y:18789`). No SSH tunnel needed.
 - Client-side config file: `~/.openclaw/openclaw.json` (or `%APPDATA%\.openclaw\openclaw.json` on Windows). Required keys when talking to a remote gateway:
 
 ```json
@@ -47,13 +48,15 @@ JARVIS routes Claude API calls through the OpenClaw gateway (port 18789). The ga
   "gateway": {
     "mode": "remote",
     "remote": {
-      "url": "ws://127.0.0.1:18789",
+      "url": "ws://<tailscale-ip>:18789",
       "transport": "direct",
       "token": "<shared gateway token from the host's openclaw.json>"
     }
   }
 }
 ```
+
+See [`docs/REMOTE_OPENCLAW.md`](docs/REMOTE_OPENCLAW.md) for step-by-step setup instructions.
 
 ### gog skill (Gmail, Calendar, Drive)
 
@@ -78,37 +81,26 @@ JARVIS delegates mail/calendar/drive actions to the `gog` CLI via OpenClaw.
 Two distinct mechanisms — do not confuse them:
 
 - **Python backend** reads `D:\Repos\JARVIS\.env` (via `python-dotenv`). Variable name there: `OPENCLAW_GATEWAY_URL`.
-- **Tauri Controller** is a compiled Rust binary and does **not** read `.env`. It reads OS environment variables only. Variable name there: `JARVIS_OPENCLAW_URL`. When set, it **overrides the hard-coded IP compiled into the binary** — useful when the remote laptop's IP changes and you don't want to rebuild.
+- **Tauri Controller** is a compiled Rust binary and does **not** read `.env`. It persists the gateway URL in its own settings file (see the Controller settings panel). The env var `JARVIS_OPENCLAW_URL` overrides the persisted value at runtime if set.
 
 Relevant variables:
 
-- `JARVIS_OPENCLAW_URL` — full URL of the remote gateway, e.g. `http://192.168.1.121:18789`. Read only by the Controller. Takes precedence over the hard-coded fallback.
-- `JARVIS_OPENCLAW_SSH_HOST` — optional SSH alias (from `~/.ssh/config`) to tunnel through when the gateway is not directly reachable.
-- `OPENCLAW_GATEWAY_URL` — put in `.env`; read by the Python backend. Leave commented out to default to `http://127.0.0.1:18789` (sensible when the backend reaches the gateway through the Controller's SSH tunnel).
+- `JARVIS_OPENCLAW_URL` — full URL of the remote gateway, e.g. `http://100.84.x.y:18789` (Tailscale). Read only by the Controller. Takes precedence over the settings-panel value.
+- `OPENCLAW_GATEWAY_URL` — put in `.env`; read by the Python backend. Set to your Tailscale URL for remote gateways, or `http://127.0.0.1:18789` for local.
 
-#### Set / update on Windows (user scope)
+#### Set / update on Windows (user scope, optional override)
 
 ```powershell
-[Environment]::SetEnvironmentVariable('JARVIS_OPENCLAW_URL', 'http://192.168.1.121:18789', 'User')
+[Environment]::SetEnvironmentVariable('JARVIS_OPENCLAW_URL', 'http://100.84.x.y:18789', 'User')
 ```
 
-After setting, **fully restart the Controller** (close it, then re-launch the `.exe`) — Tauri reads the environment once at process start.
+After setting, **fully restart the Controller** (close it, then re-launch the `.exe`) — Tauri reads the environment once at process start. The Controller settings panel is the recommended approach; the env var is an escape hatch.
 
-#### Remove again (Controller falls back to its compiled default)
+#### Remove the override (Controller falls back to settings-panel value)
 
 ```powershell
 Remove-ItemProperty -Path 'HKCU:\Environment' -Name 'JARVIS_OPENCLAW_URL' -ErrorAction SilentlyContinue
 ```
-
-Then restart the Controller.
-
-#### Verify what the Controller currently uses
-
-```powershell
-[Environment]::GetEnvironmentVariable('JARVIS_OPENCLAW_URL', 'User')
-```
-
-Empty / no output → Controller uses its compiled default URL.
 
 ## Controller App (optional)
 

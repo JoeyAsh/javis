@@ -134,9 +134,12 @@ def _make_orchestrator() -> Any:
     claude_mock = MagicMock(spec=ClaudeClient)
     claude_mock.openclaw = None
 
-    with patch("brain.orchestrator.PcAgent"), patch("brain.orchestrator.SmartHomeAgent"), patch(
-        "brain.orchestrator.SystemAgent"
-    ), patch("brain.orchestrator.ChatAgent"):
+    # Phase 4 (issue #76): PcAgent and SmartHomeAgent are no longer imported by
+    # orchestrator.py, so patching them would raise AttributeError.  Only the
+    # agents that are still wired remain patchable.
+    with patch("brain.orchestrator.SystemAgent"), patch("brain.orchestrator.ChatAgent"), patch(
+        "brain.orchestrator.SearchAgent"
+    ):
         orch = Orchestrator(claude_client=claude_mock)
 
     return orch

@@ -127,6 +127,21 @@ async def start_mcp_server(config: dict[str, Any]) -> None:
         logger.info("MCP server disabled (mcp.enabled: false)")
         return
 
+    # ---------------------------------------------------------------------------
+    # Phase-4 tool registrations (issue #76).
+    # Import triggers all @register_tool decorators so the registry is fully
+    # populated before FastMCP reads it below.  Placed here (lazy import) to
+    # avoid a circular-import between api.mcp_server and api.mcp_tools at
+    # module-init time.  Spotify tools (#58) land in a separate PR.
+    # ---------------------------------------------------------------------------
+    try:
+        import api.mcp_tools  # noqa: F401, PLC0415
+    except Exception as _mcp_tools_exc:  # noqa: BLE001
+        logger.error(
+            f"Failed to import api.mcp_tools — MCP tools will not be registered: "
+            f"{_mcp_tools_exc}"
+        )
+
     bind_host: str = config.get("bind_host", "127.0.0.1")
     bind_port: int = int(config.get("bind_port", 8767))
 

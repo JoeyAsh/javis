@@ -901,9 +901,13 @@ def _spotify_json_error(status: int, body: dict[str, Any], **headers: str) -> we
 def _spotify_scope_upgrade_pending_set() -> None:
     """Mark that a scope upgrade is needed and log it.
 
-    Called by scope-gated REST handlers when the client is not authenticated,
-    indicating the cached token likely lacks the library/queue scopes added in
-    issue #58.  The flag is read by ``_spotify_state_loop`` on the next tick.
+    Called by scope-gated REST handlers only on the stale-token path — i.e.
+    when ``_spotify_client is not None`` but ``is_authenticated()`` returns
+    False.  This means a token exists but lacks the library/queue scopes added
+    in issue #58.  When ``_spotify_client is None`` (no token ever issued) the
+    caller must NOT call this; the HUD should show the plain first-time auth
+    prompt, not the scope-upgrade banner.  The flag is read by
+    ``_spotify_state_loop`` on the next tick.
     """
     global _spotify_scope_upgrade_pending
     _spotify_scope_upgrade_pending = True
@@ -956,7 +960,8 @@ def _spotify_handle_exception(
 async def spotify_playlists_handler(request: web.Request) -> web.Response:
     """Handle GET /api/spotify/playlists — return user's playlists."""
     if _spotify_client is None or not _spotify_client.is_authenticated():
-        _spotify_scope_upgrade_pending_set()
+        if _spotify_client is not None:
+            _spotify_scope_upgrade_pending_set()
         return _spotify_json_error(401, {"error": "unauthenticated"})
     try:
         limit = int(request.rel_url.query.get("limit", 50))
@@ -983,7 +988,8 @@ async def spotify_playlists_handler(request: web.Request) -> web.Response:
 async def spotify_playlist_tracks_handler(request: web.Request) -> web.Response:
     """Handle GET /api/spotify/playlists/{id}/tracks — return playlist tracks."""
     if _spotify_client is None or not _spotify_client.is_authenticated():
-        _spotify_scope_upgrade_pending_set()
+        if _spotify_client is not None:
+            _spotify_scope_upgrade_pending_set()
         return _spotify_json_error(401, {"error": "unauthenticated"})
     playlist_id = request.match_info.get("id", "")
     try:
@@ -1014,7 +1020,8 @@ async def spotify_playlist_tracks_handler(request: web.Request) -> web.Response:
 async def spotify_album_tracks_handler(request: web.Request) -> web.Response:
     """Handle GET /api/spotify/albums/{id}/tracks — return album tracks."""
     if _spotify_client is None or not _spotify_client.is_authenticated():
-        _spotify_scope_upgrade_pending_set()
+        if _spotify_client is not None:
+            _spotify_scope_upgrade_pending_set()
         return _spotify_json_error(401, {"error": "unauthenticated"})
     album_id = request.match_info.get("id", "")
     try:
@@ -1043,7 +1050,8 @@ async def spotify_album_tracks_handler(request: web.Request) -> web.Response:
 async def spotify_saved_tracks_handler(request: web.Request) -> web.Response:
     """Handle GET /api/spotify/me/tracks — return user's saved tracks."""
     if _spotify_client is None or not _spotify_client.is_authenticated():
-        _spotify_scope_upgrade_pending_set()
+        if _spotify_client is not None:
+            _spotify_scope_upgrade_pending_set()
         return _spotify_json_error(401, {"error": "unauthenticated"})
     try:
         limit = int(request.rel_url.query.get("limit", 50))
@@ -1071,7 +1079,8 @@ async def spotify_saved_tracks_handler(request: web.Request) -> web.Response:
 async def spotify_saved_albums_handler(request: web.Request) -> web.Response:
     """Handle GET /api/spotify/me/albums — return user's saved albums."""
     if _spotify_client is None or not _spotify_client.is_authenticated():
-        _spotify_scope_upgrade_pending_set()
+        if _spotify_client is not None:
+            _spotify_scope_upgrade_pending_set()
         return _spotify_json_error(401, {"error": "unauthenticated"})
     try:
         limit = int(request.rel_url.query.get("limit", 50))
@@ -1099,7 +1108,8 @@ async def spotify_saved_albums_handler(request: web.Request) -> web.Response:
 async def spotify_search_handler(request: web.Request) -> web.Response:
     """Handle GET /api/spotify/search?q=&types= — search the Spotify catalogue."""
     if _spotify_client is None or not _spotify_client.is_authenticated():
-        _spotify_scope_upgrade_pending_set()
+        if _spotify_client is not None:
+            _spotify_scope_upgrade_pending_set()
         return _spotify_json_error(401, {"error": "unauthenticated"})
     query = request.rel_url.query.get("q", "").strip()
     if not query:
@@ -1161,7 +1171,8 @@ async def spotify_search_handler(request: web.Request) -> web.Response:
 async def spotify_queue_get_handler(request: web.Request) -> web.Response:
     """Handle GET /api/spotify/queue — return current playback queue."""
     if _spotify_client is None or not _spotify_client.is_authenticated():
-        _spotify_scope_upgrade_pending_set()
+        if _spotify_client is not None:
+            _spotify_scope_upgrade_pending_set()
         return _spotify_json_error(401, {"error": "unauthenticated"})
     try:
         queue = await _spotify_client.get_queue()
@@ -1185,7 +1196,8 @@ async def spotify_queue_get_handler(request: web.Request) -> web.Response:
 async def spotify_queue_post_handler(request: web.Request) -> web.Response:
     """Handle POST /api/spotify/queue — add a URI to the playback queue."""
     if _spotify_client is None or not _spotify_client.is_authenticated():
-        _spotify_scope_upgrade_pending_set()
+        if _spotify_client is not None:
+            _spotify_scope_upgrade_pending_set()
         return _spotify_json_error(401, {"error": "unauthenticated"})
     try:
         body = await request.json()

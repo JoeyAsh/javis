@@ -139,6 +139,9 @@ spotify:
     - "playlist-read-private"
     - "playlist-read-collaborative"
     - "user-library-read"
+    - "streaming"
+    - "user-read-email"
+    - "user-read-private"
 
 github:
   # Token-gated: requires GITHUB_TOKEN in .env (classic PAT, scopes

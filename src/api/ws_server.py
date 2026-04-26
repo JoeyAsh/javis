@@ -4354,6 +4354,19 @@ async def start_ws_server(
         _spotify_client = SpotifyClient(spotify_cfg)
         try:
             await _spotify_client.initialize()
+            # After successful initialisation, compare the cached token's scopes
+            # against the configured set. If the token predates the `streaming`
+            # scope (added for the Web Playback SDK), flag a scope upgrade so the
+            # HUD shows the "neue Berechtigungen erforderlich" banner immediately.
+            _configured_scopes = set(spotify_cfg.get("scopes", []))
+            _token_scopes = _spotify_client.cached_scopes()
+            if _token_scopes and not _configured_scopes.issubset(_token_scopes):
+                _missing = _configured_scopes - _token_scopes
+                logger.info(
+                    f"Spotify scopes updated — user must re-authenticate via VERBINDEN "
+                    f"(missing in cached token: {sorted(_missing)})"
+                )
+                _spotify_scope_upgrade_pending = True
             poll_interval_s = int(spotify_cfg.get("poll_interval", 10))
             _spotify_poller_task = asyncio.create_task(
                 _spotify_state_loop(_spotify_client, poll_interval_s)

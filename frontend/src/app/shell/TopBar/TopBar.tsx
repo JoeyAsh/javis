@@ -9,6 +9,7 @@
 import type { ReactElement } from 'react';
 import { TopBar as TopBarPrimitive } from '@ui';
 import { useLocation } from '@common/hooks/useLocation';
+import { DeviceBadge } from '@features/device';
 import { WeatherWidget } from './WeatherWidget';
 import { TimeWidget } from './TimeWidget';
 import { ControlsCluster } from './ControlsCluster';
@@ -38,6 +39,7 @@ export function TopBar({
                         <span className={styles.tagDot} aria-hidden="true" />
                         LINK · SECURE
                     </span>
+                    <DeviceBadge />
                     <span className={styles.sep} aria-hidden="true">◆</span>
                     <TimeWidget />
                     <span className={styles.sep} aria-hidden="true">·</span>

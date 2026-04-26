@@ -234,7 +234,7 @@ async def test_start_mcp_server_disabled_returns_immediately_without_fastmcp() -
     cfg = _make_config(enabled=False)
 
     with patch("api.mcp_server.FastMCP") as mock_fastmcp_cls:
-        await start_mcp_server(cfg)
+        await start_mcp_server(cfg, device_slug="test-device")
 
     mock_fastmcp_cls.assert_not_called()
     assert mod._server is None
@@ -253,7 +253,7 @@ async def test_start_mcp_server_disabled_logs_disabled_message() -> None:
     sink_id = loguru_logger.add(lambda msg: captured.append(msg), level="INFO")
     try:
         with patch("api.mcp_server.FastMCP"):
-            await start_mcp_server(cfg)
+            await start_mcp_server(cfg, device_slug="test-device")
     finally:
         loguru_logger.remove(sink_id)
 
@@ -280,7 +280,7 @@ async def test_start_mcp_server_happy_path_creates_task_and_logs_url() -> None:
     with patch("api.mcp_server.FastMCP", return_value=mock_server_instance):
         # We need to let the event loop run long enough that the task starts
         # but we don't need it to finish — we'll cancel in teardown
-        await start_mcp_server(cfg)
+        await start_mcp_server(cfg, device_slug="test-device")
 
     assert mod._server is mock_server_instance
     assert mod._server_task is not None
@@ -301,7 +301,7 @@ async def test_start_mcp_server_happy_path_logs_listening_url() -> None:
     sink_id = loguru_logger.add(lambda msg: captured.append(msg), level="INFO")
     try:
         with patch("api.mcp_server.FastMCP", return_value=mock_server_instance):
-            await start_mcp_server(cfg)
+            await start_mcp_server(cfg, device_slug="test-device")
     finally:
         loguru_logger.remove(sink_id)
 
@@ -323,7 +323,7 @@ async def test_start_mcp_server_wires_pre_registered_tools_into_fastmcp() -> Non
     mock_server_instance.run_sse_async = AsyncMock(return_value=None)
 
     with patch("api.mcp_server.FastMCP", return_value=mock_server_instance):
-        await start_mcp_server(_make_config())
+        await start_mcp_server(_make_config(), device_slug="test-device")
 
     # add_tool should have been called for the pre-registered tool
     call_names = [call.kwargs.get("name") for call in mock_server_instance.add_tool.call_args_list]
@@ -341,10 +341,10 @@ async def test_start_mcp_server_fastmcp_instantiated_with_correct_params() -> No
     mock_server_instance.run_sse_async = AsyncMock(return_value=None)
 
     with patch("api.mcp_server.FastMCP", return_value=mock_server_instance) as mock_cls:
-        await start_mcp_server(cfg)
+        await start_mcp_server(cfg, device_slug="test-device")
 
     _, kwargs = mock_cls.call_args
-    assert kwargs.get("name") == "jarvis"
+    assert kwargs.get("name") == "jarvis-test-device"
     assert kwargs.get("host") == "0.0.0.0"
     assert kwargs.get("port") == 9999
 
@@ -365,7 +365,7 @@ async def test_start_mcp_server_fastmcp_init_raises_logs_warning_and_returns() -
     with patch("api.mcp_server.FastMCP", side_effect=OSError("address already in use")):
         with caplog_patch() as log_records:
             # Must not raise
-            await start_mcp_server(cfg)
+            await start_mcp_server(cfg, device_slug="test-device")
 
     assert mod._server is None
     assert mod._server_task is None
@@ -378,7 +378,7 @@ async def test_start_mcp_server_fastmcp_init_raises_does_not_bubble_exception() 
 
     with patch("api.mcp_server.FastMCP", side_effect=RuntimeError("bind error")):
         try:
-            await start_mcp_server(_make_config())
+            await start_mcp_server(_make_config(), device_slug="test-device")
         except Exception as exc:
             pytest.fail(f"start_mcp_server raised unexpectedly: {exc}")
 

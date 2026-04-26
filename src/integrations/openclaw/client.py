@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator
 
 import httpx
 
+from utils.device import resolve_device_slug
 from utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -263,7 +264,9 @@ class OpenClawClient:
         Args:
             config: openclaw section from config.yaml containing:
                 - gateway_url: Gateway URL (default: http://127.0.0.1:18789)
-                - session_id: Default session ID (default: jarvis-main)
+                - session_id: Per-device session ID. If absent, derived as
+                  ``jarvis-{device_slug}`` at startup with an INFO log
+                  prompting the operator to pin it explicitly.
                 - thinking_level: Thinking level. Accepts the OpenClaw
                   CLI's levels (``off|minimal|low|medium|high|xhigh``)
                   and legacy aliases (``normal`` → ``medium``,
@@ -274,7 +277,22 @@ class OpenClawClient:
         """
         self._config = config
         self._gateway_url = config.get("gateway_url", "http://127.0.0.1:18789")
-        self._session_id = config.get("session_id", "jarvis-main")
+
+        # session_id has no hardcoded fallback.  If absent from config, derive
+        # a slug-based default so single-machine installs work without config
+        # changes, but prompt the operator to pin it for multi-device setups.
+        _pinned_session = config.get("session_id")
+        if _pinned_session:
+            self._session_id: str = str(_pinned_session)
+        else:
+            _slug = resolve_device_slug()
+            self._session_id = f"jarvis-{_slug}"
+            logger.info(
+                f"openclaw.session_id not set in config; defaulting to "
+                f"'{self._session_id}'. Pin 'openclaw.session_id: {self._session_id}' "
+                "in config/config.yaml for stable multi-device session isolation."
+            )
+
         self._thinking = self._normalize_thinking(
             config.get("thinking_level", "medium")
         )
@@ -900,10 +918,15 @@ class OpenClawClient:
         }
         return messages.get(language, messages["en"])
 
-    async def register_mcp_server(self, url: str, name: str = "jarvis") -> bool:
+    async def register_mcp_server(
+        self,
+        url: str,
+        name: str,
+        headers: dict[str, str] | None = None,
+    ) -> bool:
         """Register a JARVIS MCP server definition with the OpenClaw CLI registry.
 
-        Shells out to ``openclaw mcp set <name> '{"url": "<url>"}'`` which
+        Shells out to ``openclaw mcp set <name> '{"url": "<url>", ...}'`` which
         saves the server definition into OpenClaw's config so the agent runtime
         can discover and invoke the tools.  Failure is non-fatal — JARVIS
         continues even when the CLI is absent or the gateway is offline.
@@ -911,6 +934,10 @@ class OpenClawClient:
         Args:
             url: Full SSE endpoint URL (e.g. ``http://127.0.0.1:8767/sse``).
             name: Server name as it will appear in ``openclaw mcp list``.
+                  Must be explicit — no default (each device uses its own slug).
+            headers: Optional HTTP headers to pass to the OpenClaw MCP registry
+                entry (e.g. ``{"Authorization": "Bearer token"}``).  Merged into
+                the JSON body when non-empty.
 
         Returns:
             ``True`` if the command succeeded, ``False`` otherwise.
@@ -922,7 +949,11 @@ class OpenClawClient:
             )
             return False
 
-        server_json = json.dumps({"url": url})
+        body: dict[str, Any] = {"url": url}
+        if headers:
+            body["headers"] = headers
+
+        server_json = json.dumps(body)
         cmd = [*argv_base, "mcp", "set", name, server_json]
         logger.debug(f"register_mcp_server: spawn {cmd!r}")
 
@@ -965,7 +996,7 @@ class OpenClawClient:
             )
             return False
 
-    async def unregister_mcp_server(self, name: str = "jarvis") -> bool:
+    async def unregister_mcp_server(self, name: str) -> bool:
         """Remove the JARVIS MCP server definition from the OpenClaw CLI registry.
 
         Shells out to ``openclaw mcp unset <name>``.  Failure is non-fatal —
@@ -973,6 +1004,7 @@ class OpenClawClient:
 
         Args:
             name: Server name to remove from ``openclaw mcp list``.
+                  Must be explicit — no default (each device uses its own slug).
 
         Returns:
             ``True`` if the command succeeded, ``False`` otherwise.

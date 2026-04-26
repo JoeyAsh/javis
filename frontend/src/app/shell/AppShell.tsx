@@ -13,6 +13,7 @@ import React, { type ReactElement, useCallback, useEffect, useState } from 'reac
 import { HUDShell, Hint } from '@ui';
 import { useOrbState } from '@features/orbState';
 import { useConversationMode, useMicStream } from '@features/conversation';
+import { useStreamDeviceInfoQuery } from '@features/device';
 import { useSettings } from '@features/settings';
 import { useAudioEngine, useTauriWindowSfx, SfxProvider } from '@core/audio';
 import { SettingsView } from '@features/settings';
@@ -31,6 +32,7 @@ export function AppShell(): ReactElement {
     const { state: orbState, connected } = useOrbState();
     useConversationMode();
     useMicStream({ paused: micMuted });
+    useStreamDeviceInfoQuery();
 
     // ── SFX engine ───────────────────────────────────────────────────────────
     const {

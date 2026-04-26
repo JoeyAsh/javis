@@ -83,9 +83,20 @@ mcp:
   enabled: true
   bind_host: "127.0.0.1"
   bind_port: 8767
+  # advertise_host: null means use bind_host for the SSE URL registered with
+  # OpenClaw.  Set to a Tailscale IP or MagicDNS hostname (e.g.
+  # "laptop-paps.tailnet.ts.net") when OpenClaw must reach this JARVIS instance
+  # over the tailnet from a different machine.  Can also be set via the
+  # JARVIS_MCP_ADVERTISE_HOST environment variable (takes precedence).
+  advertise_host: null
+  # openclaw_headers: optional HTTP headers forwarded to the OpenClaw MCP
+  # registry entry (openclaw mcp set <name> '{"url": "...", "headers": {...}}').
+  # Use when the operator wants an extra static bearer token; Tailscale-only
+  # deployments can leave this empty (Tailscale ACL is the auth boundary).
+  openclaw_headers: {}
   # When true, JARVIS registers itself with the local OpenClaw CLI registry
-  # at startup (openclaw mcp set jarvis ...) and removes the entry on shutdown.
-  # Set to false when OpenClaw is fully remote and CLI is unavailable locally.
+  # at startup (openclaw mcp set jarvis-{slug} ...) and removes the entry on
+  # shutdown.  Set to false when OpenClaw is fully remote and CLI is unavailable.
   auto_register_with_openclaw: true
 
 openclaw:
@@ -97,6 +108,11 @@ openclaw:
   gateway_port: 18789
   managed_daemon: false  # true = JARVIS starts/stops daemon; false = assume systemd
   health_check_interval_seconds: 30
+  # session_id is per-device required for multi-device setups.  Each JARVIS
+  # instance must use a distinct value so conversation histories are isolated.
+  # If absent, JARVIS derives "jarvis-{device_slug}" at startup and logs an
+  # INFO line prompting the operator to pin it here.  Existing values such as
+  # "jarvis-main" are respected verbatim — no migration needed.
   session_id: "jarvis-main"
   # OpenClaw CLI thinking levels: off | minimal | low | medium | high | xhigh.
   # Legacy aliases ("normal" -> "medium", "none" -> "off") are also accepted.

@@ -5,6 +5,7 @@ Provides async interface to OpenClaw gateway for:
 - Message sending via OpenClaw channels
 - Session history and management
 - Health checks and diagnostics
+- gog CLI bridge (Gmail, Calendar, Drive via the gog skill binary)
 
 OpenClaw handles all agent routing, memory, and third-party integrations,
 while JARVIS owns the voice pipeline and HUD.
@@ -125,6 +126,108 @@ class OpenClawNotInstalledError(Exception):
     """Raised when OpenClaw CLI is not installed."""
 
     pass
+
+
+class GogNotInstalledError(Exception):
+    """Raised when the gog CLI binary is not installed or not on PATH."""
+
+    pass
+
+
+class GogCommandError(Exception):
+    """Raised when a gog CLI command exits with a non-zero status."""
+
+    def __init__(self, message: str, spoken_message: str = "") -> None:
+        """Initialise with a technical message and an optional TTS-friendly fallback."""
+        super().__init__(message)
+        self.spoken_message: str = spoken_message or message
+
+
+# ---------------------------------------------------------------------------
+# Module-level gog CLI helpers (no OpenClawClient instance needed)
+# ---------------------------------------------------------------------------
+
+_GOG_CLI_CACHE: str | None = None
+
+
+def _resolve_gog_cli() -> str | None:
+    """Return the absolute path to the ``gog`` binary (cached after first call)."""
+    global _GOG_CLI_CACHE
+    if _GOG_CLI_CACHE is not None:
+        return _GOG_CLI_CACHE
+    override = os.environ.get("GOG_CLI_PATH")
+    if override:
+        _GOG_CLI_CACHE = override
+        return override
+    resolved = shutil.which("gog")
+    if resolved:
+        _GOG_CLI_CACHE = resolved
+        return resolved
+    return None
+
+
+async def run_gog(
+    *args: str,
+    timeout_seconds: float = 30.0,
+    stdin_text: str | None = None,
+) -> dict[str, Any] | list[Any]:
+    """Execute a ``gog`` CLI command and return its parsed JSON output.
+
+    Appends ``--json --no-input`` automatically.  All gog network calls are
+    fully async via ``asyncio.create_subprocess_exec``.
+
+    Args:
+        *args: Positional CLI arguments, e.g. ``"gmail", "messages", "search",
+            "is:unread in:inbox", "--max", "5"``.
+        timeout_seconds: Maximum seconds to wait for the subprocess.
+        stdin_text: Optional text piped to stdin (used for ``--body-file -``).
+
+    Returns:
+        Parsed JSON object (dict or list) from ``gog``'s stdout.
+
+    Raises:
+        GogNotInstalledError: When the ``gog`` binary cannot be found.
+        GogCommandError: When ``gog`` exits with a non-zero return code.
+        asyncio.TimeoutError: When the command exceeds ``timeout_seconds``.
+    """
+    gog_path = _resolve_gog_cli()
+    if gog_path is None:
+        raise GogNotInstalledError(
+            "gog CLI not found. Install with: brew install steipete/tap/gogcli"
+        )
+
+    cmd: list[str] = [gog_path, *args, "--json", "--no-input"]
+    logger.debug(f"gog: spawn {cmd!r}")
+
+    stdin_pipe = asyncio.subprocess.PIPE if stdin_text is not None else asyncio.subprocess.DEVNULL
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        stdin=stdin_pipe,
+    )
+
+    stdin_bytes = stdin_text.encode() if stdin_text is not None else None
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(input=stdin_bytes),
+            timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError:
+        proc.kill()
+        raise
+
+    if proc.returncode != 0:
+        err = stderr.decode().strip() or f"gog exited with code {proc.returncode}"
+        raise GogCommandError(
+            f"gog command failed ({proc.returncode}): {err}",
+            spoken_message="Google-Dienst momentan nicht erreichbar.",
+        )
+
+    raw = stdout.decode().strip()
+    if not raw:
+        return {}
+    return json.loads(raw)  # type: ignore[return-value]
 
 
 class OpenClawClient:

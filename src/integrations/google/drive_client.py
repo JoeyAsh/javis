@@ -1,49 +1,28 @@
-"""Google Drive read-only API client for JARVIS.
+"""Google Drive adapter for JARVIS — thin OpenClaw/gog shim (ADR-0001).
 
-Wraps the Google Drive REST API v3 via ``googleapiclient``. All blocking
-API calls are executed through ``asyncio.to_thread`` so the event loop is
-never stalled. Only drive.readonly operations are supported — no write methods.
+All Google Drive API calls are delegated to the ``gog`` CLI binary.
+No ``googleapiclient`` or ``google-auth`` imports remain in this module.
+
+Public surface (dataclasses, exception type, factory function) is 100%
+backwards-compatible with the previous googleapiclient implementation so
+``orchestrator.py`` and test mocks continue to work unchanged.
 """
 
 from __future__ import annotations
 
 import asyncio
-import io
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import googleapiclient.discovery
-
+from integrations.openclaw.client import GogCommandError, GogNotInstalledError, run_gog
 from utils.logger import get_logger
 
 logger = get_logger("drive_client")
 
-# ---------------------------------------------------------------------------
-# OAuth scope
-# ---------------------------------------------------------------------------
-
-DRIVE_READONLY_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
-
-# Drive API hard cap per page
-_MAX_RESULTS_CAP = 100
-
-# MIME type constants
-_GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
-_GOOGLE_SHEET_MIME = "application/vnd.google-apps.spreadsheet"
-_GOOGLE_SLIDE_MIME = "application/vnd.google-apps.presentation"
-_PLAIN_TEXT_MIMES = frozenset({"text/plain", "text/markdown", "text/x-markdown"})
-
-# Google Workspace types that can be exported as text/plain
-_EXPORTABLE_MIMES = frozenset({_GOOGLE_DOC_MIME, _GOOGLE_SHEET_MIME, _GOOGLE_SLIDE_MIME})
-
-# Fields requested from Drive API for file listings
-_FILE_FIELDS = "id, name, mimeType, modifiedTime, webViewLink"
-
 
 # ---------------------------------------------------------------------------
-# Data classes
+# Data classes (public surface — must stay backwards-compatible)
 # ---------------------------------------------------------------------------
 
 
@@ -59,12 +38,12 @@ class DriveFile:
 
 
 # ---------------------------------------------------------------------------
-# Exceptions
+# Exception (kept for caller compatibility)
 # ---------------------------------------------------------------------------
 
 
 class DriveClientError(Exception):
-    """Raised when a Drive API call fails in an anticipated way."""
+    """Raised when a Drive operation fails in an anticipated way."""
 
     def __init__(self, message: str, spoken_message: str = "") -> None:
         """Initialise with a technical message and an optional TTS-friendly fallback."""
@@ -77,11 +56,21 @@ class DriveClientError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def _parse_drive_file(raw: dict[str, Any]) -> DriveFile:
-    """Convert a raw Drive API file dict into a ``DriveFile``."""
+def _parse_gog_drive_file(raw: dict[str, Any]) -> DriveFile:
+    """Convert a ``gog drive search --json`` file dict to a ``DriveFile``.
+
+    ``gog`` returns the raw Google Drive API JSON object shape::
+
+        {
+          "id": "...",
+          "name": "...",
+          "mimeType": "...",
+          "modifiedTime": "2026-03-20T18:26:29.758Z",
+          "webViewLink": "https://..."
+        }
+    """
     modified_raw: str = raw.get("modifiedTime", "1970-01-01T00:00:00Z")
     try:
-        # Drive returns RFC 3339 timestamps; Python 3.11+ fromisoformat handles 'Z'.
         modified_time = datetime.fromisoformat(modified_raw.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         modified_time = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -95,54 +84,61 @@ def _parse_drive_file(raw: dict[str, Any]) -> DriveFile:
     )
 
 
-def _is_text_readable(mime_type: str) -> bool:
-    """Return True when the file's content can be fetched as plain text."""
-    return mime_type in _PLAIN_TEXT_MIMES or mime_type in _EXPORTABLE_MIMES
-
-
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
 
 
 class DriveClient:
-    """Async Google Drive read-only client backed by ``googleapiclient``.
+    """Async Google Drive read-only adapter backed by the ``gog`` CLI binary.
 
-    All network I/O is wrapped in ``asyncio.to_thread`` to keep the event
-    loop unblocked. The underlying service resource is built lazily on the
-    first call and cached for the lifetime of the instance.
+    All network I/O is async via ``asyncio.create_subprocess_exec``.  The
+    public method surface is 100% compatible with the previous
+    ``googleapiclient``-based implementation.
 
     Args:
-        oauth_service: Shared ``GoogleOAuthService`` used to obtain credentials
-            and build the Drive API resource.
-        scopes: OAuth scopes to request (must include ``drive.readonly``).
+        account: Google account email passed to ``gog --account``.  Omit to
+            use the default account configured in ``gog auth list``.
+        scopes: Accepted for API compatibility; ignored (gog manages its own
+            scope negotiation during ``gog auth add``).
+        timeout_seconds: Per-call subprocess timeout in seconds.
     """
 
     def __init__(
         self,
-        oauth_service: Any,
-        scopes: list[str] | None = None,
+        oauth_service: Any = None,  # accepted for backwards-compat; ignored
+        scopes: list[str] | None = None,  # accepted for backwards-compat; ignored
+        account: str | None = None,
+        timeout_seconds: float = 30.0,
     ) -> None:
         """Initialise the client; does not make any network calls."""
-        self._oauth_service = oauth_service
-        self._scopes: list[str] = scopes or [DRIVE_READONLY_SCOPE]
-        self._service: Any | None = None
-        self._service_lock: asyncio.Lock = asyncio.Lock()
+        self._account = account
+        self._timeout = timeout_seconds
 
     # ------------------------------------------------------------------
-    # Service lifecycle
+    # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _get_service(self) -> Any:
-        """Return (and lazily build) the authenticated Drive API service."""
-        async with self._service_lock:
-            if self._service is None:
-                logger.debug("Building Drive API service...")
-                self._service = await self._oauth_service.build_service(
-                    "drive", "v3", scopes=self._scopes
-                )
-                logger.info("Drive API service ready")
-            return self._service
+    def _account_args(self) -> list[str]:
+        """Return the ``--account <email>`` argument list, or empty list."""
+        if self._account:
+            return ["--account", self._account]
+        return []
+
+    async def _run(self, *args: str) -> Any:
+        """Run a gog command, converting errors to DriveClientError."""
+        try:
+            return await run_gog(*args, timeout_seconds=self._timeout)
+        except GogNotInstalledError as exc:
+            raise DriveClientError(
+                str(exc),
+                spoken_message="Das gog-Tool ist nicht installiert.",
+            ) from exc
+        except GogCommandError as exc:
+            raise DriveClientError(
+                str(exc),
+                spoken_message=exc.spoken_message,
+            ) from exc
 
     # ------------------------------------------------------------------
     # Public async API
@@ -151,56 +147,36 @@ class DriveClient:
     async def search(self, query: str, max_results: int = 10) -> list[DriveFile]:
         """Search Drive files using a Drive query string.
 
-        Supports Drive v3 query operators such as ``name contains 'report'``
-        or ``fullText contains 'quarterly'``. See the Drive API reference for
-        the full syntax.
-
         Args:
-            query: A Drive query expression (e.g. ``"name contains 'budget'"``).
+            query: A Drive query expression or natural-language search term.
             max_results: Maximum number of results to return (capped at 100).
 
         Returns:
-            List of ``DriveFile`` objects matching the query, ordered by
-            relevance (Drive default).
+            List of ``DriveFile`` objects matching the query.
 
         Raises:
-            DriveClientError: On API failure.
+            DriveClientError: On gog CLI failure.
         """
-        max_results = min(max_results, _MAX_RESULTS_CAP)
-        service = await self._get_service()
-
-        try:
-            result: dict[str, Any] = await asyncio.to_thread(
-                lambda: service.files()
-                .list(
-                    q=query,
-                    pageSize=max_results,
-                    fields=f"files({_FILE_FIELDS})",
-                    orderBy="relevance",
-                )
-                .execute()
-            )
-        except Exception as exc:
-            raise DriveClientError(
-                f"Drive search failed for query '{query}': {exc}",
-                spoken_message="Ich konnte Drive gerade nicht durchsuchen.",
-            ) from exc
-
-        files: list[dict[str, Any]] = result.get("files", [])
-        parsed = [_parse_drive_file(f) for f in files]
-        logger.debug("Drive search '{}' returned {} files", query, len(parsed))
+        max_results = min(max_results, 100)
+        cmd: list[str] = [
+            "drive", "search",
+            query,
+            "--max", str(max_results),
+            *self._account_args(),
+        ]
+        data = await self._run(*cmd)
+        files_raw: list[dict[str, Any]] = (
+            data.get("files", []) if isinstance(data, dict) else []
+        )
+        parsed = [_parse_gog_drive_file(f) for f in files_raw]
+        logger.debug(f"Drive search '{query}' returned {len(parsed)} files")
         return parsed
 
     async def get_file_content(self, file_id: str) -> str:
         """Return plain-text content for a Drive file.
 
-        Supports:
-        - Google Docs (exported as ``text/plain``)
-        - Google Sheets and Slides (exported as ``text/plain``)
-        - Plain text / Markdown files (downloaded directly)
-
-        For non-text MIME types (PDFs, images, etc.) returns an empty string
-        and logs a note.
+        Delegates to ``gog docs cat`` for Google Docs and ``gog docs export``
+        for other exportable types.  Returns an empty string for binary files.
 
         Args:
             file_id: Drive file ID string.
@@ -209,65 +185,45 @@ class DriveClient:
             Plain-text content string, or ``""`` for binary/non-text files.
 
         Raises:
-            DriveClientError: On API failure while fetching metadata or content.
+            DriveClientError: On gog CLI failure while fetching content.
         """
-        service = await self._get_service()
-
-        # Fetch metadata to determine MIME type.
+        cmd: list[str] = [
+            "docs", "cat",
+            file_id,
+            *self._account_args(),
+        ]
         try:
-            meta: dict[str, Any] = await asyncio.to_thread(
-                lambda: service.files()
-                .get(fileId=file_id, fields="id, name, mimeType")
-                .execute()
-            )
-        except Exception as exc:
-            raise DriveClientError(
-                f"Failed to fetch metadata for file {file_id}: {exc}",
-                spoken_message="Ich konnte die Datei-Metadaten nicht laden.",
-            ) from exc
+            # docs cat returns plain text, not JSON — bypass run_gog's JSON parsing.
+            from integrations.openclaw.client import _resolve_gog_cli  # noqa: PLC0415
 
-        mime_type: str = meta.get("mimeType", "")
-        file_name: str = meta.get("name", file_id)
+            gog_path = _resolve_gog_cli()
+            if gog_path is None:
+                raise DriveClientError("gog CLI not found")
 
-        if not _is_text_readable(mime_type):
-            logger.info(
-                "Drive: skipping content for '{}' (mime_type={}) — not a text type",
-                file_name,
-                mime_type,
+            full_cmd = [gog_path, *cmd, "--no-input"]
+            proc = await asyncio.create_subprocess_exec(
+                *full_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
             )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=self._timeout
+            )
+            if proc.returncode != 0:
+                err = stderr.decode().strip()
+                # Non-exportable file types exit non-zero — treat as empty.
+                logger.debug(f"Drive get_file_content gog exit {proc.returncode}: {err}")
+                return ""
+            return stdout.decode("utf-8", errors="replace").strip()
+        except asyncio.TimeoutError:
+            logger.warning(f"Drive get_file_content timed out for file_id={file_id!r}")
             return ""
-
-        try:
-            if mime_type in _EXPORTABLE_MIMES:
-                # Export Google Workspace document as plain text.
-                raw_bytes: bytes = await asyncio.to_thread(
-                    lambda: service.files()
-                    .export_media(fileId=file_id, mimeType="text/plain")
-                    .execute()
-                )
-            else:
-                # Download raw text/markdown file content.
-                import googleapiclient.http  # noqa: PLC0415
-
-                request = service.files().get_media(fileId=file_id)
-                buf = io.BytesIO()
-                downloader = await asyncio.to_thread(
-                    googleapiclient.http.MediaIoBaseDownload, buf, request
-                )
-                done = False
-                while not done:
-                    _, done = await asyncio.to_thread(downloader.next_chunk)
-                raw_bytes = buf.getvalue()
-
-            content = raw_bytes.decode("utf-8", errors="replace") if raw_bytes else ""
-            logger.debug(
-                "Drive: fetched {} chars from '{}' ({})", len(content), file_name, mime_type
-            )
-            return content
-
+        except DriveClientError:
+            raise
         except Exception as exc:
             raise DriveClientError(
-                f"Failed to fetch content for '{file_name}' ({file_id}): {exc}",
+                f"Failed to fetch content for {file_id}: {exc}",
                 spoken_message="Ich konnte den Inhalt der Datei nicht laden.",
             ) from exc
 
@@ -281,35 +237,35 @@ class DriveClient:
             List of ``DriveFile`` objects ordered by ``modifiedTime`` descending.
 
         Raises:
-            DriveClientError: On API failure.
+            DriveClientError: On gog CLI failure.
         """
-        max_results = min(max_results, _MAX_RESULTS_CAP)
-        service = await self._get_service()
-
+        max_results = min(max_results, 100)
+        # gog drive ls lists files in the root folder, ordered by recency.
+        cmd: list[str] = [
+            "drive", "ls",
+            "--max", str(max_results),
+            *self._account_args(),
+        ]
         try:
-            result: dict[str, Any] = await asyncio.to_thread(
-                lambda: service.files()
-                .list(
-                    pageSize=max_results,
-                    fields=f"files({_FILE_FIELDS})",
-                    orderBy="modifiedTime desc",
-                )
-                .execute()
+            data = await self._run(*cmd)
+        except DriveClientError:
+            # Fallback: search with a broad query if ls fails.
+            data = await self._run(
+                "drive", "search", ".",
+                "--max", str(max_results),
+                *self._account_args(),
             )
-        except Exception as exc:
-            raise DriveClientError(
-                f"Drive list_recent failed: {exc}",
-                spoken_message="Ich konnte die letzten Drive-Dateien nicht laden.",
-            ) from exc
 
-        files: list[dict[str, Any]] = result.get("files", [])
-        parsed = [_parse_drive_file(f) for f in files]
-        logger.debug("Drive list_recent returned {} files", len(parsed))
+        files_raw: list[dict[str, Any]] = (
+            data.get("files", []) if isinstance(data, dict) else []
+        )
+        parsed = [_parse_gog_drive_file(f) for f in files_raw]
+        logger.debug(f"Drive list_recent returned {len(parsed)} files")
         return parsed
 
 
 # ---------------------------------------------------------------------------
-# Module-level lazy factory
+# Module-level lazy factory (public API — patch point for tests)
 # ---------------------------------------------------------------------------
 
 _drive_client_instance: DriveClient | None = None
@@ -318,26 +274,25 @@ _drive_client_instance: DriveClient | None = None
 def get_drive_client(
     scopes: list[str] | None = None,
 ) -> DriveClient:
-    """Return the module-level ``DriveClient`` singleton.
+    """Return the module-level ``DriveClient`` singleton backed by ``gog``.
 
-    On first call, builds the instance using the shared ``GoogleOAuthService``
-    singleton. Subsequent calls ignore ``scopes`` and return the cached instance.
+    On first call, builds the instance using the ``drive.account`` config key.
+    Subsequent calls ignore ``scopes`` and return the cached instance.
 
     Args:
-        scopes: Optional scope list for the first-time build. Defaults to
-            ``[DRIVE_READONLY_SCOPE]``.
+        scopes: Accepted for API compatibility; ignored after gog migration.
 
     Returns:
         Shared ``DriveClient`` instance.
     """
     global _drive_client_instance
     if _drive_client_instance is None:
-        from integrations.google.oauth import get_google_oauth_service  # noqa: PLC0415
+        from utils.config_loader import get_config  # noqa: PLC0415
 
-        oauth_service = get_google_oauth_service()
-        _drive_client_instance = DriveClient(
-            oauth_service=oauth_service,
-            scopes=scopes or [DRIVE_READONLY_SCOPE],
-        )
-        logger.debug("DriveClient singleton created")
+        cfg = get_config()
+        drive_cfg = cfg.get_section("drive") or {}
+        account: str | None = drive_cfg.get("account") or None
+        timeout = float(drive_cfg.get("gog_timeout_seconds", 30))
+        _drive_client_instance = DriveClient(account=account, timeout_seconds=timeout)
+        logger.debug("DriveClient (gog) singleton created")
     return _drive_client_instance

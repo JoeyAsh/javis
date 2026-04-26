@@ -401,7 +401,10 @@ async def test_build_email_context_injects_unread_list():
 
     with (
         patch("brain.orchestrator.get_config") as mock_cfg,
-        patch("brain.orchestrator.get_gmail_client", return_value=mock_client),
+        patch(
+            "integrations.google.gmail_client.get_gmail_client",
+            return_value=mock_client,
+        ),
     ):
         mock_cfg.return_value.get_section.return_value = {
             "enabled": True,

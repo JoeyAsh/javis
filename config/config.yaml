@@ -159,16 +159,21 @@ gitlab:
   #   - "42"
 
 google:
-  # Path where the OAuth token is cached after first-use browser consent.
-  # Tilde is expanded at runtime. Override with GOOGLE_TOKEN_CACHE env var.
-  token_cache_path: "~/.jarvis/google_token.json"
-  # Seconds the user has to complete the interactive browser/console consent
-  # before the flow times out. Applies to the interactive flow only;
-  # silent refresh calls use the google-auth library's default socket timeout.
-  timeout_seconds: 120
+  # DEPRECATED (ADR-0001): JARVIS no longer owns a Google token cache.
+  # Auth is managed exclusively by the gog CLI on the OpenClaw host:
+  #   gog auth add you@gmail.com --services gmail,calendar,drive
+  # The keys below are retained as documentation only and are NOT read by
+  # any active code path.
+  token_cache_path: "~/.jarvis/google_token.json"  # deprecated
+  timeout_seconds: 120                              # deprecated
 
 calendar:
   enabled: true
+  # Google account email for gog CLI (gog --account). Leave null to use
+  # the default account from `gog auth list`.
+  account: null
+  # Timeout for gog subprocess calls in seconds.
+  gog_timeout_seconds: 30
   poll_interval_seconds: 60
   lookahead_hours: 48
   max_events_per_query: 20
@@ -178,16 +183,23 @@ calendar:
     - 10
     - 5
     - 1
+  # scopes below are deprecated — gog auth add manages scopes on the OpenClaw host
   scopes:
     - "https://www.googleapis.com/auth/calendar"
     - "https://www.googleapis.com/auth/calendar.events"
 
 drive:
   enabled: true
-  scopes:
-    - "https://www.googleapis.com/auth/drive.readonly"
+  # Google account email for gog CLI (gog --account). Leave null to use
+  # the default account from `gog auth list`.
+  account: null
+  # Timeout for gog subprocess calls in seconds.
+  gog_timeout_seconds: 30
   max_results: 10
   preview_content_chars: 500
+  # scopes below are deprecated — gog auth add manages scopes on the OpenClaw host
+  scopes:
+    - "https://www.googleapis.com/auth/drive.readonly"
 
 log_panel:
   # Live backend log stream + turn-timeline waterfall in the HUD. Server
@@ -198,10 +210,17 @@ log_panel:
 
 gmail:
   enabled: true
+  # Google account email for gog CLI (gog --account). Leave null to use
+  # the default account from `gog auth list`. Set via GOG_ACCOUNT env var
+  # or here explicitly: account: "you@gmail.com"
+  account: null
+  # Timeout for gog subprocess calls in seconds.
+  gog_timeout_seconds: 30
   max_unread_summary: 5
   poll_interval_seconds: 120
   send_confirm_timeout_seconds: 60  # per authorized decision: 60s per-connection timeout
   vip_senders: []
+  # scopes below are deprecated — gog auth add manages scopes on the OpenClaw host
   scopes:
     - "https://www.googleapis.com/auth/gmail.readonly"
     - "https://www.googleapis.com/auth/gmail.send"

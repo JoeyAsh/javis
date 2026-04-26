@@ -1,17 +1,23 @@
-"""Unit tests for GmailClient.
+"""Unit tests for GmailClient — gog CLI adapter (ADR-0001 migration).
 
-All ``googleapiclient.discovery.build`` / ``GoogleOAuthService.build_service``
-calls are replaced with ``MagicMock`` objects. No real OAuth flow or network
-call is made.
+All calls to ``run_gog`` are replaced with ``AsyncMock`` objects.
+No real subprocess is ever spawned; no live Gmail API calls are made.
 
-Covers acceptance criteria 1–6 and 18.
+Covers acceptance criteria:
+- AC 3: EmailMessage dataclass shape is unchanged
+- AC 3: list_unread / search / get_message / get_unread_count happy paths
+- AC 4: GogCommandError → GmailClientError propagation
+- AC 4: GogNotInstalledError → GmailClientError propagation
+- AC 3: create_draft / send_draft / delete_draft happy paths
+- Edge: empty recipient raises GmailClientError immediately
+- Edge: delete_draft returns False (non-fatal) on error
+- Edge: get_unread_count with nextPageToken paginates
+- Edge: VIP flag detection
+- Edge: singleton factory
 """
 
 from __future__ import annotations
 
-import asyncio
-import base64
-import json
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -19,416 +25,656 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Fixtures
 # ---------------------------------------------------------------------------
 
 
-def _make_raw_message(
+@pytest.fixture()
+def gmail_client():
+    """Return a GmailClient with a fixed account and no VIP senders."""
+    from integrations.google.gmail_client import GmailClient
+
+    return GmailClient(account=None, vip_senders=[], timeout_seconds=5.0)
+
+
+@pytest.fixture()
+def vip_client():
+    """Return a GmailClient with vip@example.com in the VIP list."""
+    from integrations.google.gmail_client import GmailClient
+
+    return GmailClient(account=None, vip_senders=["vip@example.com"], timeout_seconds=5.0)
+
+
+# ---------------------------------------------------------------------------
+# Helper factories
+# ---------------------------------------------------------------------------
+
+
+def _gog_message(
     msg_id: str = "msg001",
     thread_id: str = "thread001",
     subject: str = "Hello World",
     from_: str = "Alice <alice@example.com>",
     to: str = "me@example.com",
     snippet: str = "Short preview text",
-    label_ids: list[str] | None = None,
-    internal_date_ms: int = 1_700_000_000_000,
+    labels: list[str] | None = None,
+    date: str = "2026-04-25 17:29",
+    body: str | None = None,
 ) -> dict[str, Any]:
-    """Build a minimal Gmail API message dict."""
-    if label_ids is None:
-        label_ids = ["INBOX", "UNREAD"]
-    return {
+    """Build a minimal gog JSON message dict."""
+    raw: dict[str, Any] = {
         "id": msg_id,
         "threadId": thread_id,
-        "internalDate": str(internal_date_ms),
-        "labelIds": label_ids,
+        "date": date,
+        "from": from_,
+        "subject": subject,
         "snippet": snippet,
-        "payload": {
-            "mimeType": "text/plain",
-            "headers": [
-                {"name": "Subject", "value": subject},
-                {"name": "From", "value": from_},
-                {"name": "To", "value": to},
-            ],
-            "body": {
-                "data": base64.urlsafe_b64encode(b"Body content here").decode(),
-            },
-            "parts": [],
-        },
+        "labels": labels if labels is not None else ["UNREAD", "INBOX"],
+        "to": to,
     }
+    if body is not None:
+        raw["body"] = body
+    return raw
 
 
-def _make_mock_service(
-    list_response: dict[str, Any] | None = None,
-    message_response: dict[str, Any] | None = None,
-    draft_create_response: dict[str, Any] | None = None,
-    draft_send_response: dict[str, Any] | None = None,
-    draft_delete_response: Any = None,
-) -> MagicMock:
-    """Build a chainable MagicMock mimicking the Gmail service resource."""
-    svc = MagicMock()
-
-    # ---- messages().list().execute() ----
-    list_exec = MagicMock(return_value=list_response or {"messages": [], "resultSizeEstimate": 0})
-    svc.users.return_value.messages.return_value.list.return_value.execute = list_exec
-
-    # ---- messages().get().execute() ----
-    get_exec = MagicMock(return_value=message_response or _make_raw_message())
-    svc.users.return_value.messages.return_value.get.return_value.execute = get_exec
-
-    # ---- drafts().create().execute() ----
-    dc_exec = MagicMock(
-        return_value=draft_create_response or {"id": "draft_abc", "message": {"id": "draft_abc"}}
-    )
-    svc.users.return_value.drafts.return_value.create.return_value.execute = dc_exec
-
-    # ---- drafts().send().execute() ----
-    ds_exec = MagicMock(
-        return_value=draft_send_response or {"id": "sent_msg_001"}
-    )
-    svc.users.return_value.drafts.return_value.send.return_value.execute = ds_exec
-
-    # ---- drafts().delete().execute() ----
-    dd_exec = MagicMock(return_value=draft_delete_response or {})
-    svc.users.return_value.drafts.return_value.delete.return_value.execute = dd_exec
-
-    return svc
-
-
-def _make_client(mock_service: MagicMock, vip_senders: list[str] | None = None):
-    """Construct a GmailClient with a mocked OAuth service that returns ``mock_service``."""
-    from integrations.google.gmail_client import GmailClient
-
-    oauth = MagicMock()
-    oauth.build_service = AsyncMock(return_value=mock_service)
-    client = GmailClient(oauth_service=oauth, vip_senders=vip_senders or [])
-    return client
+def _search_response(*messages: dict[str, Any], next_page_token: str | None = None) -> dict[str, Any]:
+    """Build a gog search response dict."""
+    result: dict[str, Any] = {"messages": list(messages)}
+    if next_page_token:
+        result["nextPageToken"] = next_page_token
+    return result
 
 
 # ---------------------------------------------------------------------------
-# Acceptance criterion 1 — list_unread returns EmailMessage objects
+# Dataclass shape smoke tests (AC #2)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_list_unread_returns_email_messages():
-    """list_unread returns EmailMessage objects with correct fields (AC 1)."""
-    raw_msg = _make_raw_message(
-        msg_id="abc123",
-        subject="Test Subject",
-        from_="Bob <bob@example.com>",
-        label_ids=["INBOX", "UNREAD"],
-    )
-    svc = _make_mock_service(
-        list_response={"messages": [{"id": "abc123"}], "resultSizeEstimate": 1},
-        message_response=raw_msg,
-    )
-    client = _make_client(svc)
-    messages = await client.list_unread(max_results=5)
+def test_email_message_dataclass_shape():
+    """EmailMessage dataclass fields are unchanged from before migration."""
+    from integrations.google.gmail_client import EmailMessage
 
-    assert len(messages) == 1
-    msg = messages[0]
-    assert msg.id == "abc123"
-    assert msg.subject == "Test Subject"
-    assert msg.sender_email == "bob@example.com"
+    msg = EmailMessage(
+        id="abc",
+        thread_id="thr1",
+        subject="Test",
+        sender="Bob",
+        sender_email="bob@example.com",
+        recipient="me@example.com",
+        received_at=datetime(2026, 4, 25, 17, 29, tzinfo=timezone.utc),
+        snippet="Preview text",
+        body_text="Full body",
+        is_unread=True,
+        is_vip=False,
+    )
+    assert msg.id == "abc"
+    assert msg.thread_id == "thr1"
     assert msg.is_unread is True
     assert msg.is_vip is False
 
 
-@pytest.mark.asyncio
-async def test_list_unread_vip_flag():
-    """list_unread sets is_vip=True when sender_email is in vip_senders list."""
-    raw_msg = _make_raw_message(from_="VIP Person <vip@example.com>")
-    svc = _make_mock_service(
-        list_response={"messages": [{"id": "vip001"}]},
-        message_response=raw_msg,
+def test_email_draft_dataclass_shape():
+    """EmailDraft dataclass has expected fields."""
+    from integrations.google.gmail_client import EmailDraft
+
+    draft = EmailDraft(id="d1", to="alice@example.com", subject="Hi", body="Hello")
+    assert draft.id == "d1"
+    assert draft.to == "alice@example.com"
+    assert isinstance(draft.created_at, datetime)
+
+
+# ---------------------------------------------------------------------------
+# _parse_gog_message helper
+# ---------------------------------------------------------------------------
+
+
+def test_parse_gog_message_timed_event():
+    """_parse_gog_message correctly parses a standard gog message dict."""
+    from integrations.google.gmail_client import _parse_gog_message
+
+    raw = _gog_message(
+        msg_id="id1",
+        subject="=?utf-8?b?SGVsbG8=?=",  # RFC-2047 encoded "Hello"
+        from_="Bob Jones <bob@example.com>",
+        labels=["UNREAD", "INBOX"],
+        date="2026-04-20 09:00",
     )
-    client = _make_client(svc, vip_senders=["vip@example.com"])
-    messages = await client.list_unread()
+    msg = _parse_gog_message(raw, vip_senders=["bob@example.com"])
+    assert msg.id == "id1"
+    assert msg.subject == "Hello"
+    assert msg.sender == "Bob Jones"
+    assert msg.sender_email == "bob@example.com"
+    assert msg.is_unread is True
+    assert msg.is_vip is True
+    assert msg.received_at.tzinfo is not None
+
+
+def test_parse_gog_message_missing_date_falls_back():
+    """_parse_gog_message uses datetime.now fallback when date is absent."""
+    from integrations.google.gmail_client import _parse_gog_message
+
+    raw = _gog_message(date="")
+    before = datetime.now(timezone.utc)
+    msg = _parse_gog_message(raw, vip_senders=[])
+    after = datetime.now(timezone.utc)
+    assert before <= msg.received_at <= after
+
+
+def test_parse_gog_message_invalid_date_falls_back():
+    """_parse_gog_message handles an unparseable date string gracefully."""
+    from integrations.google.gmail_client import _parse_gog_message
+
+    raw = _gog_message(date="not-a-date")
+    msg = _parse_gog_message(raw, vip_senders=[])
+    assert isinstance(msg.received_at, datetime)
+
+
+def test_parse_gog_message_body_from_body_field():
+    """_parse_gog_message reads body_text from the 'body' key."""
+    from integrations.google.gmail_client import _parse_gog_message
+
+    raw = _gog_message(body="Full message text here")
+    msg = _parse_gog_message(raw, vip_senders=[])
+    assert msg.body_text == "Full message text here"
+
+
+# ---------------------------------------------------------------------------
+# GmailClient.list_unread happy path (AC #3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_unread_returns_email_messages(gmail_client):
+    """list_unread returns correctly parsed EmailMessage objects."""
+    from integrations.google.gmail_client import EmailMessage
+
+    canned = _search_response(_gog_message(msg_id="abc", subject="Test Subject"))
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value=canned),
+    ):
+        messages = await gmail_client.list_unread(max_results=5)
+
+    assert len(messages) == 1
+    assert isinstance(messages[0], EmailMessage)
+    assert messages[0].id == "abc"
+    assert messages[0].subject == "Test Subject"
+    assert messages[0].is_unread is True
+
+
+@pytest.mark.asyncio
+async def test_list_unread_vip_flag(vip_client):
+    """list_unread sets is_vip=True when sender_email matches vip_senders."""
+    canned = _search_response(_gog_message(from_="VIP Person <vip@example.com>"))
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value=canned),
+    ):
+        messages = await vip_client.list_unread()
+
     assert messages[0].is_vip is True
 
 
 @pytest.mark.asyncio
-async def test_list_unread_empty_inbox():
-    """list_unread returns empty list when no unread messages exist."""
-    svc = _make_mock_service(list_response={"messages": [], "resultSizeEstimate": 0})
-    client = _make_client(svc)
-    result = await client.list_unread()
+async def test_list_unread_empty_inbox(gmail_client):
+    """list_unread returns empty list when gog returns no messages."""
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value={"messages": []}),
+    ):
+        result = await gmail_client.list_unread()
+
     assert result == []
 
 
+@pytest.mark.asyncio
+async def test_list_unread_caps_at_50(gmail_client):
+    """list_unread caps max_results at 50."""
+    captured: list[tuple] = []
+
+    async def capture_run(*args: str, **kwargs: Any) -> dict:
+        captured.append(args)
+        return {"messages": []}
+
+    with patch("integrations.google.gmail_client.run_gog", side_effect=capture_run):
+        await gmail_client.list_unread(max_results=999)
+
+    # "--max" arg should be "50"
+    assert "--max" in captured[0]
+    idx = captured[0].index("--max")
+    assert captured[0][idx + 1] == "50"
+
+
+@pytest.mark.asyncio
+async def test_list_unread_sender_filter_appended(gmail_client):
+    """list_unread appends from:<sender> to the query when sender is given."""
+    captured: list[tuple] = []
+
+    async def capture_run(*args: str, **kwargs: Any) -> dict:
+        captured.append(args)
+        return {"messages": []}
+
+    with patch("integrations.google.gmail_client.run_gog", side_effect=capture_run):
+        await gmail_client.list_unread(sender="alice@example.com")
+
+    query_arg = captured[0][3]  # "gmail", "messages", "search", <QUERY>
+    assert "from:alice@example.com" in query_arg
+
+
 # ---------------------------------------------------------------------------
-# Acceptance criterion 2 — search calls the API with the correct query
+# GmailClient.search (AC #3)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_search_passes_query_to_api():
-    """search calls users().messages().list with the given query string (AC 2)."""
-    svc = _make_mock_service(
-        list_response={"messages": []},
+async def test_search_passes_query_and_returns_messages(gmail_client):
+    """search calls run_gog with the expected args and parses results."""
+    canned = _search_response(
+        _gog_message(msg_id="s1"),
+        _gog_message(msg_id="s2"),
     )
-    client = _make_client(svc)
-    await client.search(query="from:sarah", max_results=5)
+    captured: list[tuple] = []
 
-    call_kwargs = svc.users.return_value.messages.return_value.list.call_args
-    assert call_kwargs is not None
-    kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
-    assert kwargs.get("q") == "from:sarah" or call_kwargs[1].get("q") == "from:sarah"
+    async def capture_run(*args: str, **kwargs: Any) -> dict:
+        captured.append(args)
+        return canned
 
+    with patch("integrations.google.gmail_client.run_gog", side_effect=capture_run):
+        results = await gmail_client.search("from:boss is:unread", max_results=10)
 
-@pytest.mark.asyncio
-async def test_search_respects_max_results_cap():
-    """search caps max_results at 50 regardless of caller input."""
-    svc = _make_mock_service(list_response={"messages": []})
-    client = _make_client(svc)
-    await client.search("in:inbox", max_results=999)
-
-    call_kwargs = svc.users.return_value.messages.return_value.list.call_args
-    kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
-    assert kwargs.get("maxResults", 0) <= 50
-
-
-# ---------------------------------------------------------------------------
-# Acceptance criterion 3 — get_unread_count single API call + integer return
-# ---------------------------------------------------------------------------
+    assert len(results) == 2
+    assert "gmail" in captured[0]
+    assert "from:boss is:unread" in captured[0]
 
 
 @pytest.mark.asyncio
-async def test_get_unread_count_returns_integer():
-    """get_unread_count returns an integer from resultSizeEstimate (AC 3)."""
-    svc = _make_mock_service(
-        list_response={"resultSizeEstimate": 7},
+async def test_search_caps_max_results(gmail_client):
+    """search caps max_results at 50."""
+    captured: list[tuple] = []
+
+    async def capture_run(*args: str, **kwargs: Any) -> dict:
+        captured.append(args)
+        return {"messages": []}
+
+    with patch("integrations.google.gmail_client.run_gog", side_effect=capture_run):
+        await gmail_client.search("in:inbox", max_results=200)
+
+    idx = captured[0].index("--max")
+    assert captured[0][idx + 1] == "50"
+
+
+# ---------------------------------------------------------------------------
+# GmailClient.get_message (AC #3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_message_include_body_true(gmail_client):
+    """get_message returns a message with body_text when include_body=True."""
+    canned = _search_response(_gog_message(msg_id="bodymsg", body="Full body text"))
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value=canned),
+    ):
+        msg = await gmail_client.get_message("bodymsg", include_body=True)
+
+    assert msg.body_text == "Full body text"
+
+
+@pytest.mark.asyncio
+async def test_get_message_include_body_false(gmail_client):
+    """get_message leaves body_text as None when include_body=False."""
+    canned = _search_response(_gog_message(msg_id="nob", body="Some body"))
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value=canned),
+    ):
+        msg = await gmail_client.get_message("nob", include_body=False)
+
+    assert msg.body_text is None
+
+
+@pytest.mark.asyncio
+async def test_get_message_not_found_raises(gmail_client):
+    """get_message raises GmailClientError when gog returns no messages."""
+    from integrations.google.gmail_client import GmailClientError
+
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value={"messages": []}),
+    ):
+        with pytest.raises(GmailClientError) as exc_info:
+            await gmail_client.get_message("missing_id")
+
+    assert exc_info.value.spoken_message
+
+
+# ---------------------------------------------------------------------------
+# GmailClient.get_unread_count (AC #3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_unread_count_returns_integer(gmail_client):
+    """get_unread_count returns the number of messages in the response."""
+    canned = _search_response(
+        _gog_message("m1"), _gog_message("m2"), _gog_message("m3")
     )
-    client = _make_client(svc)
-    count = await client.get_unread_count()
-    assert count == 7
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value=canned),
+    ):
+        count = await gmail_client.get_unread_count()
+
+    assert count == 3
     assert isinstance(count, int)
 
 
 @pytest.mark.asyncio
-async def test_get_unread_count_single_api_call():
-    """get_unread_count makes exactly one messages().list() call."""
-    svc = _make_mock_service(list_response={"resultSizeEstimate": 3})
-    client = _make_client(svc)
-    await client.get_unread_count()
+async def test_get_unread_count_with_next_page_token(gmail_client):
+    """get_unread_count returns at least 100 when nextPageToken is present."""
+    canned = _search_response(
+        *[_gog_message(str(i)) for i in range(5)],
+        next_page_token="tok123",
+    )
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value=canned),
+    ):
+        count = await gmail_client.get_unread_count()
 
-    assert svc.users.return_value.messages.return_value.list.call_count == 1
-
-
-@pytest.mark.asyncio
-async def test_get_unread_count_uses_correct_fields():
-    """get_unread_count requests resultSizeEstimate field only."""
-    svc = _make_mock_service(list_response={"resultSizeEstimate": 0})
-    client = _make_client(svc)
-    await client.get_unread_count()
-
-    call_kwargs = svc.users.return_value.messages.return_value.list.call_args
-    kwargs = call_kwargs.kwargs if call_kwargs.kwargs else call_kwargs[1]
-    assert "resultSizeEstimate" in kwargs.get("fields", "")
-    assert kwargs.get("maxResults") == 1
-    assert "UNREAD" in kwargs.get("labelIds", [])
+    assert count >= 100
 
 
 # ---------------------------------------------------------------------------
-# Acceptance criterion 4 — create_draft calls drafts().create() with RFC 2822
+# GmailClient.create_draft (AC #3)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_create_draft_calls_api():
-    """create_draft calls users().drafts().create() with a base64 RFC 2822 msg (AC 4)."""
-    svc = _make_mock_service(
-        draft_create_response={"id": "draft_xyz", "message": {"id": "draft_xyz"}}
-    )
-    client = _make_client(svc)
-    draft = await client.create_draft(
-        to="alice@example.com",
-        subject="Test Draft",
-        body="Hello, Alice!",
-    )
+async def test_create_draft_returns_email_draft(gmail_client):
+    """create_draft calls gog and returns an EmailDraft with the correct id."""
+    from integrations.google.gmail_client import EmailDraft
 
+    canned = {"id": "draft_xyz"}
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value=canned),
+    ):
+        draft = await gmail_client.create_draft(
+            to="alice@example.com",
+            subject="Test Draft",
+            body="Hello, Alice!",
+        )
+
+    assert isinstance(draft, EmailDraft)
     assert draft.id == "draft_xyz"
     assert draft.to == "alice@example.com"
     assert draft.subject == "Test Draft"
     assert draft.body == "Hello, Alice!"
 
-    create_call = svc.users.return_value.drafts.return_value.create
-    assert create_call.called
-    body_arg = create_call.call_args.kwargs.get("body") or create_call.call_args[1].get("body")
-    assert body_arg is not None
-    raw_b64 = body_arg["message"]["raw"]
-    # Verify it's valid base64 and decodes to an RFC 2822 message
-    decoded = base64.urlsafe_b64decode(raw_b64 + "==").decode("utf-8")
-    assert "alice@example.com" in decoded
-    assert "Test Draft" in decoded
+
+@pytest.mark.asyncio
+async def test_create_draft_nested_id(gmail_client):
+    """create_draft extracts id from draft.id when top-level id is absent."""
+    from integrations.google.gmail_client import EmailDraft
+
+    canned = {"draft": {"id": "nested_draft_id"}}
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value=canned),
+    ):
+        draft = await gmail_client.create_draft(
+            to="bob@example.com", subject="S", body="B"
+        )
+
+    assert draft.id == "nested_draft_id"
 
 
 @pytest.mark.asyncio
-async def test_create_draft_raises_on_empty_to():
-    """create_draft raises GmailClientError when to address is empty."""
+async def test_create_draft_empty_to_raises_immediately(gmail_client):
+    """create_draft raises GmailClientError without calling gog when to is empty."""
     from integrations.google.gmail_client import GmailClientError
 
-    svc = _make_mock_service()
-    client = _make_client(svc)
-    with pytest.raises(GmailClientError):
-        await client.create_draft(to="", subject="Test", body="Body")
+    mock_run = AsyncMock()
+    with patch("integrations.google.gmail_client.run_gog", new=mock_run):
+        with pytest.raises(GmailClientError):
+            await gmail_client.create_draft(to="", subject="Test", body="Body")
 
-
-# ---------------------------------------------------------------------------
-# Acceptance criterion 5 — send_draft calls drafts().send()
-# ---------------------------------------------------------------------------
+    mock_run.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_send_draft_calls_api_with_correct_id():
-    """send_draft calls users().drafts().send() with the given draft_id (AC 5)."""
-    svc = _make_mock_service(draft_send_response={"id": "sent_001"})
-    client = _make_client(svc)
-    message_id = await client.send_draft("draft_abc")
-
-    assert message_id == "sent_001"
-    send_call = svc.users.return_value.drafts.return_value.send
-    assert send_call.called
-    body_arg = send_call.call_args.kwargs.get("body") or send_call.call_args[1].get("body")
-    assert body_arg is not None
-    assert body_arg.get("id") == "draft_abc"
-
-
-@pytest.mark.asyncio
-async def test_send_draft_raises_gmail_client_error_on_api_failure():
-    """send_draft raises GmailClientError when the API call throws."""
+async def test_create_draft_whitespace_only_to_raises(gmail_client):
+    """create_draft raises GmailClientError when to is only whitespace."""
     from integrations.google.gmail_client import GmailClientError
 
-    svc = _make_mock_service()
-    svc.users.return_value.drafts.return_value.send.return_value.execute.side_effect = (
-        Exception("API error")
-    )
-    client = _make_client(svc)
-    with pytest.raises(GmailClientError) as exc_info:
-        await client.send_draft("draft_xyz")
-    assert exc_info.value.spoken_message  # should have a TTS-friendly message
+    with patch("integrations.google.gmail_client.run_gog", new=AsyncMock()):
+        with pytest.raises(GmailClientError):
+            await gmail_client.create_draft(to="   ", subject="Test", body="Body")
+
+
+@pytest.mark.asyncio
+async def test_create_draft_no_id_uses_placeholder(gmail_client):
+    """create_draft falls back to a placeholder id when gog returns no id."""
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value={}),
+    ):
+        draft = await gmail_client.create_draft(
+            to="x@example.com", subject="S", body="B"
+        )
+
+    assert "x@example.com" in draft.id or "unknown" in draft.id
 
 
 # ---------------------------------------------------------------------------
-# Acceptance criterion 6 — delete_draft calls drafts().delete()
+# GmailClient.send_draft (AC #3)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_delete_draft_calls_api():
-    """delete_draft calls users().drafts().delete() with correct draft_id (AC 6)."""
-    svc = _make_mock_service()
-    client = _make_client(svc)
-    result = await client.delete_draft("draft_to_delete")
+async def test_send_draft_returns_message_id(gmail_client):
+    """send_draft returns the sent message id from gog response."""
+    canned = {"id": "sent_msg_001"}
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value=canned),
+    ):
+        message_id = await gmail_client.send_draft("draft_abc")
+
+    assert message_id == "sent_msg_001"
+
+
+@pytest.mark.asyncio
+async def test_send_draft_falls_back_to_draft_id_on_empty_response(gmail_client):
+    """send_draft returns the draft_id when gog response has no id."""
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value={}),
+    ):
+        result = await gmail_client.send_draft("draft_fallback")
+
+    assert result == "draft_fallback"
+
+
+# ---------------------------------------------------------------------------
+# GmailClient.delete_draft (AC #3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_draft_returns_true_on_success(gmail_client):
+    """delete_draft returns True when gog succeeds."""
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(return_value={}),
+    ):
+        result = await gmail_client.delete_draft("draft_ok")
 
     assert result is True
-    delete_call = svc.users.return_value.drafts.return_value.delete
-    assert delete_call.called
-    call_kwargs = delete_call.call_args.kwargs or dict(delete_call.call_args[1])
-    assert call_kwargs.get("id") == "draft_to_delete"
 
 
 @pytest.mark.asyncio
-async def test_delete_draft_returns_false_on_failure():
-    """delete_draft returns False (non-fatal) when the API call throws."""
-    svc = _make_mock_service()
-    svc.users.return_value.drafts.return_value.delete.return_value.execute.side_effect = (
-        Exception("network error")
-    )
-    client = _make_client(svc)
-    result = await client.delete_draft("bad_draft")
+async def test_delete_draft_returns_false_on_failure(gmail_client):
+    """delete_draft returns False (non-fatal) when gog raises."""
+    from integrations.google.gmail_client import GmailClientError
+
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(side_effect=GmailClientError("not found")),
+    ):
+        result = await gmail_client.delete_draft("bad_draft")
+
     assert result is False
 
 
 # ---------------------------------------------------------------------------
-# Acceptance criterion 18 — GoogleOAuthError does not crash the client
+# Error propagation (AC #4)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_gmail_client_handles_oauth_error_gracefully():
-    """GmailClient propagates GoogleOAuthError as GmailClientError (AC 18)."""
-    from integrations.google.gmail_client import GmailClient, GmailClientError
-    from integrations.google.oauth import GoogleOAuthTokenError
+async def test_gog_command_error_raises_gmail_client_error(gmail_client):
+    """GogCommandError from run_gog is wrapped as GmailClientError."""
+    from integrations.google.gmail_client import GmailClientError
+    from integrations.openclaw.client import GogCommandError
 
-    oauth = MagicMock()
-    oauth.build_service = AsyncMock(side_effect=GoogleOAuthTokenError("token expired"))
-    client = GmailClient(oauth_service=oauth, vip_senders=[])
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(side_effect=GogCommandError("exit 1", "Google nicht erreichbar.")),
+    ):
+        with pytest.raises(GmailClientError) as exc_info:
+            await gmail_client.list_unread()
 
-    with pytest.raises((GmailClientError, GoogleOAuthTokenError)):
-        await client.list_unread()
+    assert exc_info.value.spoken_message
+
+
+@pytest.mark.asyncio
+async def test_gog_not_installed_raises_gmail_client_error(gmail_client):
+    """GogNotInstalledError from run_gog is wrapped as GmailClientError."""
+    from integrations.google.gmail_client import GmailClientError
+    from integrations.openclaw.client import GogNotInstalledError
+
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(side_effect=GogNotInstalledError("gog not found")),
+    ):
+        with pytest.raises(GmailClientError) as exc_info:
+            await gmail_client.get_unread_count()
+
+    assert "gog" in exc_info.value.spoken_message.lower() or exc_info.value.spoken_message
+
+
+@pytest.mark.asyncio
+async def test_gog_command_error_in_create_draft_raises(gmail_client):
+    """GogCommandError during draft creation raises GmailClientError."""
+    from integrations.google.gmail_client import GmailClientError
+    from integrations.openclaw.client import GogCommandError
+
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(side_effect=GogCommandError("quota exceeded")),
+    ):
+        with pytest.raises(GmailClientError):
+            await gmail_client.create_draft("to@example.com", "Subj", "Body")
+
+
+@pytest.mark.asyncio
+async def test_gog_not_installed_in_send_draft_raises(gmail_client):
+    """GogNotInstalledError during draft send raises GmailClientError."""
+    from integrations.google.gmail_client import GmailClientError
+    from integrations.openclaw.client import GogNotInstalledError
+
+    with patch(
+        "integrations.google.gmail_client.run_gog",
+        new=AsyncMock(side_effect=GogNotInstalledError("no gog")),
+    ):
+        with pytest.raises(GmailClientError):
+            await gmail_client.send_draft("draft_xyz")
 
 
 # ---------------------------------------------------------------------------
-# Edge cases
+# Account args
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_message_include_body_true():
-    """get_message with include_body=True populates body_text."""
-    raw_msg = _make_raw_message(msg_id="body_test")
-    svc = _make_mock_service(message_response=raw_msg)
-    client = _make_client(svc)
-    msg = await client.get_message("body_test", include_body=True)
-    assert msg.body_text is not None
-    assert "Body content here" in msg.body_text
-
-
-@pytest.mark.asyncio
-async def test_get_message_include_body_false():
-    """get_message with include_body=False leaves body_text as None."""
-    raw_msg = _make_raw_message()
-    svc = _make_mock_service(message_response=raw_msg)
-    client = _make_client(svc)
-    msg = await client.get_message("test_id", include_body=False)
-    assert msg.body_text is None
-
-
-@pytest.mark.asyncio
-async def test_search_pagination():
-    """search follows nextPageToken for pagination."""
-    page1 = {"messages": [{"id": "m1"}, {"id": "m2"}], "nextPageToken": "tok123"}
-    page2 = {"messages": [{"id": "m3"}]}
-
-    svc = MagicMock()
-    # First call returns page1, second call returns page2
-    svc.users.return_value.messages.return_value.list.return_value.execute.side_effect = [
-        page1,
-        page2,
-    ]
-    raw = _make_raw_message()
-    svc.users.return_value.messages.return_value.get.return_value.execute.return_value = raw
-
+async def test_account_args_included_when_set():
+    """When account is configured, --account is passed to gog."""
     from integrations.google.gmail_client import GmailClient
 
-    oauth = MagicMock()
-    oauth.build_service = AsyncMock(return_value=svc)
-    client = GmailClient(oauth_service=oauth, vip_senders=[])
-    messages = await client.search("in:inbox", max_results=3)
-    assert len(messages) == 3
+    client = GmailClient(account="user@gmail.com", vip_senders=[], timeout_seconds=5.0)
+    captured: list[tuple] = []
+
+    async def capture_run(*args: str, **kwargs: Any) -> dict:
+        captured.append(args)
+        return {"messages": []}
+
+    with patch("integrations.google.gmail_client.run_gog", side_effect=capture_run):
+        await client.list_unread()
+
+    assert "--account" in captured[0]
+    idx = captured[0].index("--account")
+    assert captured[0][idx + 1] == "user@gmail.com"
 
 
 @pytest.mark.asyncio
-async def test_get_gmail_client_singleton():
-    """get_gmail_client returns the same singleton on repeated calls."""
+async def test_no_account_args_when_account_is_none(gmail_client):
+    """When account is None, --account is NOT passed to gog."""
+    captured: list[tuple] = []
+
+    async def capture_run(*args: str, **kwargs: Any) -> dict:
+        captured.append(args)
+        return {"messages": []}
+
+    with patch("integrations.google.gmail_client.run_gog", side_effect=capture_run):
+        await gmail_client.list_unread()
+
+    assert "--account" not in captured[0]
+
+
+# ---------------------------------------------------------------------------
+# Singleton factory
+# ---------------------------------------------------------------------------
+
+
+def test_get_gmail_client_singleton():
+    """get_gmail_client() returns the same instance on repeated calls."""
     import integrations.google.gmail_client as _mod
 
-    # Reset singleton between test runs
+    original = _mod._gmail_client_instance
     _mod._gmail_client_instance = None
 
-    mock_oauth_svc = MagicMock()
-    with patch(
-        "integrations.google.gmail_client.get_gmail_client.__module__",
-        create=True,
-    ):
-        pass
+    try:
+        with patch("utils.config_loader.get_config") as mock_cfg:
+            cfg = MagicMock()
+            cfg.get_section.return_value = {}
+            mock_cfg.return_value = cfg
 
-    # Directly patch the oauth module that get_gmail_client imports
-    with patch("integrations.google.oauth.get_google_oauth_service") as mock_get_svc:
-        mock_get_svc.return_value = mock_oauth_svc
-        c1 = _mod.get_gmail_client()
-        c2 = _mod.get_gmail_client()
-        assert c1 is c2
+            c1 = _mod.get_gmail_client()
+            c2 = _mod.get_gmail_client()
+            assert c1 is c2
+    finally:
+        _mod._gmail_client_instance = original
 
-    _mod._gmail_client_instance = None  # clean up
+
+def test_get_gmail_client_creates_new_after_reset():
+    """After singleton is cleared, a new instance is created."""
+    import integrations.google.gmail_client as _mod
+
+    original = _mod._gmail_client_instance
+    _mod._gmail_client_instance = None
+
+    try:
+        with patch("utils.config_loader.get_config") as mock_cfg:
+            cfg = MagicMock()
+            cfg.get_section.return_value = {}
+            mock_cfg.return_value = cfg
+
+            c1 = _mod.get_gmail_client()
+            _mod._gmail_client_instance = None
+            c2 = _mod.get_gmail_client()
+            assert c1 is not c2
+    finally:
+        _mod._gmail_client_instance = original

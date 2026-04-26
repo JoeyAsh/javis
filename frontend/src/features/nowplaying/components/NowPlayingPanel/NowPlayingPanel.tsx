@@ -1,81 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { usePanelAvailable } from '@app/providers/PanelAvailabilityProvider';
-import { useMockTicker } from '@common/hooks/useMockTicker';
 import { useNowPlaying } from '../../hooks/useNowPlaying';
 import { sendSpotifyCmd } from '../../nowplayingApi';
 import { payloadToTrack } from '../../utils';
 import { AVAILABILITY_TIMEOUT_MS } from '../../constants';
 import { AuthPrompt } from '../AuthPrompt';
-import { TrackInfo } from '../TrackInfo';
-import { TransportControls } from '../TransportControls';
-import { ProgressBar } from '../ProgressBar';
+import { SpotifyFullPanel } from '../SpotifyFullPanel';
+import { NowPlayingCompact } from '../NowPlayingCompact';
+import { NoPlaybackState } from './NoPlaybackState';
 import type { SpotifyCmdAction } from '../../types';
-import type { NowPlayingPanelProps, NowPlayingCompactProps, NowPlayingExpandedProps } from './NowPlayingPanel.types';
-import styles from './NowPlayingPanel.module.css';
-
-// ---------------------------------------------------------------------------
-// No-playback state
-// ---------------------------------------------------------------------------
-
-function NoPlaybackState(): ReactElement {
-    return (
-        <div className={styles.state}>
-            <span className={styles.stateLabel}>NO ACTIVE PLAYBACK</span>
-        </div>
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Compact view
-// ---------------------------------------------------------------------------
-
-function NowPlayingCompact({ track, onCmd }: NowPlayingCompactProps): ReactElement {
-    const tick = useMockTicker(1000, !track.playing);
-    const progress = track.playing
-        ? (track.progressMs + tick * 1000) % track.durationMs
-        : track.progressMs;
-    const pct = Math.min(100, (progress / track.durationMs) * 100);
-
-    return (
-        <div className={styles.compact}>
-            <div className={styles.compactTitle}>{track.title}</div>
-            <div className={styles.compactArtist}>{track.artist}</div>
-            <div className={styles.compactRow}>
-                <div className={styles.compactBar}>
-                    <div className={styles.compactBarFill} style={{ width: `${pct}%` }} />
-                </div>
-                <button
-                    type="button"
-                    aria-label={track.playing ? 'Pause' : 'Play'}
-                    data-no-drag
-                    className={styles.compactPlayBtn}
-                    onClick={() => onCmd(track.playing ? 'pause' : 'play')}
-                >
-                    {track.playing ? '⏸' : '▶'}
-                </button>
-            </div>
-        </div>
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Expanded view
-// ---------------------------------------------------------------------------
-
-function NowPlayingExpanded({ track, onCmd }: NowPlayingExpandedProps): ReactElement {
-    return (
-        <div className={styles.panel}>
-            <TrackInfo track={track} />
-            <ProgressBar track={track} />
-            <TransportControls track={track} onCmd={onCmd} />
-        </div>
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
+import type { NowPlayingPanelProps } from './NowPlayingPanel.types';
 
 export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): ReactElement | null {
     const { payload, hasLiveData } = useNowPlaying();
@@ -112,7 +47,7 @@ export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): Re
     // Show live data when available.
     if (payload !== null) {
         if (!payload.authenticated) {
-            return <AuthPrompt />;
+            return <AuthPrompt scopeUpgrade={payload.scope_upgrade_required} />;
         }
         const liveTrack = payloadToTrack(payload);
         if (!liveTrack) {
@@ -121,11 +56,11 @@ export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): Re
         return mode === 'compact' ? (
             <NowPlayingCompact track={liveTrack} onCmd={sendCmd} />
         ) : (
-            <NowPlayingExpanded track={liveTrack} onCmd={sendCmd} />
+            <SpotifyFullPanel track={liveTrack} onCmd={sendCmd} />
         );
     }
 
-    // Waiting for first frame — show empty state or mock.
+    // Waiting for first frame — show empty state.
     return <NoPlaybackState />;
 }
 

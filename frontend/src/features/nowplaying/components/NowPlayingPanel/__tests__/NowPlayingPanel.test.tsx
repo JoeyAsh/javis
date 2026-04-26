@@ -28,6 +28,8 @@ const livePayload: SpotifyStatePayload = {
         durationMs: 241_000,
         progressMs: 113_000,
         isPlaying: true,
+        shuffle: false,
+        repeat: 'off',
     },
     device: {
         name: 'Studio Monitors',

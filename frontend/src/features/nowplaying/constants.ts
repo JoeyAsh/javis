@@ -5,3 +5,5 @@ export const SEARCH_DEBOUNCE_MS = 400;
 export const LIBRARY_PAGE_LIMIT = 50;
 export const JARVIS_DEVICE_NAME = 'JARVIS';
 export const SDK_INITIAL_VOLUME = 0.5;
+/** Initial UI volume level (0..100 scale matching TransportControls slider). */
+export const INITIAL_UI_VOLUME = 50;

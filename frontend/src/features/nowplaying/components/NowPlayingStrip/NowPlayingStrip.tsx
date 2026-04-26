@@ -1,10 +1,26 @@
+import { useCallback, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { TrackInfo } from '../TrackInfo';
 import { ProgressBar } from '../ProgressBar';
 import { TransportControls } from '../TransportControls';
+import { INITIAL_UI_VOLUME } from '../../constants';
 import type { NowPlayingStripProps } from './NowPlayingStrip.types';
 
 export function NowPlayingStrip({ track, onCmd }: NowPlayingStripProps): ReactElement {
+    const [volume, setVolume] = useState<number>(INITIAL_UI_VOLUME);
+    const volumeBeforeMuteRef = useRef<number>(INITIAL_UI_VOLUME);
+
+    const handleVolume = useCallback(
+        (value: number): void => {
+            if (value > 0) {
+                volumeBeforeMuteRef.current = value;
+            }
+            setVolume(value);
+            onCmd('volume', value);
+        },
+        [onCmd],
+    );
+
     if (track === null) {
         return (
             <div className="flex flex-col gap-0 border-b border-[var(--border)] pb-2 mb-2 flex-shrink-0">
@@ -19,7 +35,12 @@ export function NowPlayingStrip({ track, onCmd }: NowPlayingStripProps): ReactEl
         <div className="flex flex-col gap-0 border-b border-[var(--border)] pb-2 mb-2 flex-shrink-0">
             <TrackInfo track={track} />
             <ProgressBar track={track} />
-            <TransportControls track={track} onCmd={onCmd} />
+            <TransportControls
+                track={track}
+                onCmd={onCmd}
+                volume={volume}
+                onVolume={handleVolume}
+            />
         </div>
     );
 }

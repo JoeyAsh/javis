@@ -1,3 +1,6 @@
+/* Justification: volume slider uses a dynamic linear-gradient fill (--vol-pct CSS custom property)
+   and cross-browser ::-webkit-slider-thumb / ::-moz-range-thumb pseudo-elements that Tailwind cannot express. */
+
 .controls {
     display: flex;
     justify-content: center;
@@ -46,4 +49,43 @@
 .btnPrimary:hover {
     background: var(--accent-bright);
     box-shadow: var(--glow-strong);
+}
+
+.volumeSlider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 72px;
+    height: 2px;
+    border-radius: 0;
+    cursor: pointer;
+    outline: none;
+    background: linear-gradient(
+        to right,
+        var(--accent) 0%,
+        var(--accent) var(--vol-pct, 50%),
+        color-mix(in srgb, var(--accent) 30%, transparent) var(--vol-pct, 50%),
+        color-mix(in srgb, var(--accent) 30%, transparent) 100%
+    );
+}
+
+.volumeSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 0;
+    background: var(--accent-bright);
+    cursor: pointer;
+    border: none;
+    box-shadow: var(--glow);
+}
+
+.volumeSlider::-moz-range-thumb {
+    width: 8px;
+    height: 8px;
+    border-radius: 0;
+    background: var(--accent-bright);
+    cursor: pointer;
+    border: none;
+    box-shadow: var(--glow);
 }

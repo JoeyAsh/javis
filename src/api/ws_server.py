@@ -791,6 +791,34 @@ async def _spotify_state_loop(client: SpotifyClient, interval_seconds: int) -> N
             logger.error(f"Spotify poller unexpected error: {exc}")
 
 
+async def spotify_oauth_start_handler(request: web.Request) -> web.Response:
+    """Handle GET /oauth/spotify/start — redirect browser to Spotify's OAuth page.
+
+    Registered on the HTTP server at :8766.  The frontend AuthPrompt
+    VERBINDEN button opens this URL directly; the handler delegates PKCE
+    challenge / scope / redirect_uri construction to
+    :meth:`SpotifyClient.get_auth_url` and issues a 302 redirect so the
+    browser lands on Spotify's authorize endpoint.
+
+    Returns:
+        302 redirect to the Spotify authorize URL, or 503 if the Spotify
+        integration is not initialised.
+    """
+    if _spotify_client is None:
+        return web.Response(
+            status=503,
+            content_type="text/html",
+            text=(
+                "<html><body><h2>Spotify client not ready.</h2>"
+                "<p>The backend Spotify integration is not initialised.</p></body></html>"
+            ),
+        )
+
+    auth_url = _spotify_client.get_auth_url()
+    logger.info("Redirecting to Spotify OAuth URL")
+    raise web.HTTPFound(location=auth_url)
+
+
 async def spotify_oauth_callback_handler(request: web.Request) -> web.Response:
     """Handle GET /oauth/spotify/callback — exchange PKCE code for token.
 
@@ -4171,6 +4199,7 @@ async def start_ws_server(
     http_app.router.add_get("/health", health_handler)
     http_app.router.add_get("/voices", voices_handler)
     http_app.router.add_post("/notify/wife", notify_wife_handler)
+    http_app.router.add_get("/oauth/spotify/start", spotify_oauth_start_handler)
     http_app.router.add_get("/oauth/spotify/callback", spotify_oauth_callback_handler)
     http_app.router.add_get("/api/config/repos", config_repos_get_handler)
     http_app.router.add_post("/api/config/repos", config_repos_post_handler)

@@ -523,3 +523,72 @@ def test_auth_error_branch_wires_orchestrator():
         "_orchestrator.set_spotify_client(_spotify_client) must be called inside "
         "the SpotifyAuthError branch so voice intents return a proper spoken response."
     )
+
+
+# ---------------------------------------------------------------------------
+# /oauth/spotify/start route — registration + handler behaviour
+# ---------------------------------------------------------------------------
+
+
+def test_start_route_registered_in_start_ws_server():
+    """start_ws_server must register add_get('/oauth/spotify/start', ...)."""
+    src = _start_ws_server_source()
+    assert 'add_get("/oauth/spotify/start"' in src, (
+        "start_ws_server must register the /oauth/spotify/start route so the "
+        "frontend AuthPrompt VERBINDEN button does not receive a 404."
+    )
+
+
+@pytest.mark.asyncio
+async def test_oauth_start_redirects_to_auth_url():
+    """GET /oauth/spotify/start returns 302 with Location set to get_auth_url() result."""
+    import api.ws_server as srv
+
+    fake_url = "https://accounts.spotify.com/authorize?response_type=code&fake=1"
+
+    mock_client = MagicMock()
+    mock_client.get_auth_url.return_value = fake_url
+
+    orig = srv._spotify_client
+    srv._spotify_client = mock_client
+
+    try:
+        from aiohttp.test_utils import make_mocked_request
+
+        from api.ws_server import spotify_oauth_start_handler
+
+        request = make_mocked_request("GET", "/oauth/spotify/start")
+
+        try:
+            await spotify_oauth_start_handler(request)
+            pytest.fail("Expected HTTPFound to be raised")
+        except Exception as exc:
+            # aiohttp raises web.HTTPFound as an exception; check its attributes.
+            assert exc.status == 302, f"Expected 302, got {exc.status}"
+            assert exc.location == fake_url, (
+                f"Location header mismatch: expected {fake_url!r}, got {exc.location!r}"
+            )
+    finally:
+        srv._spotify_client = orig
+
+
+@pytest.mark.asyncio
+async def test_oauth_start_no_client_returns_503():
+    """GET /oauth/spotify/start returns 503 when _spotify_client is None."""
+    import api.ws_server as srv
+
+    orig = srv._spotify_client
+    srv._spotify_client = None
+
+    try:
+        from aiohttp.test_utils import make_mocked_request
+
+        from api.ws_server import spotify_oauth_start_handler
+
+        request = make_mocked_request("GET", "/oauth/spotify/start")
+        response = await spotify_oauth_start_handler(request)
+
+        assert response.status == 503
+        assert "not ready" in response.text.lower()
+    finally:
+        srv._spotify_client = orig

@@ -12,7 +12,7 @@ cryptography
 
 # Audio / Voice pipeline
 faster-whisper
-openWakeWord
+openwakeword>=0.6.0
 onnxruntime
 # Wake-word inference: prefer ai-edge-litert (TFLite, better accuracy
 # per upstream); onnxruntime is kept as a fallback when neither tflite

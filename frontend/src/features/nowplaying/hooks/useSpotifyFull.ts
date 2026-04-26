@@ -4,6 +4,9 @@ import {
     setActiveTab,
     setLibraryView as setLibraryViewAction,
     selectPlaylist,
+    setSelectedPlaylistUri,
+    selectAlbum,
+    setSelectedAlbumUri,
     setSearchQuery,
     setPremiumError,
 } from '../nowplayingSlice';
@@ -11,6 +14,8 @@ import {
     selectActiveTab,
     selectLibraryView,
     selectSelectedPlaylistId,
+    selectSelectedPlaylistUri,
+    selectSelectedAlbumUri,
     selectSearchQuery,
     selectPremiumError,
 } from '../nowplayingSelectors';
@@ -23,7 +28,8 @@ import {
     usePlayContextMutation,
     usePlayUrisMutation,
 } from '../nowplayingApi';
-import type { SpotifyTab } from '../types';
+import { LIBRARY_PAGE_LIMIT } from '../constants';
+import type { SpotifyTab, SpotifyPlaylist, SpotifyLibraryPage } from '../types';
 import type { UseSpotifyFullReturn } from './useSpotifyFull.types';
 
 export function useSpotifyFull(): UseSpotifyFullReturn {
@@ -32,12 +38,19 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
     const activeTab = useAppSelector(selectActiveTab);
     const libraryView = useAppSelector(selectLibraryView);
     const selectedPlaylistId = useAppSelector(selectSelectedPlaylistId);
+    const selectedPlaylistUri = useAppSelector(selectSelectedPlaylistUri);
+    const selectedAlbumUri = useAppSelector(selectSelectedAlbumUri);
     const searchQuery = useAppSelector(selectSearchQuery);
     const premiumError = useAppSelector(selectPremiumError);
 
-    const { isLoading: isLoadingPlaylists } = useGetPlaylistsQuery({}, { skip: activeTab !== 'library' });
+    // Single call with the correct page limit — LibraryTab reads data from here
+    const { data: playlistsPage, isLoading: isLoadingPlaylists } = useGetPlaylistsQuery(
+        { limit: LIBRARY_PAGE_LIMIT },
+        { skip: activeTab !== 'library' },
+    );
+
     const { isLoading: isLoadingPlaylistTracks } = useGetPlaylistTracksQuery(
-        { id: selectedPlaylistId ?? '' },
+        { id: selectedPlaylistId ?? '', limit: LIBRARY_PAGE_LIMIT },
         { skip: libraryView !== 'playlist-tracks' || selectedPlaylistId === null },
     );
 
@@ -61,17 +74,20 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
         [dispatch],
     );
 
+    // Store both id and uri so LibraryTab can call playContext with the context URI
     const openPlaylist = useCallback(
-        (id: string): void => {
+        (id: string, uri: string): void => {
             dispatch(selectPlaylist(id));
+            dispatch(setSelectedPlaylistUri(uri));
             dispatch(setLibraryViewAction('playlist-tracks'));
         },
         [dispatch],
     );
 
     const openAlbum = useCallback(
-        (id: string): void => {
-            dispatch(selectPlaylist(id));
+        (id: string, uri: string): void => {
+            dispatch(selectAlbum(id));
+            dispatch(setSelectedAlbumUri(uri));
             dispatch(setLibraryViewAction('album-tracks'));
         },
         [dispatch],
@@ -80,6 +96,7 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
     const goBack = useCallback((): void => {
         dispatch(setLibraryViewAction('playlists'));
         dispatch(selectPlaylist(null));
+        dispatch(selectAlbum(null));
     }, [dispatch]);
 
     const handleSetSearchQuery = useCallback(
@@ -132,6 +149,10 @@ export function useSpotifyFull(): UseSpotifyFullReturn {
         openPlaylist,
         openAlbum,
         goBack,
+
+        playlistsPage: playlistsPage as SpotifyLibraryPage<SpotifyPlaylist> | undefined,
+        selectedPlaylistUri,
+        selectedAlbumUri,
 
         searchQuery,
         setSearchQuery: handleSetSearchQuery,

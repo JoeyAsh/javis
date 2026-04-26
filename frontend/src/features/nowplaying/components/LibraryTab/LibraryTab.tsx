@@ -1,12 +1,13 @@
 import { useCallback } from 'react';
 import type { ReactElement } from 'react';
 import { useSpotifyFull } from '../../hooks/useSpotifyFull';
-import {
-    useGetPlaylistsQuery,
-    useGetPlaylistTracksQuery,
-} from '../../nowplayingApi';
+import { useGetPlaylistTracksQuery, useGetAlbumTracksQuery } from '../../nowplayingApi';
 import { useAppSelector } from '@app';
-import { selectSelectedPlaylistId, selectLibraryView } from '../../nowplayingSelectors';
+import {
+    selectSelectedPlaylistId,
+    selectSelectedAlbumId,
+    selectLibraryView,
+} from '../../nowplayingSelectors';
 import { LIBRARY_PAGE_LIMIT } from '../../constants';
 import { PlaylistRow } from '../PlaylistRow';
 import { TrackRow } from '../TrackRow';
@@ -14,30 +15,54 @@ import type { SpotifyPlaylist, SpotifyTrackResult } from '../../types';
 import type { LibraryTabProps } from './LibraryTab.types';
 
 export function LibraryTab(_props: LibraryTabProps): ReactElement {
-    const { openPlaylist, goBack, playUris, addToQueue, premiumError, isLoadingLibrary } =
-        useSpotifyFull();
+    const {
+        openPlaylist,
+        goBack,
+        playContext,
+        playUris,
+        addToQueue,
+        premiumError,
+        isLoadingLibrary,
+        playlistsPage,
+        selectedPlaylistUri,
+        selectedAlbumUri,
+    } = useSpotifyFull();
 
     const libraryView = useAppSelector(selectLibraryView);
     const selectedPlaylistId = useAppSelector(selectSelectedPlaylistId);
+    const selectedAlbumId = useAppSelector(selectSelectedAlbumId);
 
-    const { data: playlistsPage } = useGetPlaylistsQuery({ limit: LIBRARY_PAGE_LIMIT });
     const { data: tracksPage } = useGetPlaylistTracksQuery(
         { id: selectedPlaylistId ?? '', limit: LIBRARY_PAGE_LIMIT },
         { skip: libraryView !== 'playlist-tracks' || selectedPlaylistId === null },
     );
 
+    const { data: albumTracksPage } = useGetAlbumTracksQuery(
+        { id: selectedAlbumId ?? '', limit: LIBRARY_PAGE_LIMIT },
+        { skip: libraryView !== 'album-tracks' || selectedAlbumId === null },
+    );
+
     const handlePlaylistClick = useCallback(
         (playlist: SpotifyPlaylist): void => {
-            openPlaylist(playlist.id);
+            openPlaylist(playlist.id, playlist.uri);
         },
         [openPlaylist],
     );
 
+    // Fix 1: use playContext so playback joins the correct queue context.
+    // playlist-tracks and album-tracks both supply a context URI;
+    // saved-tracks (no parent context) falls back to playUris.
     const handleTrackClick = useCallback(
         (uri: string): void => {
-            playUris([uri]);
+            if (libraryView === 'playlist-tracks' && selectedPlaylistUri !== null) {
+                playContext(selectedPlaylistUri, uri);
+            } else if (libraryView === 'album-tracks' && selectedAlbumUri !== null) {
+                playContext(selectedAlbumUri, uri);
+            } else {
+                playUris([uri]);
+            }
         },
-        [playUris],
+        [libraryView, selectedPlaylistUri, selectedAlbumUri, playContext, playUris],
     );
 
     if (premiumError) {
@@ -89,6 +114,42 @@ export function LibraryTab(_props: LibraryTabProps): ReactElement {
                     {tracksPage.offset + tracksPage.items.length < tracksPage.total && (
                         <div className="px-2 py-2 text-[9px] text-[var(--text-muted)] font-[var(--font)] tracking-widest text-center">
                             + {tracksPage.total - tracksPage.offset - tracksPage.items.length} MORE
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    if (libraryView === 'album-tracks' && albumTracksPage !== undefined) {
+        return (
+            <div className="flex flex-col overflow-hidden flex-1">
+                <div className="flex items-center gap-2 mb-2 px-2 flex-shrink-0">
+                    <button
+                        type="button"
+                        aria-label="Back to playlists"
+                        className="text-[9px] text-[var(--accent)] font-[var(--font)] tracking-widest hover:text-[var(--accent-bright)] transition-colors duration-[var(--dur-fast)] cursor-pointer bg-transparent border-none p-0"
+                        onClick={goBack}
+                    >
+                        ← BACK
+                    </button>
+                    <span className="text-[9px] text-[var(--text-muted)] font-[var(--font)] tracking-widest truncate">
+                        ALBUM
+                    </span>
+                </div>
+                <div className="overflow-y-auto flex-1">
+                    {albumTracksPage.items.map((track: SpotifyTrackResult, idx: number) => (
+                        <TrackRow
+                            key={track.id}
+                            track={track}
+                            index={idx}
+                            onClick={handleTrackClick}
+                            onAddToQueue={addToQueue}
+                        />
+                    ))}
+                    {albumTracksPage.offset + albumTracksPage.items.length < albumTracksPage.total && (
+                        <div className="px-2 py-2 text-[9px] text-[var(--text-muted)] font-[var(--font)] tracking-widest text-center">
+                            + {albumTracksPage.total - albumTracksPage.offset - albumTracksPage.items.length} MORE
                         </div>
                     )}
                 </div>

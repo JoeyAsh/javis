@@ -28,6 +28,12 @@ export function SearchTab(_props: SearchTabProps): ReactElement {
         [setSearchQuery],
     );
 
+    // Fix #5: onChange is a no-op — onSearch (debounced) is the sole Redux updater.
+    // This prevents double-dispatch on every keystroke.
+    const handleNoOp = useCallback((_v: string): void => {
+        // intentionally empty
+    }, []);
+
     const handleTrackClick = useCallback(
         (uri: string): void => {
             playUris([uri]);
@@ -37,7 +43,7 @@ export function SearchTab(_props: SearchTabProps): ReactElement {
 
     const handlePlaylistClick = useCallback(
         (playlist: SpotifyPlaylist): void => {
-            openPlaylist(playlist.id);
+            openPlaylist(playlist.id, playlist.uri);
         },
         [openPlaylist],
     );
@@ -60,9 +66,10 @@ export function SearchTab(_props: SearchTabProps): ReactElement {
 
     return (
         <div className="flex flex-col overflow-hidden flex-1">
+            {/* onChange is intentionally a no-op: onSearch (debounced) is the sole Redux updater (fix #5). */}
             <SearchInput
                 value={searchQuery}
-                onChange={setSearchQuery}
+                onChange={handleNoOp}
                 onSearch={handleSearch}
             />
             {!hasQuery && (

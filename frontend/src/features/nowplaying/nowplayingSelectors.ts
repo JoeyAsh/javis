@@ -21,8 +21,16 @@ export function selectSelectedPlaylistId(state: RootState): string | null {
     return state.nowplaying.selectedPlaylistId;
 }
 
+export function selectSelectedPlaylistUri(state: RootState): string | null {
+    return state.nowplaying.selectedPlaylistUri;
+}
+
 export function selectSelectedAlbumId(state: RootState): string | null {
     return state.nowplaying.selectedAlbumId;
+}
+
+export function selectSelectedAlbumUri(state: RootState): string | null {
+    return state.nowplaying.selectedAlbumUri;
 }
 
 export function selectSearchQuery(state: RootState): string {

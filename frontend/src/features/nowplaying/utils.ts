@@ -43,6 +43,15 @@ export function isSearchAlbum(item: SpotifyTrackResult | SpotifyArtist | Spotify
     return 'trackCount' in item && !('owner' in item);
 }
 
+/**
+ * Derives a 3-character monogram from a string.
+ * Strips non-alphanumeric chars, takes first 3, uppercases, and pads with
+ * middle-dot if the result is shorter than 3 characters.
+ */
+export function deriveMonogram(s: string): string {
+    return s.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase().padEnd(3, '·');
+}
+
 export function formatMs(ms: number): string {
     const totalSec = Math.floor(ms / 1000);
     const m = Math.floor(totalSec / 60);

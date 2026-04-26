@@ -1,11 +1,20 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ReactElement, ChangeEvent, KeyboardEvent } from 'react';
 import { SEARCH_DEBOUNCE_MS } from '../../constants';
 import type { SearchInputProps } from './SearchInput.types';
 
 export function SearchInput({ value, onChange, onSearch }: SearchInputProps): ReactElement {
+    // Local state drives the visible input — avoids a Redux round-trip on every keystroke.
+    const [inputValue, setInputValue] = useState(value);
     const inputRef = useRef<HTMLInputElement>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Sync local state when the external value is cleared (e.g. Escape from parent).
+    useEffect(() => {
+        if (value === '') {
+            setInputValue('');
+        }
+    }, [value]);
 
     useEffect(() => {
         inputRef.current?.focus();
@@ -22,8 +31,11 @@ export function SearchInput({ value, onChange, onSearch }: SearchInputProps): Re
     const handleChange = useCallback(
         (e: ChangeEvent<HTMLInputElement>): void => {
             const next = e.target.value;
+            setInputValue(next);
+            // Notify parent of every keystroke (for controlled-value tracking).
             onChange(next);
 
+            // Debounce: only onSearch (which updates Redux) fires after delay.
             if (debounceRef.current !== null) {
                 clearTimeout(debounceRef.current);
             }
@@ -38,29 +50,30 @@ export function SearchInput({ value, onChange, onSearch }: SearchInputProps): Re
     const handleKeyDown = useCallback(
         (e: KeyboardEvent<HTMLInputElement>): void => {
             if (e.key === 'Escape') {
-                onChange('');
-                onSearch('');
                 if (debounceRef.current !== null) {
                     clearTimeout(debounceRef.current);
                     debounceRef.current = null;
                 }
+                setInputValue('');
+                onChange('');
+                onSearch('');
             }
             if (e.key === 'Enter') {
                 if (debounceRef.current !== null) {
                     clearTimeout(debounceRef.current);
                     debounceRef.current = null;
                 }
-                onSearch(value);
+                onSearch(inputValue);
             }
         },
-        [onChange, onSearch, value],
+        [onChange, onSearch, inputValue],
     );
 
     return (
         <input
             ref={inputRef}
             type="text"
-            value={value}
+            value={inputValue}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder="SEARCH SPOTIFY"

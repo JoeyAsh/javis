@@ -1029,7 +1029,6 @@ async def _start_mail_poller(poll_interval: int, vip_senders: list[str]) -> None
         vip_senders: VIP sender list forwarded to the Gmail client.
     """
     from integrations.google.gmail_client import GmailClientError  # noqa: PLC0415
-    from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
 
     logger.info(f"Mail poller started (interval={poll_interval}s)")
     consecutive_failures = 0
@@ -1047,18 +1046,8 @@ async def _start_mail_poller(poll_interval: int, vip_senders: list[str]) -> None
         await asyncio.sleep(sleep_secs)
 
         try:
-            # Skip silently when OAuth hasn't been completed yet — don't spam
-            # the interactive flow from a background task; that job belongs
-            # to explicit voice triggers or manual CLI login.
-            from integrations.google.oauth import get_google_oauth_service as _get_oauth
-            from utils.config_loader import get_config as _get_cfg
-
-            _gmail_scopes_cfg = _get_cfg().get_section("gmail") or {}
-            _gmail_scopes = _gmail_scopes_cfg.get("scopes", [])
-            if not await _get_oauth().is_authenticated(_gmail_scopes):
-                logger.debug("Mail poller: skipping — Google OAuth not yet completed")
-                continue
-
+            # Auth is managed by gog's own token store (gog auth add).
+            # No JARVIS-side OAuth gate needed after migration to gog (ADR-0001).
             client = get_gmail_client(vip_senders=vip_senders)
             messages = await client.list_unread(max_results=5)
             unread_count = await client.get_unread_count()
@@ -1068,15 +1057,10 @@ async def _start_mail_poller(poll_interval: int, vip_senders: list[str]) -> None
             logger.debug(f"Mail state broadcast: {unread_count} unread, {len(messages)} msgs")
             consecutive_failures = 0
 
-        except (GoogleOAuthError,) as exc:
-            consecutive_failures += 1
-            logger.warning(
-                f"Mail poller: OAuth error (failure #{consecutive_failures}): {exc}"
-            )
         except GmailClientError as exc:
             consecutive_failures += 1
             logger.warning(
-                f"Mail poller: Gmail API error (failure #{consecutive_failures}): {exc}"
+                f"Mail poller: Gmail error (failure #{consecutive_failures}): {exc}"
             )
         except asyncio.CancelledError:
             logger.info("Mail poller cancelled")
@@ -1309,7 +1293,6 @@ async def _handle_calendar_confirm(
         state["pending_calendar_op"] = None
 
         from integrations.google.calendar_client import CalendarClientError  # noqa: PLC0415
-        from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
 
         try:
             client = get_calendar_client()
@@ -1354,7 +1337,7 @@ async def _handle_calendar_confirm(
             else:
                 raise ValueError(f"Unsupported calendar op or missing event_id: {op}")
 
-        except (GoogleOAuthError, CalendarClientError) as exc:
+        except CalendarClientError as exc:
             err_msg = str(exc)
             logger.error(f"Calendar {op} failed after confirmation: {err_msg}")
             await broadcast_calendar_op_done({"op": op, "success": False, "error": err_msg})
@@ -1430,7 +1413,6 @@ async def _start_calendar_poller(poll_interval: int) -> None:
     from datetime import datetime, timedelta, timezone  # noqa: PLC0415
 
     from integrations.google.calendar_client import CalendarClientError  # noqa: PLC0415
-    from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
     from utils.config_loader import get_config as _get_cfg  # noqa: PLC0415
     from utils.events import Event, EventBus  # noqa: PLC0415  # type annotations
 
@@ -1471,17 +1453,8 @@ async def _start_calendar_poller(poll_interval: int) -> None:
         reminder_thresholds: list[int] = _cal_cfg.get("reminder_thresholds_minutes", [10, 5, 1])
 
         try:
-            # Skip silently when OAuth hasn't been completed yet — don't spam
-            # the interactive flow from a background task.
-            from integrations.google.oauth import (  # noqa: PLC0415
-                get_google_oauth_service as _get_oauth,
-            )
-
-            _cal_scopes = _cal_cfg.get("scopes", [])
-            if not await _get_oauth().is_authenticated(_cal_scopes):
-                logger.debug("Calendar poller: skipping — Google OAuth not yet completed")
-                continue
-
+            # Auth is managed by gog's own token store (gog auth add).
+            # No JARVIS-side OAuth gate needed after migration to gog (ADR-0001).
             now = datetime.now(timezone.utc)
             client = get_calendar_client()
             events = await client.list_events(
@@ -1541,11 +1514,6 @@ async def _start_calendar_poller(poll_interval: int) -> None:
                 key for key in _fired_reminders if key[0] not in stale_ids
             }
 
-        except (GoogleOAuthError,) as exc:
-            consecutive_failures += 1
-            logger.warning(
-                f"Calendar poller: OAuth error (failure #{consecutive_failures}): {exc}"
-            )
         except CalendarClientError as exc:
             consecutive_failures += 1
             logger.warning(
@@ -2973,17 +2941,15 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         _gmail_cfg = _get_cfg().get_section("gmail") or {}
         if _gmail_cfg.get("enabled", False):
             from integrations.google.gmail_client import get_gmail_client as _get_gc
-            from integrations.google.oauth import get_google_oauth_service as _get_oauth
 
-            _scopes = _gmail_cfg.get("scopes", [])
-            if await _get_oauth().is_authenticated(_scopes):
-                _uc = await asyncio.wait_for(
-                    _get_gc(
-                        vip_senders=_gmail_cfg.get("vip_senders", [])
-                    ).get_unread_count(),
-                    timeout=3.0,
-                )
-                _welcome_unread_ctx = f" {_uc} ungelesene E-Mail(s)."
+            # Auth is managed by gog's own token store — no JARVIS-side gate needed.
+            _uc = await asyncio.wait_for(
+                _get_gc(
+                    vip_senders=_gmail_cfg.get("vip_senders", [])
+                ).get_unread_count(),
+                timeout=3.0,
+            )
+            _welcome_unread_ctx = f" {_uc} ungelesene E-Mail(s)."
     except Exception as _wexc:
         logger.debug(f"Welcome unread count fetch skipped: {_wexc}")
 

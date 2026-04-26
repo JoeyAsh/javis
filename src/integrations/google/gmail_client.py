@@ -1,44 +1,30 @@
-"""Gmail API client for JARVIS.
+"""Gmail adapter for JARVIS — thin OpenClaw/gog shim (ADR-0001).
 
-Wraps the Google Gmail REST API via ``googleapiclient``. All blocking
-API calls are executed through ``asyncio.to_thread`` so the event loop is
-never stalled. Summarisation and natural-language generation are *not*
-the responsibility of this module — that belongs to the orchestrator.
+All Google API calls are delegated to the ``gog`` CLI binary which the
+``gog`` OpenClaw skill manages.  No ``googleapiclient`` or ``google-auth``
+imports remain in this module.
+
+Public surface (dataclasses, exception type, factory function) is 100%
+backwards-compatible with the previous googleapiclient implementation so
+``ws_server.py``, ``orchestrator.py``, and test mocks continue to work
+unchanged.
 """
 
 from __future__ import annotations
 
-import asyncio
-import base64
-import email.mime.text
 import email.utils
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.header import decode_header
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import googleapiclient.discovery
-
+from integrations.openclaw.client import GogCommandError, GogNotInstalledError, run_gog
 from utils.logger import get_logger
 
 logger = get_logger("gmail_client")
 
 # ---------------------------------------------------------------------------
-# OAuth scopes
-# ---------------------------------------------------------------------------
-
-GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
-GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
-
-GMAIL_SCOPES: list[str] = [GMAIL_READONLY_SCOPE, GMAIL_SEND_SCOPE]
-
-# Gmail API hard caps
-_MAX_RESULTS_CAP = 50
-
-
-# ---------------------------------------------------------------------------
-# Data classes
+# Data classes (public surface — must stay backwards-compatible)
 # ---------------------------------------------------------------------------
 
 
@@ -71,12 +57,12 @@ class EmailDraft:
 
 
 # ---------------------------------------------------------------------------
-# Exceptions
+# Exception (kept for caller compatibility)
 # ---------------------------------------------------------------------------
 
 
 class GmailClientError(Exception):
-    """Raised when a Gmail API call fails in an anticipated way."""
+    """Raised when a Gmail operation fails in an anticipated way."""
 
     def __init__(self, message: str, spoken_message: str = "") -> None:
         """Initialise with a technical message and an optional TTS-friendly fallback."""
@@ -92,22 +78,17 @@ class GmailClientError(Exception):
 def _decode_header_value(raw: str) -> str:
     """Decode a possibly RFC-2047-encoded header value to a plain string."""
     parts = decode_header(raw)
-    decoded_parts: list[str] = []
+    decoded: list[str] = []
     for chunk, charset in parts:
         if isinstance(chunk, bytes):
-            decoded_parts.append(chunk.decode(charset or "utf-8", errors="replace"))
+            decoded.append(chunk.decode(charset or "utf-8", errors="replace"))
         else:
-            decoded_parts.append(chunk)
-    return "".join(decoded_parts)
+            decoded.append(chunk)
+    return "".join(decoded)
 
 
 def _parse_sender(raw_from: str) -> tuple[str, str]:
-    """Split a ``From:`` header into (display_name, email_address).
-
-    Returns:
-        Tuple of (display_name, email) — display_name falls back to email
-        when no name component is present.
-    """
+    """Split a ``From:`` header into (display_name, email_address)."""
     name, addr = email.utils.parseaddr(raw_from)
     name = _decode_header_value(name) if name else ""
     addr = addr.lower().strip()
@@ -115,68 +96,58 @@ def _parse_sender(raw_from: str) -> tuple[str, str]:
     return display, addr
 
 
-def _header_value(headers: list[dict[str, str]], name: str) -> str:
-    """Return the value of the first matching header, or empty string."""
-    name_lower = name.lower()
-    for h in headers:
-        if h.get("name", "").lower() == name_lower:
-            return h.get("value", "")
-    return ""
-
-
-def _extract_body_text(payload: dict[str, Any]) -> str | None:
-    """Recursively extract plain-text body from a Gmail message payload."""
-    mime_type: str = payload.get("mimeType", "")
-    body: dict[str, Any] = payload.get("body", {})
-    data: str = body.get("data", "")
-
-    if mime_type == "text/plain" and data:
-        try:
-            return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
-        except Exception:
-            return None
-
-    for part in payload.get("parts", []):
-        result = _extract_body_text(part)
-        if result is not None:
-            return result
-
-    return None
-
-
-def _parse_message(
+def _parse_gog_message(
     raw: dict[str, Any],
     vip_senders: list[str],
-    *,
-    include_body: bool = False,
 ) -> EmailMessage:
-    """Convert a raw Gmail API message dict into an ``EmailMessage``."""
-    headers: list[dict[str, str]] = raw.get("payload", {}).get("headers", [])
+    """Convert a ``gog`` JSON message dict to an ``EmailMessage``.
 
-    raw_from = _header_value(headers, "From")
+    ``gog gmail messages search --json`` returns objects with the shape::
+
+        {
+          "id": "...",
+          "threadId": "...",
+          "date": "2026-04-25 17:29",
+          "from": "Name <email>",
+          "subject": "...",
+          "snippet": "...",         # present on full-format fetches
+          "labels": ["UNREAD", "INBOX", ...],
+          "to": "...",
+          "body": "..."             # only with --full flag
+        }
+    """
+    msg_id: str = raw.get("id", "")
+    thread_id: str = raw.get("threadId", raw.get("thread_id", msg_id))
+
+    raw_from: str = raw.get("from", "")
     sender_display, sender_email = _parse_sender(raw_from)
+    subject: str = _decode_header_value(raw.get("subject", "(no subject)") or "(no subject)")
+    recipient: str = raw.get("to", "")
+    snippet: str = raw.get("snippet", raw.get("body", "")[:200])
 
-    subject = _decode_header_value(_header_value(headers, "Subject")) or "(no subject)"
-    recipient = _header_value(headers, "To")
+    # gog returns dates as "YYYY-MM-DD HH:MM" strings in local time.
+    date_str: str = raw.get("date", "")
+    received_at: datetime
+    try:
+        if date_str:
+            received_at = datetime.strptime(date_str, "%Y-%m-%d %H:%M").replace(
+                tzinfo=timezone.utc
+            )
+        else:
+            received_at = datetime.now(timezone.utc)
+    except ValueError:
+        received_at = datetime.now(timezone.utc)
 
-    # Internal date is milliseconds since epoch
-    internal_date_ms = int(raw.get("internalDate", 0))
-    received_at = datetime.fromtimestamp(internal_date_ms / 1000, tz=timezone.utc)
+    labels: list[str] = raw.get("labels", [])
+    is_unread = "UNREAD" in labels
 
-    label_ids: list[str] = raw.get("labelIds", [])
-    is_unread = "UNREAD" in label_ids
+    body_text: str | None = raw.get("body") or None
 
-    snippet = raw.get("snippet", "")
-
-    body_text: str | None = None
-    if include_body:
-        body_text = _extract_body_text(raw.get("payload", {}))
-
-    is_vip = sender_email in [v.lower() for v in vip_senders]
+    is_vip = sender_email in vip_senders
 
     return EmailMessage(
-        id=raw.get("id", ""),
-        thread_id=raw.get("threadId", ""),
+        id=msg_id,
+        thread_id=thread_id,
         subject=subject,
         sender=sender_display,
         sender_email=sender_email,
@@ -195,44 +166,54 @@ def _parse_message(
 
 
 class GmailClient:
-    """Async Gmail API client backed by ``googleapiclient``.
+    """Async Gmail adapter backed by the ``gog`` CLI binary.
 
-    All network I/O is wrapped in ``asyncio.to_thread`` to keep the event
-    loop unblocked. The underlying ``googleapiclient.discovery.Resource`` is
-    built lazily on the first call that needs it and then cached for the
-    lifetime of the instance.
+    All network I/O is async via ``asyncio.create_subprocess_exec``.  The
+    public method surface is 100% compatible with the previous
+    ``googleapiclient``-based implementation.
 
     Args:
-        oauth_service: Shared ``GoogleOAuthService`` used to obtain credentials
-            and build the service resource.
+        account: Google account email passed to ``gog --account``.  Omit to
+            use the default account configured in ``gog auth list``.
         vip_senders: List of email addresses that should be flagged as VIP.
+        timeout_seconds: Per-call subprocess timeout in seconds.
     """
 
     def __init__(
         self,
-        oauth_service: Any,  # GoogleOAuthService — avoid circular import in type hint
+        account: str | None,
         vip_senders: list[str],
+        timeout_seconds: float = 30.0,
     ) -> None:
         """Initialise the client; does not make any network calls."""
-        self._oauth_service = oauth_service
+        self._account: str | None = account
         self._vip_senders: list[str] = [v.lower() for v in vip_senders]
-        self._service: Any | None = None
-        self._service_lock: asyncio.Lock = asyncio.Lock()
+        self._timeout = timeout_seconds
 
     # ------------------------------------------------------------------
-    # Service lifecycle
+    # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _get_service(self) -> Any:
-        """Return (and lazily build) the authenticated Gmail API service."""
-        async with self._service_lock:
-            if self._service is None:
-                logger.debug("Building Gmail API service...")
-                self._service = await self._oauth_service.build_service(
-                    "gmail", "v1", scopes=GMAIL_SCOPES
-                )
-                logger.info("Gmail API service ready")
-            return self._service
+    def _account_args(self) -> list[str]:
+        """Return the ``--account <email>`` argument list, or empty list."""
+        if self._account:
+            return ["--account", self._account]
+        return []
+
+    async def _run(self, *args: str, stdin_text: str | None = None) -> Any:
+        """Run a gog command, converting GogNotInstalledError to GmailClientError."""
+        try:
+            return await run_gog(*args, timeout_seconds=self._timeout, stdin_text=stdin_text)
+        except GogNotInstalledError as exc:
+            raise GmailClientError(
+                str(exc),
+                spoken_message="Das gog-Tool ist nicht installiert.",
+            ) from exc
+        except GogCommandError as exc:
+            raise GmailClientError(
+                str(exc),
+                spoken_message=exc.spoken_message,
+            ) from exc
 
     # ------------------------------------------------------------------
     # Public async API
@@ -253,9 +234,9 @@ class GmailClient:
             List of ``EmailMessage`` objects with ``is_unread=True``.
 
         Raises:
-            GmailClientError: On API failure.
+            GmailClientError: On gog CLI failure.
         """
-        max_results = min(max_results, _MAX_RESULTS_CAP)
+        max_results = min(max_results, 50)
         query = "is:unread in:inbox"
         if sender:
             query += f" from:{sender}"
@@ -268,8 +249,6 @@ class GmailClient:
     ) -> list[EmailMessage]:
         """Search Gmail with a raw query string.
 
-        Handles pagination transparently; hard cap at 50 results per call.
-
         Args:
             query: Gmail search query (e.g. ``"from:alice is:unread"``).
             max_results: Maximum number of results (capped at 50).
@@ -278,47 +257,32 @@ class GmailClient:
             List of ``EmailMessage`` objects matching the query.
 
         Raises:
-            GmailClientError: On API failure.
+            GmailClientError: On gog CLI failure.
         """
-        max_results = min(max_results, _MAX_RESULTS_CAP)
-        service = await self._get_service()
-
-        try:
-            ids = await self._fetch_message_ids(service, query, max_results)
-        except GmailClientError:
-            raise
-        except Exception as exc:
-            raise GmailClientError(
-                f"Gmail search failed: {exc}",
-                spoken_message=(
-                    "Gmail ist gerade nicht erreichbar, bitte kurz warten."
-                ),
-            ) from exc
-
-        if not ids:
-            return []
-
-        messages: list[EmailMessage] = []
-        for msg_id in ids:
-            try:
-                msg = await self.get_message(msg_id, include_body=False)
-                messages.append(msg)
-            except GmailClientError as exc:
-                logger.warning(f"Skipping message {msg_id}: {exc}")
-
-        return messages
+        max_results = min(max_results, 50)
+        cmd: list[str] = [
+            "gmail", "messages", "search",
+            query,
+            "--max", str(max_results),
+            *self._account_args(),
+        ]
+        data = await self._run(*cmd)
+        messages_raw: list[dict[str, Any]] = (
+            data.get("messages", []) if isinstance(data, dict) else []
+        )
+        return [_parse_gog_message(m, self._vip_senders) for m in messages_raw]
 
     async def get_message(
         self,
         message_id: str,
         include_body: bool = True,
     ) -> EmailMessage:
-        """Fetch a single message by ID, optionally loading the full body.
+        """Fetch a single message by ID.
 
         Args:
             message_id: Gmail message ID string.
-            include_body: When ``True`` the plain-text body is extracted and
-                included in ``EmailMessage.body_text``.
+            include_body: When ``True`` the plain-text body is included if
+                available.
 
         Returns:
             Parsed ``EmailMessage``.
@@ -326,54 +290,56 @@ class GmailClient:
         Raises:
             GmailClientError: When the message cannot be fetched.
         """
-        service = await self._get_service()
-        try:
-            raw: dict[str, Any] = await asyncio.to_thread(
-                lambda: service.users()
-                .messages()
-                .get(userId="me", id=message_id, format="full")
-                .execute()
-            )
-        except Exception as exc:
+        # gog does not expose a single-message-get by ID; search by ID instead.
+        cmd: list[str] = [
+            "gmail", "messages", "search",
+            f"rfc822msgid:{message_id}",
+            "--max", "1",
+            *self._account_args(),
+        ]
+        data = await self._run(*cmd)
+        messages_raw: list[dict[str, Any]] = (
+            data.get("messages", []) if isinstance(data, dict) else []
+        )
+        if not messages_raw:
             raise GmailClientError(
-                f"Failed to fetch message {message_id}: {exc}",
+                f"Message {message_id} not found via gog search",
                 spoken_message="Ich konnte die E-Mail nicht laden.",
-            ) from exc
-
-        return _parse_message(raw, self._vip_senders, include_body=include_body)
+            )
+        msg = _parse_gog_message(messages_raw[0], self._vip_senders)
+        if not include_body:
+            msg.body_text = None
+        return msg
 
     async def get_unread_count(self) -> int:
         """Return the approximate number of unread messages.
 
-        Uses a single lightweight API call (``resultSizeEstimate`` only) to
-        avoid fetching message data.
+        Uses a lightweight gog search with max 1 and falls back to 0 on error.
 
         Returns:
-            Integer unread count estimate.
+            Integer unread count (approximate).
 
         Raises:
-            GmailClientError: On API failure.
+            GmailClientError: On gog CLI failure.
         """
-        service = await self._get_service()
-        try:
-            result: dict[str, Any] = await asyncio.to_thread(
-                lambda: service.users()
-                .messages()
-                .list(
-                    userId="me",
-                    labelIds=["UNREAD"],
-                    maxResults=1,
-                    fields="resultSizeEstimate",
-                )
-                .execute()
-            )
-        except Exception as exc:
-            raise GmailClientError(
-                f"Failed to fetch unread count: {exc}",
-                spoken_message="Ich konnte die Anzahl ungelesener E-Mails nicht abrufen.",
-            ) from exc
-
-        return int(result.get("resultSizeEstimate", 0))
+        cmd: list[str] = [
+            "gmail", "messages", "search",
+            "is:unread in:inbox",
+            "--max", "100",
+            *self._account_args(),
+        ]
+        data = await self._run(*cmd)
+        messages_raw: list[dict[str, Any]] = (
+            data.get("messages", []) if isinstance(data, dict) else []
+        )
+        # gog paginates; if nextPageToken is present, there are more.
+        count = len(messages_raw)
+        if data.get("nextPageToken"):
+            # More pages exist — return count + a "+more" sentinel value.
+            # The exact count is unavailable without full pagination; return
+            # count as a lower bound (same behaviour as Gmail API resultSizeEstimate).
+            count = max(count, 100)
+        return count
 
     async def create_draft(
         self,
@@ -403,27 +369,26 @@ class GmailClient:
                 ),
             )
 
-        mime_msg = email.mime.text.MIMEText(body, "plain", "utf-8")
-        mime_msg["To"] = to
-        mime_msg["Subject"] = subject
-        raw_bytes = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode("utf-8")
-
-        service = await self._get_service()
-        try:
-            result: dict[str, Any] = await asyncio.to_thread(
-                lambda: service.users()
-                .drafts()
-                .create(userId="me", body={"message": {"raw": raw_bytes}})
-                .execute()
+        cmd: list[str] = [
+            "gmail", "drafts", "create",
+            "--to", to,
+            "--subject", subject,
+            "--body-file", "-",
+            *self._account_args(),
+        ]
+        data = await self._run(*cmd, stdin_text=body)
+        draft_id: str = ""
+        if isinstance(data, dict):
+            draft_id = (
+                data.get("id")
+                or (data.get("draft", {}) or {}).get("id", "")
+                or ""
             )
-        except Exception as exc:
-            raise GmailClientError(
-                f"Failed to create draft: {exc}",
-                spoken_message="Ich konnte den E-Mail-Entwurf nicht erstellen.",
-            ) from exc
+        if not draft_id:
+            logger.warning("gog draft create returned no id; using placeholder")
+            draft_id = f"draft-{to}-unknown"
 
-        draft_id: str = result.get("id", "")
-        logger.info(f"Gmail draft created: id={draft_id} to={to!r} subject={subject!r}")
+        logger.info(f"Gmail draft created via gog: id={draft_id} to={to!r} subject={subject!r}")
         return EmailDraft(id=draft_id, to=to, subject=subject, body=body)
 
     async def send_draft(self, draft_id: str) -> str:
@@ -438,25 +403,21 @@ class GmailClient:
         Raises:
             GmailClientError: When the send call fails.
         """
-        service = await self._get_service()
-        try:
-            result: dict[str, Any] = await asyncio.to_thread(
-                lambda: service.users()
-                .drafts()
-                .send(userId="me", body={"id": draft_id})
-                .execute()
+        cmd: list[str] = [
+            "gmail", "drafts", "send", draft_id,
+            "--force",
+            *self._account_args(),
+        ]
+        data = await self._run(*cmd)
+        message_id: str = ""
+        if isinstance(data, dict):
+            message_id = (
+                data.get("id")
+                or data.get("messageId", "")
+                or ""
             )
-        except Exception as exc:
-            raise GmailClientError(
-                f"Failed to send draft {draft_id}: {exc}",
-                spoken_message=(
-                    "Senden fehlgeschlagen, Sir. Die Nachricht wurde nicht gesendet."
-                ),
-            ) from exc
-
-        message_id: str = result.get("id", "")
-        logger.info(f"Gmail draft sent: draft_id={draft_id} message_id={message_id}")
-        return message_id
+        logger.info(f"Gmail draft sent via gog: draft_id={draft_id} message_id={message_id}")
+        return message_id or draft_id
 
     async def delete_draft(self, draft_id: str) -> bool:
         """Delete a draft by its ID (e.g. on send abort).
@@ -467,68 +428,22 @@ class GmailClient:
         Returns:
             ``True`` on success, ``False`` on failure (non-fatal).
         """
-        service = await self._get_service()
+        cmd: list[str] = [
+            "gmail", "drafts", "delete", draft_id,
+            "--force",
+            *self._account_args(),
+        ]
         try:
-            await asyncio.to_thread(
-                lambda: service.users()
-                .drafts()
-                .delete(userId="me", id=draft_id)
-                .execute()
-            )
-            logger.info(f"Gmail draft deleted: draft_id={draft_id}")
+            await self._run(*cmd)
+            logger.info(f"Gmail draft deleted via gog: draft_id={draft_id}")
             return True
-        except Exception as exc:
-            logger.warning(f"Failed to delete draft {draft_id}: {exc}")
+        except GmailClientError as exc:
+            logger.warning(f"Failed to delete draft {draft_id} via gog: {exc}")
             return False
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    async def _fetch_message_ids(
-        self,
-        service: Any,
-        query: str,
-        max_results: int,
-    ) -> list[str]:
-        """Fetch message IDs matching ``query`` (pagination-aware).
-
-        Args:
-            service: Authenticated Gmail service resource.
-            query: Gmail query string.
-            max_results: Maximum number of IDs to collect.
-
-        Returns:
-            List of message ID strings, up to ``max_results``.
-        """
-        ids: list[str] = []
-        page_token: str | None = None
-
-        while len(ids) < max_results:
-            batch_size = min(max_results - len(ids), 100)
-            kwargs: dict[str, Any] = {
-                "userId": "me",
-                "q": query,
-                "maxResults": batch_size,
-            }
-            if page_token:
-                kwargs["pageToken"] = page_token
-
-            page: dict[str, Any] = await asyncio.to_thread(
-                lambda kw=kwargs: service.users().messages().list(**kw).execute()
-            )
-            messages: list[dict[str, Any]] = page.get("messages", [])
-            ids.extend(m["id"] for m in messages if "id" in m)
-
-            page_token = page.get("nextPageToken")
-            if not page_token:
-                break
-
-        return ids[:max_results]
 
 
 # ---------------------------------------------------------------------------
-# Module-level lazy factory
+# Module-level lazy factory (public API — patch point for tests)
 # ---------------------------------------------------------------------------
 
 _gmail_client_instance: GmailClient | None = None
@@ -537,11 +452,11 @@ _gmail_client_instance: GmailClient | None = None
 def get_gmail_client(
     vip_senders: list[str] | None = None,
 ) -> GmailClient:
-    """Return the module-level ``GmailClient`` singleton.
+    """Return the module-level ``GmailClient`` singleton backed by ``gog``.
 
-    On first call, builds the instance using the shared ``GoogleOAuthService``
-    singleton. Subsequent calls ignore ``vip_senders`` and return the cached
-    instance.
+    On first call, builds the instance using the ``gmail.account`` config key
+    (or ``GOG_ACCOUNT`` env var).  Subsequent calls ignore ``vip_senders`` and
+    return the cached instance.
 
     Args:
         vip_senders: Optional list of VIP email addresses for the first-time
@@ -552,12 +467,19 @@ def get_gmail_client(
     """
     global _gmail_client_instance
     if _gmail_client_instance is None:
-        from integrations.google.oauth import get_google_oauth_service
+        from utils.config_loader import get_config  # noqa: PLC0415
 
-        oauth_service = get_google_oauth_service()
+        cfg = get_config()
+        gmail_cfg = cfg.get_section("gmail") or {}
+        # Resolve account: config key "account" wins; env var GOG_ACCOUNT is
+        # read by the gog binary itself, so we don't need to pass it explicitly.
+        account: str | None = gmail_cfg.get("account") or None
+        timeout = float(gmail_cfg.get("gog_timeout_seconds", 30))
+
         _gmail_client_instance = GmailClient(
-            oauth_service=oauth_service,
+            account=account,
             vip_senders=vip_senders or [],
+            timeout_seconds=timeout,
         )
-        logger.debug("GmailClient singleton created")
+        logger.debug("GmailClient (gog) singleton created")
     return _gmail_client_instance

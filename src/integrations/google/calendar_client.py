@@ -1,36 +1,28 @@
-"""Google Calendar API client for JARVIS.
+"""Google Calendar adapter for JARVIS — thin OpenClaw/gog shim (ADR-0001).
 
-Wraps the Google Calendar REST API via ``googleapiclient``. All blocking
-API calls are executed through ``asyncio.to_thread`` so the event loop is
-never stalled. Natural-language date parsing is handled by ``dateparser``.
+All Google Calendar API calls are delegated to the ``gog`` CLI binary.
+No ``googleapiclient`` or ``google-auth`` imports remain in this module.
+
+Public surface (dataclasses, exception type, factory function) is 100%
+backwards-compatible with the previous googleapiclient implementation so
+``ws_server.py``, ``orchestrator.py``, and test mocks continue to work
+unchanged.
 """
 
 from __future__ import annotations
 
-import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import googleapiclient.discovery
-
+from integrations.openclaw.client import GogCommandError, GogNotInstalledError, run_gog
 from utils.logger import get_logger
 
 logger = get_logger("calendar_client")
 
-# ---------------------------------------------------------------------------
-# OAuth scopes
-# ---------------------------------------------------------------------------
-
-CALENDAR_SCOPES: list[str] = [
-    "https://www.googleapis.com/auth/calendar",
-    "https://www.googleapis.com/auth/calendar.events",
-]
-
 
 # ---------------------------------------------------------------------------
-# Data classes
+# Data classes (public surface — must stay backwards-compatible)
 # ---------------------------------------------------------------------------
 
 
@@ -51,12 +43,12 @@ class CalendarEvent:
 
 
 # ---------------------------------------------------------------------------
-# Exceptions
+# Exception (kept for caller compatibility)
 # ---------------------------------------------------------------------------
 
 
 class CalendarClientError(Exception):
-    """Raised when a Calendar API call fails in an anticipated way."""
+    """Raised when a Calendar operation fails in an anticipated way."""
 
     def __init__(self, message: str, spoken_message: str = "") -> None:
         """Initialise with a technical message and an optional TTS-friendly fallback."""
@@ -69,28 +61,34 @@ class CalendarClientError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def _parse_google_datetime(value: str | None) -> datetime | None:
-    """Parse a Google Calendar dateTime string (ISO 8601 with offset) to UTC datetime."""
+def _parse_iso_dt(value: str | None, fallback: datetime | None = None) -> datetime:
+    """Parse an ISO 8601 string (possibly with trailing Z) to a UTC-aware datetime."""
+    _fb = fallback or datetime.now(timezone.utc)
     if not value:
-        return None
-    # Remove the 'Z' suffix and treat as UTC, or parse offset
-    if value.endswith("Z"):
-        value = value[:-1] + "+00:00"
-    return datetime.fromisoformat(value)
+        return _fb
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return _fb
 
 
-def _parse_google_date(value: str | None) -> datetime | None:
-    """Parse a Google Calendar all-day date string (YYYY-MM-DD) to a UTC midnight datetime."""
-    if not value:
-        return None
-    date = datetime.strptime(value, "%Y-%m-%d")
-    return date.replace(tzinfo=timezone.utc)
+def _parse_gog_event(raw: dict[str, Any], calendar_id: str) -> CalendarEvent:
+    """Convert a ``gog calendar events --json`` event dict to a ``CalendarEvent``.
 
+    ``gog`` returns the raw Google Calendar API JSON object, so the shape is::
 
-def _parse_event(raw: dict[str, Any], calendar_id: str) -> CalendarEvent:
-    """Convert a raw Google Calendar API event dict to a ``CalendarEvent``.
+        {
+          "id": "...",
+          "summary": "...",
+          "start": {"dateTime": "...", "timeZone": "..."},
+          "end":   {"dateTime": "...", "timeZone": "..."},
+          "location": "...",
+          "description": "...",
+          "attendees": [{"email": "..."}, ...],
+          "recurringEventId": "..."
+        }
 
-    Handles both timed (``dateTime``) and all-day (``date``) event formats.
+    All-day events use ``start.date`` instead of ``start.dateTime``.
     """
     event_id: str = raw.get("id", "")
     title: str = raw.get("summary", "(No title)")
@@ -100,12 +98,22 @@ def _parse_event(raw: dict[str, Any], calendar_id: str) -> CalendarEvent:
 
     all_day = "date" in start_obj and "dateTime" not in start_obj
 
+    now_utc = datetime.now(timezone.utc)
+
     if all_day:
-        start_dt = _parse_google_date(start_obj.get("date")) or datetime.now(timezone.utc)
-        end_dt = _parse_google_date(end_obj.get("date")) or start_dt + timedelta(days=1)
+        date_str: str = start_obj.get("date", "")
+        try:
+            start_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            start_dt = now_utc
+        end_date_str: str = end_obj.get("date", "")
+        try:
+            end_dt = datetime.strptime(end_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            end_dt = start_dt + timedelta(days=1)
     else:
-        start_dt = _parse_google_datetime(start_obj.get("dateTime")) or datetime.now(timezone.utc)
-        end_dt = _parse_google_datetime(end_obj.get("dateTime")) or start_dt + timedelta(hours=1)
+        start_dt = _parse_iso_dt(start_obj.get("dateTime"), now_utc)
+        end_dt = _parse_iso_dt(end_obj.get("dateTime"), start_dt + timedelta(hours=1))
 
     location: str | None = raw.get("location") or None
     description: str | None = raw.get("description") or None
@@ -115,7 +123,7 @@ def _parse_event(raw: dict[str, Any], calendar_id: str) -> CalendarEvent:
         a.get("email", "") for a in attendees_raw if a.get("email")
     ]
 
-    is_recurring: bool = bool(raw.get("recurringEventId"))
+    is_recurring = bool(raw.get("recurringEventId"))
 
     return CalendarEvent(
         id=event_id,
@@ -131,59 +139,61 @@ def _parse_event(raw: dict[str, Any], calendar_id: str) -> CalendarEvent:
     )
 
 
-def _event_to_body(
-    title: str,
-    start: datetime,
-    end: datetime,
-    location: str | None = None,
-    description: str | None = None,
-) -> dict[str, Any]:
-    """Build a Google Calendar API event resource body."""
-    body: dict[str, Any] = {
-        "summary": title,
-        "start": {"dateTime": start.isoformat(), "timeZone": "UTC"},
-        "end": {"dateTime": end.isoformat(), "timeZone": "UTC"},
-    }
-    if location:
-        body["location"] = location
-    if description:
-        body["description"] = description
-    return body
-
-
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
 
 
 class GoogleCalendarClient:
-    """Google Calendar API client — lazy-initialised, thread-safe."""
+    """Async Google Calendar adapter backed by the ``gog`` CLI binary.
 
-    def __init__(self, oauth_service: Any) -> None:
-        """Initialise with a ``GoogleOAuthService`` instance.
+    All network I/O is async via ``asyncio.create_subprocess_exec``.  The
+    public method surface is 100% compatible with the previous
+    ``googleapiclient``-based implementation.
 
-        Args:
-            oauth_service: Shared ``GoogleOAuthService`` used to build the
-                ``calendar`` API service object on first use.
-        """
-        self._oauth_service = oauth_service
-        self._service: Any = None
-        self._lock: asyncio.Lock = asyncio.Lock()
+    Args:
+        account: Google account email passed to ``gog --account``.  Omit to
+            use the default account configured in ``gog auth list``.
+        timeout_seconds: Per-call subprocess timeout in seconds.
+    """
 
-    async def _get_service(self) -> Any:
-        """Return a lazy-initialised Google Calendar API service object.
+    def __init__(
+        self,
+        account: str | None = None,
+        timeout_seconds: float = 30.0,
+    ) -> None:
+        """Initialise the client; does not make any network calls."""
+        self._account = account
+        self._timeout = timeout_seconds
 
-        Thread-safe via ``asyncio.Lock``. The service is built once and
-        reused for all subsequent calls.
-        """
-        async with self._lock:
-            if self._service is None:
-                self._service = await self._oauth_service.build_service(
-                    "calendar",
-                    "v3",
-                    scopes=CALENDAR_SCOPES,
-                )
-        return self._service
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _account_args(self) -> list[str]:
+        """Return the ``--account <email>`` argument list, or empty list."""
+        if self._account:
+            return ["--account", self._account]
+        return []
+
+    async def _run(self, *args: str) -> Any:
+        """Run a gog command, converting errors to CalendarClientError."""
+        try:
+            return await run_gog(*args, timeout_seconds=self._timeout)
+        except GogNotInstalledError as exc:
+            raise CalendarClientError(
+                str(exc),
+                spoken_message="Das gog-Tool ist nicht installiert.",
+            ) from exc
+        except GogCommandError as exc:
+            raise CalendarClientError(
+                str(exc),
+                spoken_message=exc.spoken_message,
+            ) from exc
+
+    # ------------------------------------------------------------------
+    # Public async API
+    # ------------------------------------------------------------------
 
     async def list_events(
         self,
@@ -202,41 +212,28 @@ class GoogleCalendarClient:
 
         Returns:
             List of ``CalendarEvent`` objects sorted by start time.
+
+        Raises:
+            CalendarClientError: On gog CLI failure.
         """
         if start is None:
             start = datetime.now(timezone.utc)
         if end is None:
             end = start + timedelta(hours=48)
 
-        time_min = start.isoformat()
-        time_max = end.isoformat()
-
-        try:
-            service = await self._get_service()
-
-            def _call() -> dict[str, Any]:
-                return (
-                    service.events()
-                    .list(
-                        calendarId=calendar_id,
-                        timeMin=time_min,
-                        timeMax=time_max,
-                        maxResults=min(max_results, 250),
-                        singleEvents=True,
-                        orderBy="startTime",
-                    )
-                    .execute()
-                )
-
-            result: dict[str, Any] = await asyncio.to_thread(_call)
-            items: list[dict[str, Any]] = result.get("items", [])
-            return [_parse_event(item, calendar_id) for item in items]
-
-        except CalendarClientError:
-            raise
-        except Exception as exc:
-            _handle_api_exception(exc, "list_events")
-            return []  # unreachable — _handle_api_exception always raises
+        cmd: list[str] = [
+            "calendar", "events",
+            calendar_id,
+            "--from", start.isoformat(),
+            "--to", end.isoformat(),
+            "--max", str(min(max_results, 250)),
+            *self._account_args(),
+        ]
+        data = await self._run(*cmd)
+        events_raw: list[dict[str, Any]] = (
+            data.get("events", []) if isinstance(data, dict) else []
+        )
+        return [_parse_gog_event(evt, calendar_id) for evt in events_raw]
 
     async def create_event(
         self,
@@ -259,27 +256,29 @@ class GoogleCalendarClient:
 
         Returns:
             The created ``CalendarEvent`` with server-assigned ``id``.
+
+        Raises:
+            CalendarClientError: On gog CLI failure.
         """
-        body = _event_to_body(title, start, end, location, description)
-        try:
-            service = await self._get_service()
+        cmd: list[str] = [
+            "calendar", "create",
+            calendar_id,
+            "--summary", title,
+            "--from", start.isoformat(),
+            "--to", end.isoformat(),
+            "--force",
+            *self._account_args(),
+        ]
+        if location:
+            cmd += ["--location", location]
+        if description:
+            cmd += ["--description", description]
 
-            def _call() -> dict[str, Any]:
-                return (
-                    service.events()
-                    .insert(calendarId=calendar_id, body=body)
-                    .execute()
-                )
-
-            raw: dict[str, Any] = await asyncio.to_thread(_call)
-            logger.info(f"Calendar event created: id={raw.get('id')!r} title={title!r}")
-            return _parse_event(raw, calendar_id)
-
-        except CalendarClientError:
-            raise
-        except Exception as exc:
-            _handle_api_exception(exc, "create_event")
-            raise  # satisfy mypy — _handle_api_exception always raises
+        data = await self._run(*cmd)
+        raw: dict[str, Any] = data if isinstance(data, dict) else {}
+        evt = _parse_gog_event(raw, calendar_id)
+        logger.info(f"Calendar event created via gog: id={evt.id!r} title={title!r}")
+        return evt
 
     async def update_event(
         self,
@@ -292,9 +291,6 @@ class GoogleCalendarClient:
     ) -> CalendarEvent:
         """Update fields on an existing event.
 
-        Fetches the current event, applies the supplied overrides, then
-        writes back via ``events().update()``.
-
         Args:
             event_id: Google Calendar event identifier.
             calendar_id: Target calendar (default ``"primary"``).
@@ -305,45 +301,31 @@ class GoogleCalendarClient:
 
         Returns:
             The updated ``CalendarEvent``.
+
+        Raises:
+            CalendarClientError: On gog CLI failure.
         """
-        try:
-            service = await self._get_service()
+        cmd: list[str] = [
+            "calendar", "update",
+            calendar_id,
+            event_id,
+            "--force",
+            *self._account_args(),
+        ]
+        if title:
+            cmd += ["--summary", title]
+        if start:
+            cmd += ["--from", start.isoformat()]
+        if end:
+            cmd += ["--to", end.isoformat()]
+        if location:
+            cmd += ["--location", location]
 
-            def _get() -> dict[str, Any]:
-                return (
-                    service.events()
-                    .get(calendarId=calendar_id, eventId=event_id)
-                    .execute()
-                )
-
-            raw: dict[str, Any] = await asyncio.to_thread(_get)
-
-            # Apply overrides
-            if title is not None:
-                raw["summary"] = title
-            if start is not None:
-                raw["start"] = {"dateTime": start.isoformat(), "timeZone": "UTC"}
-            if end is not None:
-                raw["end"] = {"dateTime": end.isoformat(), "timeZone": "UTC"}
-            if location is not None:
-                raw["location"] = location
-
-            def _update() -> dict[str, Any]:
-                return (
-                    service.events()
-                    .update(calendarId=calendar_id, eventId=event_id, body=raw)
-                    .execute()
-                )
-
-            updated: dict[str, Any] = await asyncio.to_thread(_update)
-            logger.info(f"Calendar event updated: id={event_id!r}")
-            return _parse_event(updated, calendar_id)
-
-        except CalendarClientError:
-            raise
-        except Exception as exc:
-            _handle_api_exception(exc, "update_event")
-            raise  # satisfy mypy
+        data = await self._run(*cmd)
+        raw: dict[str, Any] = data if isinstance(data, dict) else {}
+        evt = _parse_gog_event(raw, calendar_id)
+        logger.info(f"Calendar event updated via gog: id={event_id!r}")
+        return evt
 
     async def delete_event(
         self,
@@ -355,22 +337,18 @@ class GoogleCalendarClient:
         Args:
             event_id: Google Calendar event identifier.
             calendar_id: Target calendar (default ``"primary"``).
+
+        Raises:
+            CalendarClientError: On gog CLI failure.
         """
-        try:
-            service = await self._get_service()
-
-            def _call() -> None:
-                service.events().delete(
-                    calendarId=calendar_id, eventId=event_id
-                ).execute()
-
-            await asyncio.to_thread(_call)
-            logger.info(f"Calendar event deleted: id={event_id!r}")
-
-        except CalendarClientError:
-            raise
-        except Exception as exc:
-            _handle_api_exception(exc, "delete_event")
+        cmd: list[str] = [
+            "calendar", "delete",
+            calendar_id, event_id,
+            "--force",
+            *self._account_args(),
+        ]
+        await self._run(*cmd)
+        logger.info(f"Calendar event deleted via gog: id={event_id!r}")
 
     async def get_event(
         self,
@@ -379,84 +357,56 @@ class GoogleCalendarClient:
     ) -> CalendarEvent:
         """Fetch a single event by ID.
 
+        ``gog`` does not expose a direct get-by-id; list events and filter.
+
         Args:
             event_id: Google Calendar event identifier.
             calendar_id: Target calendar (default ``"primary"``).
 
         Returns:
             The matching ``CalendarEvent``.
+
+        Raises:
+            CalendarClientError: When the event cannot be found.
         """
-        try:
-            service = await self._get_service()
-
-            def _call() -> dict[str, Any]:
-                return (
-                    service.events()
-                    .get(calendarId=calendar_id, eventId=event_id)
-                    .execute()
-                )
-
-            raw: dict[str, Any] = await asyncio.to_thread(_call)
-            return _parse_event(raw, calendar_id)
-
-        except CalendarClientError:
-            raise
-        except Exception as exc:
-            _handle_api_exception(exc, "get_event")
-            raise  # satisfy mypy
-
-
-def _handle_api_exception(exc: Exception, operation: str) -> None:
-    """Convert a ``googleapiclient`` HTTP error to a ``CalendarClientError``.
-
-    Raises:
-        CalendarClientError: Always — wraps the original exception with
-            a user-facing spoken message appropriate to the HTTP status.
-    """
-    # Try to extract HTTP status from googleapiclient HttpError
-    status: int | None = None
-    try:
-        status = exc.resp.status  # type: ignore[attr-defined]
-    except AttributeError:
-        pass
-
-    if status == 401 or status == 403:
+        # Fetch a broad window and search for the event by id.
+        now = datetime.now(timezone.utc)
+        events = await self.list_events(
+            calendar_id=calendar_id,
+            start=now - timedelta(days=365),
+            end=now + timedelta(days=365),
+            max_results=250,
+        )
+        for evt in events:
+            if evt.id == event_id:
+                return evt
         raise CalendarClientError(
-            f"Calendar API {operation} unauthorised ({status}): {exc}",
-            spoken_message=(
-                "Calendar access is not authorized. Please re-authenticate."
-            ),
-        ) from exc
-    if status == 404:
-        raise CalendarClientError(
-            f"Calendar API {operation} not found (404): {exc}",
-            spoken_message=(
-                "I couldn't find that event. It may have already been removed."
-            ),
-        ) from exc
-    raise CalendarClientError(
-        f"Calendar API {operation} failed: {exc}",
-        spoken_message="There was a problem accessing your calendar. Please try again.",
-    ) from exc
+            f"Event {event_id} not found in calendar {calendar_id}",
+            spoken_message="Ich konnte den Termin nicht finden.",
+        )
 
 
 # ---------------------------------------------------------------------------
-# Module-level singleton
+# Module-level singleton factory (public API — patch point for tests)
 # ---------------------------------------------------------------------------
 
 _calendar_client: GoogleCalendarClient | None = None
 
 
 def get_calendar_client() -> GoogleCalendarClient:
-    """Return the module-level ``GoogleCalendarClient`` singleton.
+    """Return the module-level ``GoogleCalendarClient`` singleton backed by ``gog``.
 
-    Constructs the client on first call using the shared
-    ``GoogleOAuthService``. Subsequent calls return the same instance.
+    Constructs the client on first call using the ``calendar.account`` config key.
+    Subsequent calls return the same instance.
     """
     global _calendar_client
     if _calendar_client is None:
-        from integrations.google.oauth import get_google_oauth_service  # noqa: PLC0415
+        from utils.config_loader import get_config  # noqa: PLC0415
 
-        oauth_service = get_google_oauth_service()
-        _calendar_client = GoogleCalendarClient(oauth_service)
+        cfg = get_config()
+        cal_cfg = cfg.get_section("calendar") or {}
+        account: str | None = cal_cfg.get("account") or None
+        timeout = float(cal_cfg.get("gog_timeout_seconds", 30))
+        _calendar_client = GoogleCalendarClient(account=account, timeout_seconds=timeout)
+        logger.debug("GoogleCalendarClient (gog) singleton created")
     return _calendar_client

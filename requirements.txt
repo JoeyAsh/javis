@@ -38,10 +38,11 @@ ruff
 # Memory database
 aiosqlite>=0.19.0
 
-# Google API integrations
-google-auth>=2.29.0
-google-auth-oauthlib>=1.2.0
-google-api-python-client>=2.127.0
+# Google API integrations — removed (ADR-0001: migrated to gog CLI via OpenClaw skill)
+# google-auth>=2.29.0
+# google-auth-oauthlib>=1.2.0
+# google-api-python-client>=2.127.0
+# Uninstall with: pip uninstall google-api-python-client google-auth google-auth-httplib2 google-auth-oauthlib
 
 # Natural-language date parsing (calendar create/update)
 dateparser>=1.2.0

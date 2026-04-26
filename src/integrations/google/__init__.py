@@ -1,8 +1,11 @@
-"""Google integration package for JARVIS.
+"""Google integration package for JARVIS — OpenClaw/gog shim (ADR-0001).
 
-Exports the shared OAuth service and its exception hierarchy so downstream
-integrations (Gmail, Calendar, Drive) can consume them without importing
-from the implementation module directly.
+All Google API calls are delegated to the ``gog`` CLI binary.  The exception
+hierarchy and public dataclasses are re-exported here for backwards
+compatibility with ``ws_server.py`` and ``orchestrator.py``.
+
+Authentication is managed exclusively by ``gog auth add <email>`` on the
+OpenClaw host — JARVIS no longer owns a token cache.
 """
 
 from __future__ import annotations

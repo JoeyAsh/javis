@@ -29,7 +29,6 @@ from brain.agents.smart_home_agent import SmartHomeAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
 from brain.intent_parser import Intent, IntentResult
-from integrations.google.gmail_client import get_gmail_client
 from utils.config_loader import get_config
 from utils.logger import get_logger
 
@@ -173,8 +172,10 @@ class Orchestrator:
             if not gmail_cfg.get("enabled", False):
                 return None
 
-            from integrations.google.gmail_client import GmailClientError  # noqa: PLC0415
-            from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
+            from integrations.google.gmail_client import (  # noqa: PLC0415
+                GmailClientError,
+                get_gmail_client,
+            )
 
             vip_senders: list[str] = gmail_cfg.get("vip_senders", [])
             client = get_gmail_client(vip_senders=vip_senders)
@@ -232,10 +233,8 @@ class Orchestrator:
                 )
                 return "\n".join(parts)
 
-        except (GoogleOAuthError,) as exc:
-            logger.warning(f"Gmail OAuth error during context build: {exc}")
         except GmailClientError as exc:
-            logger.warning(f"Gmail API error during context build: {exc}")
+            logger.warning(f"Gmail error during context build: {exc}")
         except Exception as exc:
             logger.warning(f"Unexpected error building email context: {exc}")
 
@@ -269,7 +268,6 @@ class Orchestrator:
                 CalendarClientError,
                 get_calendar_client,
             )
-            from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
 
             lookahead_hours: int = int(cal_cfg.get("lookahead_hours", 48))
             max_results: int = int(cal_cfg.get("max_events_per_query", 20))
@@ -409,7 +407,6 @@ class Orchestrator:
                 DriveClientError,
                 get_drive_client,
             )
-            from integrations.google.oauth import GoogleOAuthError  # noqa: PLC0415
 
             max_results: int = int(drive_cfg.get("max_results", 10))
             preview_chars: int = int(drive_cfg.get("preview_content_chars", 500))
@@ -463,8 +460,6 @@ class Orchestrator:
 
             return "\n".join(lines)
 
-        except (GoogleOAuthError,) as exc:
-            logger.warning("Drive OAuth error during context build: {}", exc)
         except DriveClientError as exc:
             logger.warning("Drive API error during context build: {}", exc)
         except Exception as exc:

@@ -5,6 +5,7 @@ import type {
     SpotifySearchResults,
     SpotifyQueueItem,
 } from './types';
+import type { SpotifySdkPlayerState } from './spotifySdk';
 
 export const nowPlayingMock: NowPlayingTrack = {
     title: 'Midnight City',
@@ -93,6 +94,20 @@ export const mockSearchResults: SpotifySearchResults = {
         },
     ],
     playlists: mockPlaylists.slice(0, 1),
+};
+
+export const mockSdkPlayerState: SpotifySdkPlayerState = {
+    isPaused: false,
+    positionMs: 113_000,
+    durationMs: 241_000,
+    track: {
+        uri: 'spotify:track:tr-1',
+        name: 'Midnight City',
+        artist: 'M83',
+        album: "Hurry Up, We're Dreaming",
+    },
+    shuffle: false,
+    repeat: 'off',
 };
 
 export const mockQueueItems: SpotifyQueueItem[] = [

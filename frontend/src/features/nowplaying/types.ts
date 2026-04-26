@@ -106,3 +106,7 @@ export interface SpotifyLibraryPage<T> {
 
 export type SpotifyTab = 'library' | 'search' | 'queue';
 export type LibraryView = 'playlists' | 'playlist-tracks' | 'album-tracks' | 'saved-tracks' | 'saved-albums';
+
+// Re-export SDK types so feature consumers have a single import point.
+export type { SpotifySdkError, SpotifySdkPlayerState } from './spotifySdk';
+export type { PlayerSdkSlice } from './nowplayingSlice';

@@ -1,5 +1,6 @@
 import type { RootState } from '@app';
 import type { SpotifyStatePayload, SpotifyTab, LibraryView } from './types';
+import type { SpotifySdkError, SpotifySdkPlayerState } from './spotifySdk';
 
 export function selectNowPlayingPayload(state: RootState): SpotifyStatePayload | null {
     return state.nowplaying.payload;
@@ -39,4 +40,26 @@ export function selectSearchQuery(state: RootState): string {
 
 export function selectPremiumError(state: RootState): boolean {
     return state.nowplaying.premiumError;
+}
+
+// --- SDK sub-state selectors ---
+
+export function selectSdkDeviceId(state: RootState): string | null {
+    return state.nowplaying.playerSdk.deviceId;
+}
+
+export function selectSdkIsReady(state: RootState): boolean {
+    return state.nowplaying.playerSdk.isReady;
+}
+
+export function selectSdkError(state: RootState): SpotifySdkError | null {
+    return state.nowplaying.playerSdk.lastError;
+}
+
+export function selectSdkPremiumRequired(state: RootState): boolean {
+    return state.nowplaying.playerSdk.premiumRequired;
+}
+
+export function selectSdkPlayerState(state: RootState): SpotifySdkPlayerState | null {
+    return state.nowplaying.playerSdk.sdkPlayerState;
 }

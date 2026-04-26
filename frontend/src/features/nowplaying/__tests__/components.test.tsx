@@ -63,6 +63,7 @@ vi.mock('../nowplayingApi', async (importOriginal) => {
             data: { items: mockQueueItems, total: mockQueueItems.length },
             isLoading: false,
         })),
+        useGetSpotifyTokenQuery: vi.fn(() => ({ data: undefined, isLoading: false })),
         useAddToQueueMutation: vi.fn(() => [vi.fn().mockResolvedValue({}), {}]),
         usePlayContextMutation: vi.fn(() => [vi.fn().mockResolvedValue({}), {}]),
         usePlayUrisMutation: vi.fn(() => [vi.fn().mockResolvedValue({}), {}]),
@@ -391,7 +392,7 @@ describe('QueueTab', () => {
 
         renderWithProviders(<QueueTab />, {
             reducers: { nowplaying: nowplayingReducer },
-            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'queue', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: false } },
+            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'queue', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
         });
         expect(screen.getByText(/QUEUE EMPTY/i)).toBeInTheDocument();
     });
@@ -405,7 +406,7 @@ describe('QueueTab', () => {
 
         renderWithProviders(<QueueTab />, {
             reducers: { nowplaying: nowplayingReducer },
-            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'queue', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: false } },
+            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'queue', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
         });
         expect(screen.getByText('Oblivion')).toBeInTheDocument();
     });
@@ -425,7 +426,7 @@ describe('LibraryTab', () => {
 
         renderWithProviders(<LibraryTab />, {
             reducers: { nowplaying: nowplayingReducer },
-            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: false } },
+            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
         });
         expect(screen.getByText('Coding Sessions')).toBeInTheDocument();
         expect(screen.getByText('Deep Focus')).toBeInTheDocument();
@@ -440,7 +441,7 @@ describe('LibraryTab', () => {
 
         renderWithProviders(<LibraryTab />, {
             reducers: { nowplaying: nowplayingReducer },
-            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: false } },
+            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
         });
         expect(screen.getByText(/LOADING/i)).toBeInTheDocument();
     });
@@ -458,7 +459,7 @@ describe('LibraryTab', () => {
 
         renderWithProviders(<LibraryTab />, {
             reducers: { nowplaying: nowplayingReducer },
-            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlist-tracks', selectedPlaylistId: 'pl-1', selectedAlbumId: null, searchQuery: '', premiumError: false } },
+            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlist-tracks', selectedPlaylistId: 'pl-1', selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
         });
         expect(screen.getByRole('button', { name: /back to playlists/i })).toBeInTheDocument();
         expect(screen.getByText('Midnight City')).toBeInTheDocument();
@@ -467,7 +468,7 @@ describe('LibraryTab', () => {
     it('shows premium error when premiumError=true', async () => {
         renderWithProviders(<LibraryTab />, {
             reducers: { nowplaying: nowplayingReducer },
-            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: true } },
+            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: true, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
         });
         expect(screen.getByText(/SPOTIFY PREMIUM REQUIRED/i)).toBeInTheDocument();
     });
@@ -481,7 +482,7 @@ describe('SearchTab', () => {
     it('shows TYPE TO SEARCH when searchQuery is empty', () => {
         renderWithProviders(<SearchTab />, {
             reducers: { nowplaying: nowplayingReducer },
-            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'search', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: false } },
+            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'search', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
         });
         expect(screen.getByText(/TYPE TO SEARCH/i)).toBeInTheDocument();
     });
@@ -495,7 +496,7 @@ describe('SearchTab', () => {
 
         renderWithProviders(<SearchTab />, {
             reducers: { nowplaying: nowplayingReducer },
-            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'search', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: 'Midnight', premiumError: false } },
+            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'search', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: 'Midnight', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
         });
         expect(screen.getByText('Midnight City')).toBeInTheDocument();
     });
@@ -509,7 +510,7 @@ describe('SearchTab', () => {
 
         renderWithProviders(<SearchTab />, {
             reducers: { nowplaying: nowplayingReducer },
-            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'search', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: 'xyznotexist', premiumError: false } },
+            preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'search', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: 'xyznotexist', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
         });
         expect(screen.getByText(/NO RESULTS/i)).toBeInTheDocument();
     });
@@ -538,7 +539,7 @@ describe('SpotifyFullPanel', () => {
             <SpotifyFullPanel track={track} onCmd={vi.fn()} />,
             {
                 reducers: { nowplaying: nowplayingReducer },
-                preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: false } },
+                preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
             },
         );
         expect(screen.getByText('Midnight City')).toBeInTheDocument();
@@ -550,7 +551,7 @@ describe('SpotifyFullPanel', () => {
             <SpotifyFullPanel track={track} onCmd={vi.fn()} />,
             {
                 reducers: { nowplaying: nowplayingReducer },
-                preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: false } },
+                preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'library', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
             },
         );
         // LibraryTab renders playlist names
@@ -562,7 +563,7 @@ describe('SpotifyFullPanel', () => {
             <SpotifyFullPanel track={track} onCmd={vi.fn()} />,
             {
                 reducers: { nowplaying: nowplayingReducer },
-                preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'search', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: false } },
+                preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'search', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
             },
         );
         expect(screen.getByPlaceholderText(/search spotify/i)).toBeInTheDocument();
@@ -579,7 +580,7 @@ describe('SpotifyFullPanel', () => {
             <SpotifyFullPanel track={track} onCmd={vi.fn()} />,
             {
                 reducers: { nowplaying: nowplayingReducer },
-                preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'queue', libraryView: 'playlists', selectedPlaylistId: null, selectedAlbumId: null, searchQuery: '', premiumError: false } },
+                preloadedState: { nowplaying: { payload: null, hasLiveData: false, activeTab: 'queue', libraryView: 'playlists', selectedPlaylistId: null, selectedPlaylistUri: null, selectedAlbumId: null, selectedAlbumUri: null, searchQuery: '', premiumError: false, playerSdk: { deviceId: null, isReady: false, lastError: null, premiumRequired: false, sdkPlayerState: null } } },
             },
         );
         expect(screen.getByText(/QUEUE EMPTY/i)).toBeInTheDocument();

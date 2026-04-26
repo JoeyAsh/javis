@@ -1,6 +1,15 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { SpotifyStatePayload, SpotifyTab, LibraryView } from './types';
+import type { SpotifySdkError, SpotifySdkPlayerState } from './spotifySdk';
+
+export interface PlayerSdkSlice {
+    deviceId: string | null;
+    isReady: boolean;
+    lastError: SpotifySdkError | null;
+    premiumRequired: boolean;
+    sdkPlayerState: SpotifySdkPlayerState | null;
+}
 
 export interface NowPlayingState {
     payload: SpotifyStatePayload | null;
@@ -13,7 +22,16 @@ export interface NowPlayingState {
     selectedAlbumUri: string | null;
     searchQuery: string;
     premiumError: boolean;
+    playerSdk: PlayerSdkSlice;
 }
+
+const initialPlayerSdk: PlayerSdkSlice = {
+    deviceId: null,
+    isReady: false,
+    lastError: null,
+    premiumRequired: false,
+    sdkPlayerState: null,
+};
 
 const initialState: NowPlayingState = {
     payload: null,
@@ -26,6 +44,7 @@ const initialState: NowPlayingState = {
     selectedAlbumUri: null,
     searchQuery: '',
     premiumError: false,
+    playerSdk: initialPlayerSdk,
 };
 
 const nowplayingSlice = createSlice({
@@ -70,6 +89,22 @@ const nowplayingSlice = createSlice({
         setPremiumError(state, action: PayloadAction<boolean>) {
             state.premiumError = action.payload;
         },
+        // --- SDK sub-state reducers ---
+        setSdkDeviceId(state, action: PayloadAction<string | null>) {
+            state.playerSdk.deviceId = action.payload;
+        },
+        setSdkReady(state, action: PayloadAction<boolean>) {
+            state.playerSdk.isReady = action.payload;
+        },
+        setSdkError(state, action: PayloadAction<SpotifySdkError | null>) {
+            state.playerSdk.lastError = action.payload;
+        },
+        setPremiumRequired(state, action: PayloadAction<boolean>) {
+            state.playerSdk.premiumRequired = action.payload;
+        },
+        setSdkPlayerState(state, action: PayloadAction<SpotifySdkPlayerState | null>) {
+            state.playerSdk.sdkPlayerState = action.payload;
+        },
     },
 });
 
@@ -83,5 +118,10 @@ export const {
     setSelectedAlbumUri,
     setSearchQuery,
     setPremiumError,
+    setSdkDeviceId,
+    setSdkReady,
+    setSdkError,
+    setPremiumRequired,
+    setSdkPlayerState,
 } = nowplayingSlice.actions;
 export default nowplayingSlice.reducer;

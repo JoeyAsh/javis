@@ -69,6 +69,18 @@ interface RawSearchResults {
     playlists: RawPlaylist[];
 }
 
+/** Raw shape of GET /api/spotify/token — snake_case per OAuth convention. */
+interface RawSpotifyToken {
+    access_token: string;
+    expires_in: number;
+}
+
+/** Transformed Spotify token response. */
+export interface SpotifyTokenResponse {
+    accessToken: string;
+    expiresIn: number;
+}
+
 // ---------------------------------------------------------------------------
 // Transform helpers
 // ---------------------------------------------------------------------------
@@ -130,6 +142,10 @@ function transformQueueItem(raw: RawQueueItem): SpotifyQueueItem {
 // API
 // ---------------------------------------------------------------------------
 
+// Conservative keep-alive: 30 min. The useSpotifyPlayer hook keeps tokenRef
+// current via the useEffect(tokenData) so the SDK always has the latest token.
+const TOKEN_KEEP_UNUSED_SECS = 1800;
+
 export const nowplayingApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         streamNowplaying: builder.query<null, void>({
@@ -145,6 +161,15 @@ export const nowplayingApi = baseApi.injectEndpoints({
                 await cacheEntryRemoved;
                 unsub();
             },
+        }),
+
+        getSpotifyToken: builder.query<SpotifyTokenResponse, void>({
+            query: () => '/api/spotify/token',
+            transformResponse: (raw: RawSpotifyToken): SpotifyTokenResponse => ({
+                accessToken: raw.access_token,
+                expiresIn: raw.expires_in,
+            }),
+            keepUnusedDataFor: TOKEN_KEEP_UNUSED_SECS,
         }),
 
         getPlaylists: builder.query<SpotifyLibraryPage<SpotifyPlaylist>, { limit?: number; offset?: number }>({
@@ -225,7 +250,7 @@ export const nowplayingApi = baseApi.injectEndpoints({
             invalidatesTags: ['queue'],
         }),
 
-        playContext: builder.mutation<void, { context_uri: string; offset_uri?: string }>({
+        playContext: builder.mutation<void, { context_uri: string; offset_uri?: string; device_id?: string }>({
             query: (body) => ({
                 url: '/api/spotify/play/context',
                 method: 'POST',
@@ -233,7 +258,7 @@ export const nowplayingApi = baseApi.injectEndpoints({
             }),
         }),
 
-        playUris: builder.mutation<void, { uris: string[] }>({
+        playUris: builder.mutation<void, { uris: string[]; device_id?: string }>({
             query: (body) => ({
                 url: '/api/spotify/play/uris',
                 method: 'POST',
@@ -246,6 +271,7 @@ export const nowplayingApi = baseApi.injectEndpoints({
 
 export const {
     useStreamNowplayingQuery,
+    useGetSpotifyTokenQuery,
     useGetPlaylistsQuery,
     useGetPlaylistTracksQuery,
     useGetAlbumTracksQuery,
@@ -264,4 +290,20 @@ export const {
  */
 export function sendSpotifyCmd(action: SpotifyCmdAction, value?: number): void {
     wsClient.send({ type: 'spotify_cmd', payload: { action, value } });
+}
+
+/**
+ * Announces the JARVIS Web Playback SDK device to the backend.
+ * The backend caches the device_id and routes voice-triggered playback through it.
+ * Pass `deviceId: null` when the player goes offline.
+ */
+export function sendSpotifyDeviceAnnounce(
+    deviceId: string | null,
+    name: string,
+    ready: boolean,
+): void {
+    wsClient.send({
+        type: 'spotify_device_announce',
+        payload: { device_id: deviceId, name, ready },
+    });
 }

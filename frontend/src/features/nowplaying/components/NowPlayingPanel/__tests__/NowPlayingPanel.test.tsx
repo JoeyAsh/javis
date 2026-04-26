@@ -15,6 +15,16 @@ import type { SpotifyStatePayload } from '../../../types';
 
 vi.mock('@core/websocket/wsClient', () => ({ wsClient: _mockWsClientImpl }));
 
+// Stub out the Spotify token query so useSpotifyPlayer stays idle in tests
+// (no token → SDK init guard never fires).
+vi.mock('../../../nowplayingApi', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../../nowplayingApi')>();
+    return {
+        ...actual,
+        useGetSpotifyTokenQuery: vi.fn(() => ({ data: undefined, isLoading: false })),
+    };
+});
+
 const ws = installMockWsClient();
 const wsClient = _mockWsClientImpl;
 

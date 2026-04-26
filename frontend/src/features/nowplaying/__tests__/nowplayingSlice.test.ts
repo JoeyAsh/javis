@@ -22,9 +22,18 @@ const initialState: NowPlayingState = {
     activeTab: 'library',
     libraryView: 'playlists',
     selectedPlaylistId: null,
+    selectedPlaylistUri: null,
     selectedAlbumId: null,
+    selectedAlbumUri: null,
     searchQuery: '',
     premiumError: false,
+    playerSdk: {
+        deviceId: null,
+        isReady: false,
+        lastError: null,
+        premiumRequired: false,
+        sdkPlayerState: null,
+    },
 };
 
 // ---------------------------------------------------------------------------

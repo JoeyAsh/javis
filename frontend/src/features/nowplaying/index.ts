@@ -1,3 +1,7 @@
+export { PlayerErrorState } from './components/PlayerErrorState';
+export type { PlayerErrorStateProps } from './components/PlayerErrorState';
+export { PremiumRequiredState } from './components/PremiumRequiredState';
+export type { PremiumRequiredStateProps } from './components/PremiumRequiredState';
 export { NowPlayingPanel } from './components/NowPlayingPanel';
 export type { NowPlayingPanelProps } from './components/NowPlayingPanel';
 export { NowPlayingCompact } from './components/NowPlayingCompact';
@@ -36,10 +40,27 @@ export { useNowPlaying } from './hooks/useNowPlaying';
 export type { UseNowPlayingReturn } from './hooks/useNowPlaying.types';
 export { useSpotifyFull } from './hooks/useSpotifyFull';
 export type { UseSpotifyFullReturn } from './hooks/useSpotifyFull.types';
-export { nowplayingApi, useStreamNowplayingQuery, sendSpotifyCmd } from './nowplayingApi';
+export { useSpotifyPlayer } from './hooks/useSpotifyPlayer';
+export type { UseSpotifyPlayerReturn } from './hooks/useSpotifyPlayer.types';
+export {
+    nowplayingApi,
+    useStreamNowplayingQuery,
+    useGetSpotifyTokenQuery,
+    sendSpotifyCmd,
+    sendSpotifyDeviceAnnounce,
+} from './nowplayingApi';
+export type { SpotifyTokenResponse } from './nowplayingApi';
 export { spotifyStateReceived } from './nowplayingSlice';
-export type { NowPlayingState } from './nowplayingSlice';
-export { selectNowPlayingPayload, selectNowPlayingHasLiveData } from './nowplayingSelectors';
+export type { NowPlayingState, PlayerSdkSlice } from './nowplayingSlice';
+export {
+    selectNowPlayingPayload,
+    selectNowPlayingHasLiveData,
+    selectSdkDeviceId,
+    selectSdkIsReady,
+    selectSdkError,
+    selectSdkPremiumRequired,
+    selectSdkPlayerState,
+} from './nowplayingSelectors';
 export type {
     SpotifyStatePayload,
     SpotifyCmdAction,
@@ -53,4 +74,6 @@ export type {
     SpotifyLibraryPage,
     SpotifyTab,
     LibraryView,
+    SpotifySdkError,
+    SpotifySdkPlayerState,
 } from './types';

@@ -7,6 +7,7 @@ import type {
     SpotifyAlbum,
     SpotifyArtist,
 } from './types';
+import type { SpotifySdkPlayerState } from './spotifySdk';
 
 export function payloadToTrack(payload: SpotifyStatePayload): NowPlayingTrack | null {
     const { track } = payload;
@@ -50,6 +51,30 @@ export function isSearchAlbum(item: SpotifyTrackResult | SpotifyArtist | Spotify
  */
 export function deriveMonogram(s: string): string {
     return s.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase().padEnd(3, '·');
+}
+
+/**
+ * Converts an SDK player state snapshot into the NowPlayingTrack shape
+ * consumed by TrackInfo / ProgressBar / TransportControls.
+ */
+export function sdkStateToTrack(
+    state: SpotifySdkPlayerState,
+    deviceName: string,
+): NowPlayingTrack | null {
+    if (state.track === null) return null;
+    const monogram = state.track.artist.slice(0, 3).toUpperCase();
+    return {
+        title: state.track.name,
+        artist: state.track.artist,
+        album: state.track.album,
+        monogram,
+        progressMs: state.positionMs,
+        durationMs: state.durationMs,
+        playing: !state.isPaused,
+        shuffle: state.shuffle,
+        repeat: state.repeat === 'context' ? 'all' : state.repeat === 'track' ? 'one' : 'off',
+        device: deviceName,
+    };
 }
 
 export function formatMs(ms: number): string {

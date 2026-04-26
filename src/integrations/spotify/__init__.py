@@ -9,15 +9,25 @@ from __future__ import annotations
 from integrations.spotify.client import (
     SpotifyAuthError,
     SpotifyClient,
+    SpotifyPlaylist,
     SpotifyPollError,
+    SpotifyPremiumError,
+    SpotifyQueueItem,
+    SpotifySearchResults,
     SpotifyTrackInfo,
+    SpotifyTrackResult,
 )
 
 __all__ = [
     "SpotifyAuthError",
     "SpotifyClient",
+    "SpotifyPlaylist",
     "SpotifyPollError",
+    "SpotifyPremiumError",
+    "SpotifyQueueItem",
+    "SpotifySearchResults",
     "SpotifyTrackInfo",
+    "SpotifyTrackResult",
     "get_spotify_client",
 ]
 

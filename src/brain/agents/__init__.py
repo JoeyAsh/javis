@@ -3,6 +3,7 @@
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent
 from brain.agents.search_agent import SearchAgent
+from brain.agents.spotify_agent import SpotifyAgent
 from brain.agents.system_agent import SystemAgent
 
 __all__ = [
@@ -10,5 +11,6 @@ __all__ = [
     "BaseAgent",
     "ChatAgent",
     "SearchAgent",
+    "SpotifyAgent",
     "SystemAgent",
 ]

@@ -503,12 +503,16 @@ async def broadcast_email_send_done(payload: dict[str, Any]) -> None:
 async def broadcast_spotify_state(
     authenticated: bool,
     track: Any = None,
+    scope_upgrade_required: bool = False,
 ) -> None:
     """Broadcast current Spotify playback state to all connected clients.
 
     Args:
         authenticated: Whether the Spotify client has a valid token.
         track: SpotifyTrackInfo instance, or None when nothing is playing.
+        scope_upgrade_required: True when the token exists but lacks the
+            scopes required by the new library/queue endpoints so the HUD
+            can show a re-auth prompt.
     """
     from integrations.spotify.client import SpotifyTrackInfo  # noqa: PLC0415
 
@@ -524,6 +528,7 @@ async def broadcast_spotify_state(
             "shuffle": track.shuffle,
             "repeat": track.repeat,
             "device": track.device_name,
+            "scope_upgrade_required": scope_upgrade_required,
         }
         if track.album_art_url:
             payload["album_art_url"] = track.album_art_url
@@ -539,6 +544,7 @@ async def broadcast_spotify_state(
             "shuffle": False,
             "repeat": "off",
             "device": "",
+            "scope_upgrade_required": scope_upgrade_required,
         }
 
     message = json.dumps({"type": "spotify_state", "payload": payload})
@@ -813,6 +819,10 @@ async def spotify_oauth_callback_handler(request: web.Request) -> web.Response:
 
     logger.info("Spotify OAuth complete — starting state poller")
 
+    # Wire the now-authenticated client into the orchestrator's SpotifyAgent.
+    if _orchestrator is not None:
+        _orchestrator.set_spotify_client(_spotify_client)
+
     # Start the poller if it isn't already running.
     if _spotify_poller_task is None or _spotify_poller_task.done():
         _cfg = _gcfg()
@@ -839,6 +849,300 @@ async def spotify_oauth_callback_handler(request: web.Request) -> web.Response:
             "<script>setTimeout(()=>window.close(),2000);</script></body></html>"
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Spotify REST API handlers — :8766  (/api/spotify/*)
+# ---------------------------------------------------------------------------
+
+def _spotify_json_error(status: int, body: dict[str, Any], **headers: str) -> web.Response:
+    """Return a JSON error response with the given status and optional extra headers."""
+    resp = web.Response(
+        status=status,
+        content_type="application/json",
+        text=json.dumps(body),
+    )
+    for k, v in headers.items():
+        resp.headers[k] = v
+    return resp
+
+
+def _spotify_handle_exception(exc: Exception) -> web.Response:
+    """Map a Spotify exception to the appropriate HTTP error response.
+
+    Args:
+        exc: Exception from a SpotifyClient call.
+
+    Returns:
+        aiohttp Response with correct status, JSON body, and headers.
+    """
+    from integrations.spotify.client import (  # noqa: PLC0415
+        SpotifyAuthError,
+        SpotifyPollError,
+        SpotifyPremiumError,
+    )
+
+    if isinstance(exc, SpotifyAuthError):
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    if isinstance(exc, SpotifyPremiumError):
+        return _spotify_json_error(402, {"error": "premium_required"})
+    if isinstance(exc, SpotifyPollError):
+        retry_after = getattr(exc, "retry_after", None)
+        body: dict[str, Any] = {"error": "rate_limited"}
+        extra: dict[str, str] = {}
+        if retry_after is not None:
+            body["retry_after"] = int(retry_after)
+            extra["Retry-After"] = str(int(retry_after))
+        return _spotify_json_error(429, body, **extra)
+    return _spotify_json_error(500, {"error": str(exc)})
+
+
+async def spotify_playlists_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/spotify/playlists — return user's playlists."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    try:
+        limit = int(request.rel_url.query.get("limit", 50))
+        offset = int(request.rel_url.query.get("offset", 0))
+        playlists = await _spotify_client.list_playlists(limit=limit, offset=offset)
+        items = [
+            {
+                "id": pl.id,
+                "name": pl.name,
+                "owner": pl.owner,
+                "track_count": pl.track_count,
+                "uri": pl.uri,
+            }
+            for pl in playlists
+        ]
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"items": items, "total": len(items), "offset": offset}),
+        )
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
+
+
+async def spotify_playlist_tracks_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/spotify/playlists/{id}/tracks — return playlist tracks."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    playlist_id = request.match_info.get("id", "")
+    try:
+        limit = int(request.rel_url.query.get("limit", 100))
+        offset = int(request.rel_url.query.get("offset", 0))
+        tracks = await _spotify_client.playlist_tracks(
+            playlist_id, limit=limit, offset=offset
+        )
+        items = [
+            {
+                "id": t.id,
+                "name": t.name,
+                "artist": t.artist,
+                "album": t.album,
+                "duration_ms": t.duration_ms,
+                "uri": t.uri,
+            }
+            for t in tracks
+        ]
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"items": items, "total": len(items), "offset": offset}),
+        )
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
+
+
+async def spotify_album_tracks_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/spotify/albums/{id}/tracks — return album tracks."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    album_id = request.match_info.get("id", "")
+    try:
+        limit = int(request.rel_url.query.get("limit", 50))
+        offset = int(request.rel_url.query.get("offset", 0))
+        tracks = await _spotify_client.album_tracks(album_id, limit=limit, offset=offset)
+        items = [
+            {
+                "id": t.id,
+                "name": t.name,
+                "artist": t.artist,
+                "album": t.album,
+                "duration_ms": t.duration_ms,
+                "uri": t.uri,
+            }
+            for t in tracks
+        ]
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"items": items, "total": len(items), "offset": offset}),
+        )
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
+
+
+async def spotify_saved_tracks_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/spotify/me/tracks — return user's saved tracks."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    try:
+        limit = int(request.rel_url.query.get("limit", 50))
+        offset = int(request.rel_url.query.get("offset", 0))
+        tracks = await _spotify_client.saved_tracks(limit=limit, offset=offset)
+        items = [
+            {
+                "id": t.id,
+                "name": t.name,
+                "artist": t.artist,
+                "album": t.album,
+                "duration_ms": t.duration_ms,
+                "uri": t.uri,
+            }
+            for t in tracks
+        ]
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"items": items, "total": len(items), "offset": offset}),
+        )
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
+
+
+async def spotify_saved_albums_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/spotify/me/albums — return user's saved albums."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    try:
+        limit = int(request.rel_url.query.get("limit", 50))
+        offset = int(request.rel_url.query.get("offset", 0))
+        albums = await _spotify_client.saved_albums(limit=limit, offset=offset)
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"items": albums, "total": len(albums), "offset": offset}),
+        )
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
+
+
+async def spotify_search_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/spotify/search?q=&types= — search the Spotify catalogue."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    query = request.rel_url.query.get("q", "").strip()
+    if not query:
+        return _spotify_json_error(400, {"error": "missing query parameter 'q'"})
+    types_raw = request.rel_url.query.get("types", "")
+    types: list[str] | None = (
+        [t.strip() for t in types_raw.split(",") if t.strip()] if types_raw else None
+    )
+    limit = int(request.rel_url.query.get("limit", 10))
+    try:
+        results = await _spotify_client.search(query, types=types, limit=limit)
+        body = {
+            "tracks": [
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "artist": t.artist,
+                    "album": t.album,
+                    "duration_ms": t.duration_ms,
+                    "uri": t.uri,
+                }
+                for t in results.tracks
+            ],
+            "artists": results.artists,
+            "albums": results.albums,
+            "playlists": [
+                {
+                    "id": pl.id,
+                    "name": pl.name,
+                    "owner": pl.owner,
+                    "track_count": pl.track_count,
+                    "uri": pl.uri,
+                }
+                for pl in results.playlists
+            ],
+        }
+        return web.Response(content_type="application/json", text=json.dumps(body))
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
+
+
+async def spotify_queue_get_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/spotify/queue — return current playback queue."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    try:
+        queue = await _spotify_client.get_queue()
+        items = [
+            {
+                "position": q.position,
+                "name": q.name,
+                "artist": q.artist,
+                "uri": q.uri,
+            }
+            for q in queue
+        ]
+        return web.Response(
+            content_type="application/json",
+            text=json.dumps({"items": items, "total": len(items), "offset": 0}),
+        )
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
+
+
+async def spotify_queue_post_handler(request: web.Request) -> web.Response:
+    """Handle POST /api/spotify/queue — add a URI to the playback queue."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    try:
+        body = await request.json()
+        uri: str = body.get("uri", "").strip()
+        if not uri:
+            return _spotify_json_error(400, {"error": "missing 'uri' in request body"})
+        await _spotify_client.add_to_queue(uri)
+        return web.Response(content_type="application/json", text="{}")
+    except json.JSONDecodeError:
+        return _spotify_json_error(400, {"error": "invalid JSON body"})
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
+
+
+async def spotify_play_context_handler(request: web.Request) -> web.Response:
+    """Handle POST /api/spotify/play/context — start playback of a context URI."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    try:
+        body = await request.json()
+        context_uri: str = body.get("context_uri", "").strip()
+        if not context_uri:
+            return _spotify_json_error(
+                400, {"error": "missing 'context_uri' in request body"}
+            )
+        offset_uri: str | None = body.get("offset_uri") or None
+        await _spotify_client.play_context(context_uri, offset_uri=offset_uri)
+        return web.Response(content_type="application/json", text="{}")
+    except json.JSONDecodeError:
+        return _spotify_json_error(400, {"error": "invalid JSON body"})
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
+
+
+async def spotify_play_uris_handler(request: web.Request) -> web.Response:
+    """Handle POST /api/spotify/play/uris — start playback of a list of URIs."""
+    if _spotify_client is None or not _spotify_client.is_authenticated():
+        return _spotify_json_error(401, {"error": "unauthenticated"})
+    try:
+        body = await request.json()
+        uris: list[str] = body.get("uris", [])
+        if not uris:
+            return _spotify_json_error(400, {"error": "missing or empty 'uris' list"})
+        await _spotify_client.play_uris(uris)
+        return web.Response(content_type="application/json", text="{}")
+    except json.JSONDecodeError:
+        return _spotify_json_error(400, {"error": "invalid JSON body"})
+    except Exception as exc:
+        return _spotify_handle_exception(exc)
 
 
 async def broadcast_notification(
@@ -3766,6 +4070,21 @@ async def start_ws_server(
     http_app.router.add_get("/api/metrics/voice", voice_metrics_handler)
     http_app.router.add_get("/api/config/location", config_location_handler)
     http_app.router.add_get("/api/mcp/health", mcp_health_handler)
+    # Spotify library / search / queue REST endpoints
+    http_app.router.add_get("/api/spotify/playlists", spotify_playlists_handler)
+    http_app.router.add_get(
+        "/api/spotify/playlists/{id}/tracks", spotify_playlist_tracks_handler
+    )
+    http_app.router.add_get(
+        "/api/spotify/albums/{id}/tracks", spotify_album_tracks_handler
+    )
+    http_app.router.add_get("/api/spotify/me/tracks", spotify_saved_tracks_handler)
+    http_app.router.add_get("/api/spotify/me/albums", spotify_saved_albums_handler)
+    http_app.router.add_get("/api/spotify/search", spotify_search_handler)
+    http_app.router.add_get("/api/spotify/queue", spotify_queue_get_handler)
+    http_app.router.add_post("/api/spotify/queue", spotify_queue_post_handler)
+    http_app.router.add_post("/api/spotify/play/context", spotify_play_context_handler)
+    http_app.router.add_post("/api/spotify/play/uris", spotify_play_uris_handler)
 
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)
@@ -3835,6 +4154,9 @@ async def start_ws_server(
             _spotify_poller_task = asyncio.create_task(
                 _spotify_state_loop(_spotify_client, poll_interval_s)
             )
+            # Wire the authenticated client into the orchestrator's SpotifyAgent.
+            if _orchestrator is not None:
+                _orchestrator.set_spotify_client(_spotify_client)
             logger.info(
                 f"Spotify client ready — poller started (interval={poll_interval_s}s)"
             )

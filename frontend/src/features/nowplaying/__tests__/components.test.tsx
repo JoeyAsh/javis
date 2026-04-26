@@ -32,6 +32,7 @@ import { SearchTab } from '../components/SearchTab/SearchTab';
 import { QueueTab } from '../components/QueueTab/QueueTab';
 import { SpotifyFullPanel } from '../components/SpotifyFullPanel/SpotifyFullPanel';
 import { NowPlayingPanel } from '../components/NowPlayingPanel/NowPlayingPanel';
+import { NowPlayingStrip } from '../components/NowPlayingStrip/NowPlayingStrip';
 
 import type { SpotifyPlaylist, SpotifyTrackResult, SpotifyQueueItem, SpotifyStatePayload, SpotifySearchResults, SpotifyAlbum, SpotifyArtist } from '../types';
 import type { NowPlayingTrack } from '../types';
@@ -625,6 +626,64 @@ describe('NowPlayingPanel compact — regression', () => {
             store.dispatch(spotifyStateReceived({ authenticated: false }));
         });
         expect(screen.getByRole('button', { name: /log in to spotify/i })).toBeInTheDocument();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// NowPlayingPanel — no-track authenticated behaviour
+// ---------------------------------------------------------------------------
+
+describe('NowPlayingPanel — authenticated, no track playing', () => {
+    const noTrackPayload: SpotifyStatePayload = {
+        authenticated: true,
+        // track and device intentionally omitted — no active playback
+    };
+
+    it('expanded mode renders SpotifyFullPanel (TabBar visible) instead of NoPlaybackState', () => {
+        const { store } = renderWithProviders(<NowPlayingPanel mode="expanded" />, {
+            reducers: { nowplaying: nowplayingReducer },
+        });
+        act(() => {
+            store.dispatch(spotifyStateReceived(noTrackPayload));
+        });
+        // TabBar is the distinguishing element of SpotifyFullPanel
+        expect(screen.getByRole('button', { name: /LIBRARY/i })).toBeInTheDocument();
+        // NoPlaybackState standalone text should NOT be the root view
+        // (the strip inside SpotifyFullPanel may still show "NO ACTIVE PLAYBACK",
+        //  but the tabs are the canonical check)
+    });
+
+    it('compact mode still renders NoPlaybackState when no track is playing', () => {
+        const { store } = renderWithProviders(<NowPlayingPanel mode="compact" />, {
+            reducers: { nowplaying: nowplayingReducer },
+        });
+        act(() => {
+            store.dispatch(spotifyStateReceived(noTrackPayload));
+        });
+        expect(screen.queryByRole('button', { name: /LIBRARY/i })).not.toBeInTheDocument();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// NowPlayingStrip — null track renders placeholder
+// ---------------------------------------------------------------------------
+
+describe('NowPlayingStrip — null track', () => {
+    it('renders placeholder text when track is null', () => {
+        renderWithProviders(
+            <NowPlayingStrip track={null} onCmd={vi.fn()} />,
+            { reducers: { nowplaying: nowplayingReducer } },
+        );
+        expect(screen.getByText(/NO ACTIVE PLAYBACK/i)).toBeInTheDocument();
+    });
+
+    it('does not render TrackInfo when track is null', () => {
+        renderWithProviders(
+            <NowPlayingStrip track={null} onCmd={vi.fn()} />,
+            { reducers: { nowplaying: nowplayingReducer } },
+        );
+        // TrackInfo renders the track title; no track title should be present
+        expect(screen.queryByText('Midnight City')).not.toBeInTheDocument();
     });
 });
 

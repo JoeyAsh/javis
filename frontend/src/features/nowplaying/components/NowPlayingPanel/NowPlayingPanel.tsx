@@ -51,7 +51,10 @@ export function NowPlayingPanel({ mode = 'expanded' }: NowPlayingPanelProps): Re
         }
         const liveTrack = payloadToTrack(payload);
         if (!liveTrack) {
-            return <NoPlaybackState />;
+            if (mode === 'compact') {
+                return <NoPlaybackState />;
+            }
+            return <SpotifyFullPanel track={null} onCmd={sendCmd} />;
         }
         return mode === 'compact' ? (
             <NowPlayingCompact track={liveTrack} onCmd={sendCmd} />

@@ -258,14 +258,19 @@ def test_spotify_intents_not_in_local_intents():
         )
 
 
-def test_pc_smart_home_system_still_in_local_intents():
-    """Existing local intents (PC/smart-home/system) are unaffected by Spotify addition."""
+def test_system_still_in_local_intents_after_spotify_addition():
+    """Intent.SYSTEM remains a local intent; Spotify addition does not break anything.
+
+    Phase 4 (issue #76) removed PC_CONTROL and SMART_HOME from _LOCAL_INTENTS.
+    Only SYSTEM and WEB_SEARCH remain as local intents.
+    """
     from brain.intent_parser import Intent
     from brain.orchestrator import _LOCAL_INTENTS
 
-    assert Intent.PC_CONTROL in _LOCAL_INTENTS
-    assert Intent.SMART_HOME in _LOCAL_INTENTS
     assert Intent.SYSTEM in _LOCAL_INTENTS
+    # Phase 4: PC_CONTROL and SMART_HOME now go through OpenClaw → MCP.
+    assert Intent.PC_CONTROL not in _LOCAL_INTENTS
+    assert Intent.SMART_HOME not in _LOCAL_INTENTS
 
 
 # ---------------------------------------------------------------------------

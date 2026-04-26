@@ -24,9 +24,7 @@ if TYPE_CHECKING:
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent
-from brain.agents.pc_agent import PcAgent
 from brain.agents.search_agent import SearchAgent
-from brain.agents.smart_home_agent import SmartHomeAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
 from brain.intent_parser import Intent, IntentResult
@@ -74,8 +72,12 @@ class OrchestratorDecision:
 
 # Intents that can be handled locally without any LLM round-trip. Anything
 # outside this set falls through to the conversational chat path (OpenClaw).
+# PC_CONTROL and SMART_HOME are intentionally absent here: these intents now
+# fall through to OpenClaw, which calls the corresponding MCP tools registered
+# in api.mcp_tools (issue #76). SystemAgent is retained for shutdown,
+# voice-change, and memory-reset — none of which have MCP equivalents.
 _LOCAL_INTENTS: frozenset[Intent] = frozenset(
-    {Intent.PC_CONTROL, Intent.SMART_HOME, Intent.SYSTEM, Intent.WEB_SEARCH}
+    {Intent.SYSTEM, Intent.WEB_SEARCH}
 )
 
 
@@ -129,12 +131,14 @@ class Orchestrator:
         self._init_agents()
 
     def _init_agents(self) -> None:
-        """Wire up local agents."""
+        """Wire up local agents.
+
+        PcAgent and SmartHomeAgent are intentionally omitted: those intents
+        now fall through to OpenClaw → MCP tools (issue #76).
+        """
         self._agents = {
             "chat": ChatAgent(self.claude_client),
-            "pc": PcAgent(self.claude_client),
             "search": SearchAgent(self.claude_client),
-            "smart_home": SmartHomeAgent(self.claude_client),
             "system": SystemAgent(
                 self.claude_client, memory=None, tts_engine=self.tts_engine
             ),
@@ -632,11 +636,11 @@ class Orchestrator:
 
 
 def _intent_to_agent_name(intent: Intent) -> str:
-    """Map a classified intent to the local agent key."""
-    if intent == Intent.PC_CONTROL:
-        return "pc"
-    if intent == Intent.SMART_HOME:
-        return "smart_home"
+    """Map a classified intent to the local agent key.
+
+    PC_CONTROL and SMART_HOME are no longer in _LOCAL_INTENTS; they fall
+    through to the OpenClaw chat path which calls MCP tools (issue #76).
+    """
     if intent == Intent.SYSTEM:
         return "system"
     if intent == Intent.WEB_SEARCH:

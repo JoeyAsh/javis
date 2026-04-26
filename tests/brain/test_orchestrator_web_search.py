@@ -103,11 +103,15 @@ def test_search_agent_registered_in_orchestrator():
     assert isinstance(orch._agents["search"], SearchAgent)
 
 
-def test_pc_smart_home_system_still_in_local_intents():
-    """Existing local intents are unaffected by WEB_SEARCH addition."""
-    assert Intent.PC_CONTROL in _LOCAL_INTENTS
-    assert Intent.SMART_HOME in _LOCAL_INTENTS
+def test_system_still_in_local_intents():
+    """Intent.SYSTEM remains a local intent after Phase 4 (WEB_SEARCH addition unaffected)."""
+    # Phase 4 (issue #76) removed PC_CONTROL and SMART_HOME from _LOCAL_INTENTS.
+    # Only SYSTEM and WEB_SEARCH remain.  This test is the regression guard for
+    # the WEB_SEARCH feature specifically.
     assert Intent.SYSTEM in _LOCAL_INTENTS
+    # PC_CONTROL and SMART_HOME now fall through to OpenClaw → MCP tools.
+    assert Intent.PC_CONTROL not in _LOCAL_INTENTS
+    assert Intent.SMART_HOME not in _LOCAL_INTENTS
 
 
 # ---------------------------------------------------------------------------

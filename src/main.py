@@ -181,4 +181,16 @@ def publish_event(event_type: str, payload: dict[str, Any] | None = None) -> Non
 
 
 if __name__ == "__main__":
+    # Prime the Tailscale hostname cache before the asyncio loop starts so the
+    # MCP advertise-host resolution inside `start_mcp_server` is a non-blocking
+    # cache hit.  The subprocess is allowed to block here because we are still
+    # in sync startup code, before asyncio.run() is entered.
+    try:
+        from utils.device import resolve_tailscale_hostname as _prime_tailscale
+
+        _prime_tailscale()
+    except Exception as _exc:  # noqa: BLE001
+        # A flaky Tailscale CLI must never prevent startup.
+        logger.debug(f"Tailscale hostname prime failed (non-fatal): {_exc}")
+
     asyncio.run(main())

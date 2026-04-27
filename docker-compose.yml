@@ -14,5 +14,8 @@ services:
       - /dev/snd:/dev/snd
     environment:
       - PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native
+      - JARVIS_REMOTE_ACCESS=${JARVIS_REMOTE_ACCESS:-}
+      - TAILSCALE_HOSTNAME=${TAILSCALE_HOSTNAME:-}
+      - JARVIS_MCP_ADVERTISE_HOST=${JARVIS_MCP_ADVERTISE_HOST:-}
     network_mode: host
     restart: unless-stopped

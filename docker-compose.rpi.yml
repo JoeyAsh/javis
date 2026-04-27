@@ -13,5 +13,8 @@ services:
       - /dev/snd:/dev/snd
     environment:
       - JARVIS_PLATFORM=rpi
+      - JARVIS_REMOTE_ACCESS=${JARVIS_REMOTE_ACCESS:-}
+      - TAILSCALE_HOSTNAME=${TAILSCALE_HOSTNAME:-}
+      - JARVIS_MCP_ADVERTISE_HOST=${JARVIS_MCP_ADVERTISE_HOST:-}
     network_mode: host
     restart: unless-stopped

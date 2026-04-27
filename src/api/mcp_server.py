@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import socket
 import sys
 from collections.abc import Callable
@@ -29,6 +30,24 @@ from utils.device import load_device_identity, resolve_advertise_host
 from utils.logger import get_logger
 
 logger = get_logger("mcp_server")
+
+
+def _strip_rich_handler() -> None:
+    """Remove RichHandler instances that FastMCP.__init__ attaches.
+
+    The intercept is already installed via setup_logger; once Rich is
+    gone, all MCP log lines flow through loguru.
+    """
+    try:
+        from rich.logging import RichHandler  # noqa: PLC0415
+    except ImportError:
+        return  # Rich isn't installed — nothing to strip
+    root = logging.getLogger()
+    before = len(root.handlers)
+    root.handlers = [h for h in root.handlers if not isinstance(h, RichHandler)]
+    removed = before - len(root.handlers)
+    logger.debug(f"FastMCP RichHandler stripped (removed={removed})")
+
 
 # ---------------------------------------------------------------------------
 # Module-level singletons
@@ -185,6 +204,7 @@ async def start_mcp_server(config: dict[str, Any], device_slug: str) -> None:
             port=bind_port,
             log_level="WARNING",  # suppress uvicorn noise; loguru handles JARVIS logs
         )
+        _strip_rich_handler()
 
         # Register the device://info resource so the OpenClaw agent can query
         # identity on demand via the standard MCP resources/read protocol.
@@ -224,6 +244,7 @@ async def start_mcp_server(config: dict[str, Any], device_slug: str) -> None:
                     port=bind_port,
                     log_level="WARNING",
                 )
+                _strip_rich_handler()
                 _register_device_info_resource(_server, device_slug, bind_port)
                 for entry in _tool_registry.values():
                     _server.add_tool(

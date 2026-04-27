@@ -103,7 +103,7 @@ async def test_mcp_start_path_reads_enabled_key() -> None:
 
     cfg = {"enabled": False, "bind_host": "127.0.0.1", "bind_port": 8767}
     with patch("api.mcp_server.FastMCP") as mock_cls:
-        await start_mcp_server(cfg)
+        await start_mcp_server(cfg, device_slug="test-device")
 
     mock_cls.assert_not_called()
 
@@ -117,8 +117,25 @@ async def test_mcp_start_path_uses_bind_host_and_port() -> None:
     mock_instance = MagicMock()
     mock_instance.run_sse_async = AsyncMock(return_value=None)
 
-    with patch("api.mcp_server.FastMCP", return_value=mock_instance) as mock_cls:
-        await start_mcp_server(cfg)
+    import sys
+    from unittest.mock import MagicMock as _MM
+
+    # api.mcp_tools is imported lazily inside start_mcp_server; stub it out so no
+    # real tool registrations run during the test.
+    _mcp_tools_stub = _MM()
+    _prev = sys.modules.get("api.mcp_tools")
+    sys.modules["api.mcp_tools"] = _mcp_tools_stub
+    try:
+        with (
+            patch("api.mcp_server.FastMCP", return_value=mock_instance) as mock_cls,
+            patch("api.mcp_server.resolve_advertise_host", return_value="10.0.0.1"),
+        ):
+            await start_mcp_server(cfg, device_slug="test-device")
+    finally:
+        if _prev is None:
+            sys.modules.pop("api.mcp_tools", None)
+        else:
+            sys.modules["api.mcp_tools"] = _prev
 
     _, kwargs = mock_cls.call_args
     assert kwargs["host"] == "10.0.0.1"
@@ -154,13 +171,13 @@ async def test_stop_mcp_server_called_during_shutdown_clears_singletons() -> Non
 
 
 def test_ws_server_source_contains_mcp_start_block() -> None:
-    """start_ws_server calls start_mcp_server with the mcp config section."""
+    """start_ws_server calls start_mcp_server with the mcp config section and device_slug."""
     src = _ws_server_source()
     assert 'cfg.get_section("mcp") or {}' in src, (
         "start_ws_server must read the 'mcp' config section"
     )
-    assert "await start_mcp_server(mcp_config)" in src, (
-        "start_ws_server must await start_mcp_server with the mcp config"
+    assert "await start_mcp_server(mcp_config, device_slug=_device_slug)" in src, (
+        "start_ws_server must await start_mcp_server with mcp_config and device_slug"
     )
 
 
@@ -173,16 +190,21 @@ def test_ws_server_source_contains_auto_register_guard() -> None:
     assert 'mcp_config.get("enabled", True)' in src, (
         "'enabled' guard must be checked before calling register_mcp_server"
     )
-    assert "await _openclaw_client.register_mcp_server(mcp_url)" in src, (
+    # Post-#88: register_mcp_server called with keyword args (url=, name=, headers=).
+    assert "await _openclaw_client.register_mcp_server(" in src, (
         "register_mcp_server must be awaited inside the guard"
+    )
+    assert "url=mcp_url" in src, (
+        "register_mcp_server must receive url=mcp_url keyword argument"
     )
 
 
 def test_ws_server_source_contains_get_sse_url_call() -> None:
-    """start_ws_server computes the SSE URL via get_sse_url before registering."""
+    """start_ws_server computes the advertised SSE URL via get_sse_advertise_url before registering."""
     src = _ws_server_source()
-    assert "mcp_url = get_sse_url(mcp_config)" in src, (
-        "SSE URL must be obtained via get_sse_url(mcp_config)"
+    # Post-#88: uses get_sse_advertise_url (Tailscale-aware) instead of plain get_sse_url.
+    assert "mcp_url = get_sse_advertise_url(mcp_config)" in src, (
+        "SSE URL must be obtained via get_sse_advertise_url(mcp_config)"
     )
 
 
@@ -195,8 +217,12 @@ def test_ws_server_source_contains_shutdown_unregister_block() -> None:
     assert '_mcp_cfg.get("enabled", True)' in src, (
         "shutdown path must check enabled flag before unregistering"
     )
-    assert "_openclaw_client.unregister_mcp_server()" in src, (
+    # Post-#88: unregister uses device-scoped name argument.
+    assert "_openclaw_client.unregister_mcp_server(" in src, (
         "unregister_mcp_server must be called during shutdown"
+    )
+    assert 'name=f"jarvis-{_device_slug}"' in src, (
+        "shutdown path must pass the device-scoped name to unregister_mcp_server"
     )
 
 
@@ -224,7 +250,8 @@ def test_ws_server_imports_start_and_stop_mcp_server() -> None:
 
     assert "start_mcp_server" in imported
     assert "stop_mcp_server" in imported
-    assert "get_sse_url" in imported
+    # Post-#88: ws_server imports get_sse_advertise_url (Tailscale-aware) not get_sse_url.
+    assert "get_sse_advertise_url" in imported
     assert "list_registered_tools" in imported
 
 

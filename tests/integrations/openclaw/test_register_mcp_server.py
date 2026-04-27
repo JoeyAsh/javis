@@ -234,8 +234,14 @@ async def test_unregister_mcp_server_spawns_correct_argv(client: OpenClawClient)
 
 
 @pytest.mark.asyncio
-async def test_unregister_mcp_server_default_name_is_jarvis(client: OpenClawClient) -> None:
-    """unregister_mcp_server defaults to name='jarvis' when not specified."""
+async def test_unregister_mcp_server_explicit_name_appears_in_argv(
+    client: OpenClawClient,
+) -> None:
+    """unregister_mcp_server forwards the supplied name into the openclaw mcp unset argv.
+
+    Post-#88: each device registers as 'jarvis-<slug>' so the caller always passes
+    an explicit name; there is no longer a bare 'jarvis' default.
+    """
     captured: list[Any] = []
 
     async def _communicate():
@@ -249,11 +255,13 @@ async def test_unregister_mcp_server_default_name_is_jarvis(client: OpenClawClie
         captured.extend(args)
         return proc
 
+    device_name = "jarvis-test-laptop"
     with patch("integrations.openclaw.client._resolve_cli_argv", return_value=["openclaw"]):
         with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
-            await client.unregister_mcp_server()  # no name arg
+            await client.unregister_mcp_server(name=device_name)
 
-    assert "jarvis" in captured
+    assert device_name in captured
+    assert "unset" in captured
 
 
 # ---------------------------------------------------------------------------

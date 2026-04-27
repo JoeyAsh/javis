@@ -14,7 +14,6 @@ import orbStateReducer from '@features/orbState/orbStateSlice';
 import conversationReducer from '@features/conversation/conversationSlice';
 import audioPlaybackReducer from '@core/audio/audioPlaybackSlice';
 import deviceReducer from '@features/device/deviceSlice';
-
 export const rootReducer = combineReducers({
     [baseApi.reducerPath]: baseApi.reducer,
     [weatherApi.reducerPath]: weatherApi.reducer,

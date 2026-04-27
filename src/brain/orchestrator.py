@@ -15,15 +15,18 @@ session (``SOUL.md`` + session memory).
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from brain.conversation_state import ConversationStateMachine
+    from brain.narration_queue import NarrationQueue
     from integrations.openclaw.ws_client import StreamChunk
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent
+from brain.agents.morning_briefing_agent import build_briefing_prompt
 from brain.agents.search_agent import SearchAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
@@ -82,6 +85,8 @@ _LOCAL_INTENTS: frozenset[Intent] = frozenset(
     {
         Intent.SYSTEM,
         Intent.WEB_SEARCH,
+        Intent.GREETING,
+        Intent.MORNING_BRIEFING,
     }
 )
 
@@ -99,6 +104,9 @@ class Orchestrator:
         claude_client: ClaudeClient,
         memory: Any = None,
         tts_engine: Any = None,
+        memory_store: Any = None,
+        narration_queue: NarrationQueue | None = None,
+        state_machine: ConversationStateMachine | None = None,
     ) -> None:
         """Initialise the orchestrator.
 
@@ -111,10 +119,22 @@ class Orchestrator:
                 :class:`brain.memory.MemoryStore` from ``ws_server``).
             tts_engine: TTS engine handle passed through to ``SystemAgent``
                 for voice-change commands.
+            memory_store: Optional :class:`brain.memory.MemoryStore` instance
+                used by ``_handle_greeting`` to read/write the daily-briefing
+                played flag.
+            narration_queue: Optional :class:`brain.narration_queue.NarrationQueue`
+                used for streaming per-block briefing utterances. When provided
+                the morning briefing emits an instant ack and streams blocks
+                individually; when absent the legacy single-utterance path is used.
+            state_machine: Optional :class:`brain.conversation_state.ConversationStateMachine`
+                shared with the NarrationQueue and the WS server.
         """
         self.claude_client = claude_client
         self.memory = memory
         self.tts_engine = tts_engine
+        self._memory_store: Any = memory_store
+        self._narration_queue: NarrationQueue | None = narration_queue
+        self._state_machine: ConversationStateMachine | None = state_machine
 
         # Config — retained for backward compatibility, but the old
         # "orchestrator_model" / "skip_on_clear_intent" knobs no longer
@@ -475,6 +495,108 @@ class Orchestrator:
 
         return None
 
+    async def _handle_greeting(
+        self,
+        text: str,
+        language: str,
+    ) -> AgentResult | None:
+        """Handle a GREETING intent: auto-trigger morning briefing once per day.
+
+        Returns an ``AgentResult`` when the briefing fires; returns ``None``
+        when the greeting should fall through to the normal chat path (briefing
+        already delivered today).
+
+        The time-gate (04:00–12:00 window) is intentionally absent — the spec
+        says "first greeting of a given day", not "of a given morning". The
+        daily flag alone gates re-firing.
+
+        Args:
+            text: Original STT text.
+            language: Detected language (``"en"`` / ``"de"``).
+        """
+        import datetime as _dt
+        from zoneinfo import ZoneInfo
+
+        cfg = get_config()
+        tz_name: str = cfg.get("briefing.timezone", "Europe/Zurich")
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo("Europe/Zurich")
+
+        now_local = _dt.datetime.now(tz)
+        date_key = now_local.strftime("%Y-%m-%d")
+        flag_key = f"morning_briefing_played_{date_key}"
+
+        # Check daily flag via MemoryStore.
+        if self._memory_store is not None:
+            try:
+                played = await self._memory_store.pref_get(flag_key)
+                if played == "true" or played is True:
+                    logger.debug(
+                        f"Morning briefing already played today ({date_key}); "
+                        "falling through to chat"
+                    )
+                    return None
+            except Exception as exc:
+                logger.warning(f"Could not read morning briefing flag from MemoryStore: {exc}")
+        else:
+            logger.warning(
+                "No MemoryStore attached to Orchestrator — "
+                "cannot check morning briefing daily flag; running briefing anyway"
+            )
+
+        logger.debug(
+            f"[BRIEFING] Orchestrator dispatching: intent={Intent.GREETING.value}"
+            f" → briefing prompt via OpenClaw (daily_flag={date_key})"
+        )
+        logger.info(f"Auto-triggering morning briefing for {date_key} (GREETING intent)")
+
+        # Set the daily flag eagerly so the briefing does not re-fire if the
+        # OpenClaw call fails mid-stream.
+        if self._memory_store is not None:
+            try:
+                await self._memory_store.pref_set(flag_key, "true")
+                logger.debug(f"Set morning briefing played flag (eager): {flag_key}")
+            except Exception as exc:
+                logger.warning(f"Could not set morning briefing flag: {exc}")
+
+        # Signal the caller to invoke _dispatch_briefing by returning a special
+        # AgentResult whose ``data`` carries the ``briefing_dispatch`` flag.
+        ack_text = (
+            "Guten Morgen, Sir. Einen Moment."
+            if language == "de"
+            else "Good morning, Sir. One moment."
+        )
+        return AgentResult(
+            spoken_response=ack_text,
+            success=True,
+            data={"briefing_dispatch": True, "language": language},
+        )
+
+    async def _dispatch_briefing(self, language: str) -> AsyncIterator[StreamChunk]:
+        """Yield an instant-ack chunk, then stream OpenClaw chat with the briefing prompt."""
+        ack_text = "Einen Moment, Sir." if language == "de" else "One moment, Sir."
+        yield StreamChunk(type="text", run_id="local", new_text=ack_text, full_text=ack_text)
+
+        briefing_prompt = build_briefing_prompt(language)
+        from brain.claude_client import _with_language_hint  # noqa: PLC0415
+
+        openclaw = self.claude_client.openclaw
+        if openclaw is None:
+            response_text = await self.claude_client.chat(briefing_prompt, language=language)
+            yield StreamChunk(
+                type="final",
+                run_id="briefing-fallback",
+                new_text=response_text,
+                full_text=response_text,
+            )
+            return
+
+        prompt = _with_language_hint(briefing_prompt, language)
+        async for chunk in openclaw.query_agent_stream(prompt):
+            yield chunk
+
     async def process(
         self,
         text: str,
@@ -494,6 +616,42 @@ class Orchestrator:
         Returns:
             ``AgentResult`` ready for the TTS/broadcast stage.
         """
+        # --- GREETING: may auto-trigger morning briefing ---------------
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.GREETING
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            result = await self._handle_greeting(text, language)
+            if result is not None:
+                if result.data and result.data.get("briefing_dispatch"):
+                    # Collect the briefing stream into a single spoken response.
+                    lang = result.data.get("language", language)
+                    parts: list[str] = []
+                    async for chunk in self._dispatch_briefing(lang):
+                        if chunk.new_text:
+                            parts.append(chunk.new_text)
+                    full = "".join(parts)
+                    return AgentResult(spoken_response=full, success=True)
+                return result
+            # Fall through to chat path for greetings when briefing already played.
+
+        # --- MORNING_BRIEFING: manual trigger (always runs, flag not set) --
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.MORNING_BRIEFING
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            logger.info(
+                "Local dispatch: morning_briefing via OpenClaw "
+                f"(conf={intent_result.confidence:.2f})"
+            )
+            parts_mb: list[str] = []
+            async for chunk in self._dispatch_briefing(language):
+                if chunk.new_text:
+                    parts_mb.append(chunk.new_text)
+            return AgentResult(spoken_response="".join(parts_mb), success=True)
+
         # --- Local UI / action commands -------------------------------
         if (
             intent_result is not None
@@ -563,7 +721,41 @@ class Orchestrator:
         Yields:
             :class:`~integrations.openclaw.ws_client.StreamChunk` objects.
         """
-        from integrations.openclaw.ws_client import StreamChunk  # local import
+        # --- GREETING: may auto-trigger morning briefing (stream) ----------
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.GREETING
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            result = await self._handle_greeting(text, language)
+            if result is not None:
+                if result.data and result.data.get("briefing_dispatch"):
+                    lang = result.data.get("language", language)
+                    async for chunk in self._dispatch_briefing(lang):
+                        yield chunk
+                    return
+                yield StreamChunk(
+                    type="final",
+                    run_id="local",
+                    new_text=result.spoken_response,
+                    full_text=result.spoken_response,
+                )
+                return
+            # Fall through to chat path if briefing already played today.
+
+        # --- MORNING_BRIEFING: manual trigger (stream) ---------------------
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.MORNING_BRIEFING
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            logger.info(
+                "Local dispatch (stream): morning_briefing via OpenClaw "
+                f"(conf={intent_result.confidence:.2f})"
+            )
+            async for chunk in self._dispatch_briefing(language):
+                yield chunk
+            return
 
         # --- Local UI / action commands (no streaming, single result) ----
         if (
@@ -605,7 +797,7 @@ class Orchestrator:
             )
         )
 
-        from brain.claude_client import _with_language_hint  # local import
+        from brain.claude_client import _with_language_hint  # noqa: PLC0415
 
         prompt_text = text
         if intent_result is not None and intent_result.intent in _EMAIL_INTENTS:
@@ -648,6 +840,8 @@ def _intent_to_agent_name(intent: Intent) -> str:
     PC_CONTROL, SMART_HOME, and all Spotify intents are not in _LOCAL_INTENTS;
     they fall through to the OpenClaw chat path which calls MCP tools
     (issue #76 for PC/home, issue #87 for Spotify).
+    GREETING is not mapped here — it is handled by ``_handle_greeting`` in the
+    orchestrator directly (may fall through to chat).
     """
     if intent == Intent.SYSTEM:
         return "system"

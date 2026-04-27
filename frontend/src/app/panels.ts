@@ -19,7 +19,6 @@ import { DevPanel } from '@features/dev';
 import { SelfFixPanel } from '@features/selffix';
 import { GitLabPanel } from '@features/gitlab';
 import { LogPanel } from '@features/log';
-
 // ── Shared panel props ────────────────────────────────────────────────────────
 
 export interface PanelSharedProps {

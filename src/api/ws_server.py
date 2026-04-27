@@ -31,8 +31,10 @@ from audio.stream_splitter import StreamSplitter
 from audio.stt import SpeechToText, create_stt_engine
 from audio.wake_word import WakeWordDetector, create_wake_word_detector
 from brain.conversation_mode import ConversationMode
+from brain.conversation_state import ConversationStateMachine
 from brain.memory import MemoryStore
 from brain.intent_parser import Intent, IntentParser, get_intent_parser
+from brain.narration_queue import NarrationQueue
 from brain.quick_ack import QuickAckGenerator
 from brain.orchestrator import Orchestrator
 from brain.salutation import get_salutation
@@ -89,6 +91,11 @@ _intent_parser: IntentParser | None = None
 
 # Conversation-mode helper — arm/detect follow-up window + sleep phrases.
 _conversation_mode: ConversationMode | None = None
+
+# Conversational state machine and narration queue (#93 Phase 1).
+_state_machine: ConversationStateMachine | None = None
+_narration_queue: NarrationQueue | None = None
+_narration_drainer_task: asyncio.Task[None] | None = None
 
 # Persona config snapshot — read once at startup so the sleep-phrase closing
 # line can pick a salutation without re-reading config per turn.
@@ -460,6 +467,59 @@ async def broadcast_calendar_state(
         }
     )
     await _broadcast(message)
+
+
+async def _emit_synthetic_utterance(text: str, language: str = "de") -> None:
+    """Synthesise ``text`` through Fish TTS and broadcast audio to all clients.
+
+    Used as the ``tts_emit`` callback for the NarrationQueue so background
+    narration items flow through the same Fish Audio → base64 → broadcast
+    path as user-turn responses.
+
+    Marks the conversation state machine as speaking / idle around the call
+    so the queue drainer pauses correctly during playback.
+
+    Args:
+        text: Plain-text string to synthesise.
+        language: Language hint (unused by Fish TTS but kept for future
+            prosody/voice selection).
+    """
+    global _fish_tts, _state_machine
+
+    if _fish_tts is None:
+        logger.warning("_emit_synthetic_utterance: Fish TTS not initialised — skipping")
+        return
+    if not text.strip():
+        return
+
+    if _state_machine is not None:
+        _state_machine.on_tts_start()
+    try:
+        from audio.fish_tts import FishTTSError, strip_markdown_for_tts  # noqa: PLC0415
+        from audio.stream_splitter import StreamSplitter  # noqa: PLC0415
+
+        splitter = StreamSplitter(min_chars=20, max_wait_ms=400)
+
+        async def _single_token():
+            yield text
+
+        async for sentence in splitter.process(_single_token()):
+            tts_text = strip_markdown_for_tts(sentence)
+            if not tts_text.strip():
+                continue
+            try:
+                audio_bytes = await _fish_tts.synthesize(tts_text)
+                audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+                await broadcast_state("speaking")
+                await broadcast_audio(audio_b64, sentence)
+            except FishTTSError as exc:
+                logger.warning(f"_emit_synthetic_utterance TTS error: {exc}")
+
+    except Exception as exc:
+        logger.warning(f"_emit_synthetic_utterance failed: {exc}")
+    finally:
+        if _state_machine is not None:
+            _state_machine.on_tts_end()
 
 
 async def broadcast_calendar_op_preview(payload: dict[str, Any]) -> None:
@@ -2508,6 +2568,10 @@ async def _run_voice_pipeline_body(
 
     logger.info(f"User said ({result.language}): {result.text}")
 
+    # Notify the conversation state machine that an utterance was finalised.
+    if _state_machine is not None:
+        _state_machine.on_user_utterance_finalized()
+
     # Item 1: store per-connection detected language so backchannel
     # playback during the *next* turn uses the right language pool.
     _conn_state_ref = _connection_state.get(id(ws))
@@ -2755,6 +2819,8 @@ async def _run_voice_pipeline_body(
                     )
                     # Transition to "speaking" on first TTS chunk so barge-in
                     # detection in _process_audio_for_client activates.
+                    if _state_machine is not None:
+                        _state_machine.on_tts_start()
                     await broadcast_state("speaking")
                     if conn_state is not None:
                         conn_state["mode"] = "speaking"
@@ -2775,6 +2841,8 @@ async def _run_voice_pipeline_body(
         # regardless of whether it completed normally or was cancelled.
         if conn_state is not None and conn_state.get("mode") == "speaking":
             conn_state["mode"] = "idle"
+        if _state_machine is not None:
+            _state_machine.on_tts_end()
 
     # Flush any remainder that didn't get yielded by the splitter before the
     # final event.  (The splitter's process() already handles this internally,
@@ -3011,6 +3079,8 @@ async def _process_audio_for_client(
             state["total_samples"] = 0
             state["skip_remaining"] = 3  # skip ~0.2 s to clear wake word tail
             _wake_word_detector.reset()
+            if _state_machine is not None:
+                _state_machine.on_wake_word()
             await broadcast_state("listening")
 
     elif mode in ("listening", "follow_up"):
@@ -4140,6 +4210,7 @@ async def start_ws_server(
     global _gitlab_client, _gitlab_poller, _gitlab_poller_task
     global _calendar_poller_task, _cache_stats_log_task
     global _greeting_played, _last_unread_count, _last_calendar_count
+    global _state_machine, _narration_queue, _narration_drainer_task
 
     # Reset per-boot greeting flag so tests / re-initialisation get a fresh
     # greeting each time start_ws_server is called.
@@ -4304,10 +4375,22 @@ async def start_ws_server(
     logger.info("Initialising LLM client (OpenClaw-backed)...")
     claude_client = await create_claude_client(openclaw_client=_openclaw_client)
 
+    # Conversation state machine + narration queue (#93 Phase 1).
+    _state_machine = ConversationStateMachine()
+    _narration_queue = NarrationQueue(
+        state_machine=_state_machine,
+        tts_emit=_emit_synthetic_utterance,
+    )
+    _narration_queue.start()
+    _narration_drainer_task = None  # task handle is owned by NarrationQueue.start()
+
     _orchestrator = Orchestrator(
         claude_client=claude_client,
         memory=None,
         tts_engine=None,
+        memory_store=_memory_store,
+        narration_queue=_narration_queue,
+        state_machine=_state_machine,
     )
 
     _intent_parser = get_intent_parser()
@@ -4541,6 +4624,10 @@ async def start_ws_server(
         logger.info("WebSocket server cancelled — shutting down...")
         raise
     finally:
+        # Stop the NarrationQueue drainer task.
+        if _narration_queue is not None:
+            _narration_queue.stop()
+
         # Clean teardown of the metrics collector.
         if _metrics_collector is not None:
             await _metrics_collector.stop()

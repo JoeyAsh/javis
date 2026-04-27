@@ -259,6 +259,25 @@ gmail:
     - "https://www.googleapis.com/auth/gmail.readonly"
     - "https://www.googleapis.com/auth/gmail.send"
 
+briefing:
+  enabled: true
+  timezone: "Europe/Zurich"
+  weather:
+    provider: "open-meteo"
+    location:
+      lat: 47.37
+      lon: 8.54
+  commute:
+    from: ""
+    to: ""
+    mode: "auto"
+  news:
+    source: "https://www.srf.ch/news/bnf/rss/1646"
+    max_items: 3
+  mail:
+    max_items: 3
+    vip_domains: []
+
 greeting:
   enabled: true
   delay_seconds: 0.8         # wait for HUD to finish subscribing

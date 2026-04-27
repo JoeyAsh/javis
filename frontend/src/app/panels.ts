@@ -19,6 +19,7 @@ import { DevPanel } from '@features/dev';
 import { SelfFixPanel } from '@features/selffix';
 import { GitLabPanel } from '@features/gitlab';
 import { LogPanel } from '@features/log';
+import { ActivityPanel } from '@features/activity';
 // ── Shared panel props ────────────────────────────────────────────────────────
 
 export interface PanelSharedProps {
@@ -110,6 +111,13 @@ export const PANELS: ReadonlyArray<PanelSpec> = [
         icon: '≡',
         homeSlot: 'B3',
         Component: LogPanel as ComponentType<PanelSharedProps>,
+    },
+    {
+        id: 'activity',
+        title: 'Activity',
+        icon: '◉',
+        homeSlot: 'R2',
+        Component: ActivityPanel as ComponentType<PanelSharedProps>,
     },
 ];
 

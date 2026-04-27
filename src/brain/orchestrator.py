@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent
 from brain.agents.morning_briefing_agent import build_briefing_prompt
+from brain.agents.quiet_mode_agent import QuietModeAgent
 from brain.agents.search_agent import SearchAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
@@ -81,12 +82,15 @@ class OrchestratorDecision:
 # voice-change, and memory-reset — none of which have MCP equivalents.
 # Spotify intents (SEARCH, QUEUE, PLAY_CONTEXT, and all transport intents)
 # fall through to OpenClaw, which calls the spotify_* MCP tools (issue #87).
+# QUIET_MODE_ON / QUIET_MODE_OFF are handled locally by QuietModeAgent (#93).
 _LOCAL_INTENTS: frozenset[Intent] = frozenset(
     {
         Intent.SYSTEM,
         Intent.WEB_SEARCH,
         Intent.GREETING,
         Intent.MORNING_BRIEFING,
+        Intent.QUIET_MODE_ON,
+        Intent.QUIET_MODE_OFF,
     }
 )
 
@@ -162,6 +166,7 @@ class Orchestrator:
         now fall through to OpenClaw → MCP tools (issue #76).
         SpotifyAgent is removed: all Spotify intents now fall through to
         OpenClaw → spotify_* MCP tools (issue #87).
+        QuietModeAgent handles QUIET_MODE_ON / QUIET_MODE_OFF (#93 Phase 2).
         """
         self._agents = {
             "chat": ChatAgent(self.claude_client),
@@ -169,6 +174,7 @@ class Orchestrator:
             "system": SystemAgent(
                 self.claude_client, memory=None, tts_engine=self.tts_engine
             ),
+            "quiet_mode": QuietModeAgent(self._narration_queue),
         }
 
     def set_tts_engine(self, tts_engine: Any) -> None:
@@ -842,9 +848,12 @@ def _intent_to_agent_name(intent: Intent) -> str:
     (issue #76 for PC/home, issue #87 for Spotify).
     GREETING is not mapped here — it is handled by ``_handle_greeting`` in the
     orchestrator directly (may fall through to chat).
+    QUIET_MODE_ON / QUIET_MODE_OFF route to the QuietModeAgent (#93 Phase 2).
     """
     if intent == Intent.SYSTEM:
         return "system"
     if intent == Intent.WEB_SEARCH:
         return "search"
+    if intent in (Intent.QUIET_MODE_ON, Intent.QUIET_MODE_OFF):
+        return "quiet_mode"
     return "chat"

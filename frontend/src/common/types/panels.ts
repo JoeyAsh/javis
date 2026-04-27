@@ -9,7 +9,8 @@ export type PanelId =
     | 'transcript'
     | 'selffix'
     | 'gitlab'
-    | 'log';
+    | 'log'
+    | 'activity';
 
 export type PanelMode = 'compact' | 'expanded';
 

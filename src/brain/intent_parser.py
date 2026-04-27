@@ -39,6 +39,8 @@ class Intent(Enum):
     SPOTIFY_PLAY_CONTEXT = "spotify_play_context"
     GREETING = "greeting"
     MORNING_BRIEFING = "morning_briefing"
+    QUIET_MODE_ON = "quiet_mode_on"
+    QUIET_MODE_OFF = "quiet_mode_off"
 
 
 @dataclass
@@ -512,6 +514,42 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\bmein\s+briefing\b",
         ],
     },
+    # ------------------------------------------------------------------
+    # Quiet-mode intents (#93 Phase 2) — language-tolerant word-boundary
+    # patterns. The canonical fast-path below catches STT variants.
+    # ------------------------------------------------------------------
+    Intent.QUIET_MODE_ON: {
+        "en": [
+            r"\bbe\s+quiet\b",
+            r"\bgo\s+quiet\b",
+            r"\bquiet\s+mode\b",
+            r"\bstop\s+talking\b",
+            r"\bsilent\s+mode\b",
+        ],
+        "de": [
+            r"\bleise\s+arbeiten\b",
+            r"\bsei\s+leise\b",
+            r"\bruhig\s+sein\b",
+            r"\bstille\s+modus\b",
+            r"\bquiet\s+mode\b",
+        ],
+    },
+    Intent.QUIET_MODE_OFF: {
+        "en": [
+            r"\bspeak\s+again\b",
+            r"\bstop\s+quiet\b",
+            r"\bleave\s+quiet\s+mode\b",
+            r"\bback\s+(to\s+)?normal\b",
+            r"\byou\s+can\s+talk\s+again\b",
+        ],
+        "de": [
+            r"\bwieder\s+reden\b",
+            r"\brede\s+wieder\b",
+            r"\bquiet\s+mode\s+(aus|off)\b",
+            r"\bstille\s+modus\s+(aus|off)\b",
+            r"\bnormal\s+(modus|mode)\b",
+        ],
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -572,6 +610,59 @@ _CANONICAL_BRIEFING_PHRASES: tuple[str, ...] = (
     "tag's briefing",
     "tarches briefing",
 )
+
+
+# ---------------------------------------------------------------------------
+# Language-tolerant canonical quiet-mode phrases (#93 Phase 2).
+# Checked BEFORE language-specific pattern matching to catch STT mis-detection.
+# ---------------------------------------------------------------------------
+_CANONICAL_QUIET_ON_PHRASES: tuple[str, ...] = (
+    # German canonical
+    "leise arbeiten",
+    "sei leise",
+    "ruhig sein",
+    "stille modus",
+    "leiser modus",
+    # English canonical
+    "be quiet",
+    "go quiet",
+    "quiet mode",
+    "silent mode",
+    "stop talking",
+)
+
+_CANONICAL_QUIET_OFF_PHRASES: tuple[str, ...] = (
+    # German canonical
+    "wieder reden",
+    "rede wieder",
+    "quiet mode aus",
+    "quiet mode off",
+    "stille modus aus",
+    # English canonical
+    "speak again",
+    "stop quiet",
+    "leave quiet mode",
+    "back to normal",
+    "you can talk again",
+)
+
+
+def _is_canonical_quiet_on(text: str) -> bool:
+    """Match a canonical quiet-mode-ON phrase via word-boundary regex."""
+    norm = text.lower().strip().rstrip(".,!?;:")
+    return any(
+        re.search(r"\b" + re.escape(phrase) + r"\b", norm) is not None
+        for phrase in _CANONICAL_QUIET_ON_PHRASES
+    )
+
+
+def _is_canonical_quiet_off(text: str) -> bool:
+    """Match a canonical quiet-mode-OFF phrase via word-boundary regex."""
+    norm = text.lower().strip().rstrip(".,!?;:")
+    return any(
+        re.search(r"\b" + re.escape(phrase) + r"\b", norm) is not None
+        for phrase in _CANONICAL_QUIET_OFF_PHRASES
+    )
 
 
 def _is_canonical_greeting(text: str) -> bool:
@@ -712,6 +803,36 @@ class IntentParser:
                 language=language,
             )
 
+        # Quiet-mode fast-paths: OFF must be checked before ON so that
+        # "wieder reden" doesn't partially match a quiet-on phrase.
+        if _is_canonical_quiet_off(text_lower):
+            path_label = "quiet-off-fast"
+            logger.debug(
+                f"IntentParser: text={text!r} language={language}"
+                f" → intent=quiet_mode_off (path={path_label})"
+            )
+            return IntentResult(
+                intent=Intent.QUIET_MODE_OFF,
+                confidence=0.90,
+                params={"action": "off"},
+                original_text=text,
+                language=language,
+            )
+
+        if _is_canonical_quiet_on(text_lower):
+            path_label = "quiet-on-fast"
+            logger.debug(
+                f"IntentParser: text={text!r} language={language}"
+                f" → intent=quiet_mode_on (path={path_label})"
+            )
+            return IntentResult(
+                intent=Intent.QUIET_MODE_ON,
+                confidence=0.90,
+                params={"action": "on"},
+                original_text=text,
+                language=language,
+            )
+
         # Check each intent category
         best_intent = Intent.CHAT
         best_confidence = 0.0
@@ -719,6 +840,8 @@ class IntentParser:
 
         for intent in [
             Intent.SYSTEM,
+            Intent.QUIET_MODE_OFF,
+            Intent.QUIET_MODE_ON,
             Intent.MORNING_BRIEFING,
             Intent.GREETING,
             Intent.PC_CONTROL,
@@ -825,7 +948,10 @@ class IntentParser:
             Intent.CALENDAR_UPDATE,
             Intent.CALENDAR_DELETE,
         )
-        if intent in (Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE):
+        _QUIET_MODE_INTENT_BASE = 0.85
+        if intent in (Intent.QUIET_MODE_ON, Intent.QUIET_MODE_OFF):
+            confidence = min(1.0, _QUIET_MODE_INTENT_BASE + (match_count * 0.05))
+        elif intent in (Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE):
             confidence = min(1.0, _EMAIL_INTENT_BASE + (match_count * 0.1))
         elif intent in _SPOTIFY_INTENTS:
             confidence = min(1.0, _SPOTIFY_INTENT_BASE + (match_count * 0.1))
@@ -841,7 +967,11 @@ class IntentParser:
             confidence = min(1.0, 0.4 + (match_count * 0.2))
 
         # Extract parameters based on intent
-        if intent == Intent.PC_CONTROL:
+        if intent == Intent.QUIET_MODE_ON:
+            params = {"action": "on"}
+        elif intent == Intent.QUIET_MODE_OFF:
+            params = {"action": "off"}
+        elif intent == Intent.PC_CONTROL:
             params = self._extract_pc_params(text)
         elif intent == Intent.SMART_HOME:
             params = self._extract_smart_home_params(text)

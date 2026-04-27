@@ -150,6 +150,11 @@ _jarvis_spotify_device_id: str | None = None
 _MISSING: object = object()
 
 
+def get_narration_queue() -> "NarrationQueue | None":
+    """Return the process-wide NarrationQueue singleton, or None if not initialised."""
+    return _narration_queue
+
+
 def get_spotify_client() -> SpotifyClient | None:
     """Return the process-wide SpotifyClient singleton, or None if not initialised."""
     return _spotify_client
@@ -1530,6 +1535,164 @@ async def broadcast_turn_timing(timing: dict[str, Any]) -> None:
     """
     message = json.dumps({"type": "turn_timing", "payload": timing})
     await _broadcast(message)
+
+
+async def broadcast_narration_state() -> None:
+    """Broadcast the current narration queue state to all connected clients.
+
+    Emitted on every queue mutation: enqueue, dequeue, quiet-mode toggle,
+    status update.  The frontend ``activity`` feature subscribes to
+    ``narration_state`` messages to keep the Activity panel in sync.
+    """
+    if _narration_queue is None:
+        return
+    payload = _narration_queue.get_state_snapshot()
+    message = json.dumps({"type": "narration_state", "payload": payload})
+    await _broadcast(message)
+
+
+async def broadcast_activity_panel() -> None:
+    """Broadcast the per-source status snapshot to all connected clients.
+
+    Emitted alongside :func:`broadcast_narration_state` so the Activity panel
+    can display per-source progress without polling.
+    """
+    if _narration_queue is None:
+        return
+    statuses = _narration_queue.get_source_statuses()
+    message = json.dumps({"type": "activity_panel", "payload": {"sources": statuses}})
+    await _broadcast(message)
+
+
+async def _on_narration_queue_mutation() -> None:
+    """Internal callback wired into NarrationQueue — fires both WS broadcasts."""
+    await broadcast_narration_state()
+    await broadcast_activity_panel()
+
+
+# ---------------------------------------------------------------------------
+# HTTP handlers: POST /api/jarvis/notify|status|quiet
+# ---------------------------------------------------------------------------
+
+
+async def jarvis_notify_handler(request: web.Request) -> web.Response:
+    """Handle POST /api/jarvis/notify — enqueue a narration item from an HTTP caller.
+
+    Accepts the same payload as the ``jarvis_notify`` MCP tool:
+    ``{"title": str, "body": str|null, "severity": str, "source": str|null,
+    "ttl_seconds": int}``.
+
+    Returns JSON ``{"item_id": str, "queued_at": str, "channels": [...]}``.
+    """
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    if _narration_queue is None:
+        return web.json_response({"error": "NarrationQueue not initialised"}, status=503)
+
+    try:
+        data: dict[str, Any] = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+
+    title: str = data.get("title", "")
+    if not title:
+        return web.json_response({"error": "'title' is required"}, status=400)
+
+    body: str | None = data.get("body")
+    severity: str = data.get("severity", "update")
+    if severity not in {"info", "update", "urgent", "completion"}:
+        severity = "update"
+    source: str | None = data.get("source")
+    ttl_seconds: float = float(data.get("ttl_seconds", 0))
+
+    text = f"{title}: {body}" if body else title
+    item_id = _narration_queue.enqueue(
+        text=text,
+        severity=severity,  # type: ignore[arg-type]
+        source=source,
+        ttl_seconds=ttl_seconds,
+    )
+    channels = _narration_queue._resolve_channels(severity)  # type: ignore[arg-type]
+
+    logger.info(
+        f"HTTP /api/jarvis/notify: [{severity}] {item_id!r}"
+        + (f" source={source!r}" if source else "")
+    )
+    return web.json_response(
+        {
+            "item_id": item_id,
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+            "channels": channels,
+        }
+    )
+
+
+async def jarvis_status_handler(request: web.Request) -> web.Response:
+    """Handle POST /api/jarvis/status — coalesce per-source progress status.
+
+    Accepts ``{"source": str, "status": str, "message": str|null}``.
+    Returns JSON ``{"source": str, "prior_status": str|null}``.
+    """
+    if _narration_queue is None:
+        return web.json_response({"error": "NarrationQueue not initialised"}, status=503)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+
+    source: str = data.get("source", "")
+    if not source:
+        return web.json_response({"error": "'source' is required"}, status=400)
+
+    status: str = data.get("status", "in_progress")
+    if status not in {"starting", "in_progress", "done", "blocked"}:
+        status = "in_progress"
+    message: str | None = data.get("message")
+
+    prior = _narration_queue.set_source_status(
+        source=source,
+        status=status,  # type: ignore[arg-type]
+        message=message,
+    )
+    prior_status: str | None = prior.status if prior is not None else None
+
+    logger.info(f"HTTP /api/jarvis/status: source={source!r} → {status!r}")
+    return web.json_response({"source": source, "prior_status": prior_status})
+
+
+async def jarvis_quiet_handler(request: web.Request) -> web.Response:
+    """Handle POST /api/jarvis/quiet — toggle quiet mode.
+
+    Accepts ``{"enabled": bool, "duration_minutes": int|null}``.
+    Returns JSON ``{"quiet_until": str|null}``.
+    """
+    if _narration_queue is None:
+        return web.json_response({"error": "NarrationQueue not initialised"}, status=503)
+
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+
+    enabled: bool = bool(data.get("enabled", False))
+    duration_minutes_raw = data.get("duration_minutes")
+    duration_minutes: int | None = (
+        int(duration_minutes_raw) if duration_minutes_raw is not None else None
+    )
+
+    quiet_until = _narration_queue.set_quiet_mode(
+        enabled=enabled,
+        duration_minutes=duration_minutes,
+    )
+    quiet_until_iso: str | None = (
+        quiet_until.isoformat() if quiet_until is not None else None
+    )
+
+    logger.info(
+        f"HTTP /api/jarvis/quiet: enabled={enabled} quiet_until={quiet_until_iso}"
+    )
+    return web.json_response({"quiet_until": quiet_until_iso})
 
 
 async def _broadcast(message: str) -> None:
@@ -4417,11 +4580,20 @@ async def start_ws_server(
     logger.info("Initialising LLM client (OpenClaw-backed)...")
     claude_client = await create_claude_client(openclaw_client=_openclaw_client)
 
-    # Conversation state machine + narration queue (#93 Phase 1).
+    # Conversation state machine + narration queue (#93 Phase 1 + 2).
+    narration_cfg = cfg.get_section("narration") or {}
+    rate_cfg: dict[str, Any] = narration_cfg.get("per_source_rate_limit") or {}
     _state_machine = ConversationStateMachine()
     _narration_queue = NarrationQueue(
         state_machine=_state_machine,
         tts_emit=_emit_synthetic_utterance,
+        update_voice=bool(narration_cfg.get("update_voice", False)),
+        urgent_max_wait_seconds=float(narration_cfg.get("urgent_max_wait_seconds", 30)),
+        completion_batch_seconds=float(narration_cfg.get("completion_batch_seconds", 10)),
+        rate_limit_items=int(rate_cfg.get("items", 6)),
+        rate_limit_window_seconds=float(rate_cfg.get("window_seconds", 60)),
+        quiet_mode_default_minutes=int(narration_cfg.get("quiet_mode_default_minutes", 60)),
+        on_queue_mutation=_on_narration_queue_mutation,
     )
     _narration_queue.start()
     _narration_drainer_task = None  # task handle is owned by NarrationQueue.start()
@@ -4496,6 +4668,10 @@ async def start_ws_server(
     http_app.router.add_post("/api/spotify/play/context", spotify_play_context_handler)
     http_app.router.add_post("/api/spotify/play/uris", spotify_play_uris_handler)
     http_app.router.add_get("/api/spotify/token", spotify_token_handler)
+    # Narration / activity endpoints (#93 Phase 2)
+    http_app.router.add_post("/api/jarvis/notify", jarvis_notify_handler)
+    http_app.router.add_post("/api/jarvis/status", jarvis_status_handler)
+    http_app.router.add_post("/api/jarvis/quiet", jarvis_quiet_handler)
 
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)

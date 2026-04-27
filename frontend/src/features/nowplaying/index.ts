@@ -42,6 +42,8 @@ export { useSpotifyFull } from './hooks/useSpotifyFull';
 export type { UseSpotifyFullReturn } from './hooks/useSpotifyFull.types';
 export { useSpotifyPlayer } from './hooks/useSpotifyPlayer';
 export type { UseSpotifyPlayerReturn } from './hooks/useSpotifyPlayer.types';
+export { useDuckingOnConversation } from './hooks/useDuckingOnConversation';
+export type { ConversationStateMessage } from './hooks/useDuckingOnConversation.types';
 export {
     nowplayingApi,
     useStreamNowplayingQuery,

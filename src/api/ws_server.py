@@ -12,6 +12,7 @@ import json
 import socket
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +32,7 @@ from audio.stream_splitter import StreamSplitter
 from audio.stt import SpeechToText, create_stt_engine
 from audio.wake_word import WakeWordDetector, create_wake_word_detector
 from brain.conversation_mode import ConversationMode
-from brain.conversation_state import ConversationStateMachine
+from brain.conversation_state import ConversationState, ConversationStateMachine
 from brain.memory import MemoryStore
 from brain.intent_parser import Intent, IntentParser, get_intent_parser
 from brain.narration_queue import NarrationQueue
@@ -1573,6 +1574,32 @@ async def _on_narration_queue_mutation() -> None:
     """Internal callback wired into NarrationQueue — fires both WS broadcasts."""
     await broadcast_narration_state()
     await broadcast_activity_panel()
+
+
+async def broadcast_conversation_state(state: ConversationState, since: float) -> None:
+    """Broadcast a conversation-state transition to all connected clients.
+
+    Fires on every state transition emitted by the orchestrator's
+    ConversationStateMachine, so the frontend can drive audio ducking
+    deterministically without polling.
+
+    Args:
+        state: New ConversationState value.
+        since: Epoch seconds when the transition happened.
+    """
+    if _state_machine is None:
+        return
+    payload = {
+        "state": state.value,
+        "since": datetime.fromtimestamp(since, tz=timezone.utc).isoformat(),
+    }
+    message = json.dumps({"type": "conversation_state", "payload": payload})
+    await _broadcast(message)
+
+
+async def _on_conversation_state_transition(state: ConversationState, since: float) -> None:
+    """Private callback wired into ConversationStateMachine — fires conversation_state broadcast."""
+    await broadcast_conversation_state(state, since)
 
 
 # ---------------------------------------------------------------------------
@@ -4588,7 +4615,7 @@ async def start_ws_server(
     # Conversation state machine + narration queue (#93 Phase 1 + 2).
     narration_cfg = cfg.get_section("narration") or {}
     rate_cfg: dict[str, Any] = narration_cfg.get("per_source_rate_limit") or {}
-    _state_machine = ConversationStateMachine()
+    _state_machine = ConversationStateMachine(on_transition=_on_conversation_state_transition)
     _narration_queue = NarrationQueue(
         state_machine=_state_machine,
         tts_emit=_emit_synthetic_utterance,

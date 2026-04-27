@@ -410,6 +410,13 @@ narration:
     items: 6
     window_seconds: 60
   quiet_mode_default_minutes: 60
+  ducking:
+    spotify_factor: 0.25
+    sfx_factor: 0.12
+    chime_factor: 0.35
+    ramp_down_ms: 200
+    ramp_up_ms: 400
+    tail_silence_ms: 500
 
 notifications:
   wife:

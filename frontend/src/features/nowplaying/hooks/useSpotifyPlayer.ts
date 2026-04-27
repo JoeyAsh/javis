@@ -18,6 +18,7 @@ import { sendSpotifyDeviceAnnounce } from '../nowplayingApi';
 import { loadSpotifySdk, createPlayer } from '../spotifySdk';
 import type { SpotifyPlayerHandle, SpotifySdkError } from '../spotifySdk';
 import { JARVIS_DEVICE_NAME, SDK_INITIAL_VOLUME } from '../constants';
+import { playerHandleRegistry } from '../spotifyPlayerHandleRegistry';
 import type { UseSpotifyPlayerReturn } from './useSpotifyPlayer.types';
 
 function toSdkError(err: unknown): SpotifySdkError {
@@ -106,6 +107,7 @@ export function useSpotifyPlayer(): UseSpotifyPlayerReturn {
                 }
 
                 playerHandleRef.current = handle;
+                playerHandleRegistry.set(handle);
                 dispatchRef.current(setSdkDeviceId(handle.deviceId));
                 dispatchRef.current(setSdkReady(true));
                 sendSpotifyDeviceAnnounce(handle.deviceId, JARVIS_DEVICE_NAME, true);
@@ -145,6 +147,7 @@ export function useSpotifyPlayer(): UseSpotifyPlayerReturn {
             cancelled = true;
             playerHandleRef.current?.disconnect();
             playerHandleRef.current = null;
+            playerHandleRegistry.set(null);
             dispatchRef.current(setSdkReady(false));
             dispatchRef.current(setSdkDeviceId(null));
             sendSpotifyDeviceAnnounce(null, JARVIS_DEVICE_NAME, false);

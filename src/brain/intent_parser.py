@@ -514,6 +514,91 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Language-tolerant canonical greeting phrases.
+# Checked BEFORE language-specific pattern matching so that short utterances
+# with STT language mis-detection (e.g. "Guten Morgen!" classified as lang=sv)
+# still route to INTENT.GREETING.
+# ---------------------------------------------------------------------------
+_CANONICAL_GREETING_PHRASES: tuple[str, ...] = (
+    "guten morgen",
+    "guten tag",
+    "guten abend",
+    "guten",
+    "morgen jarvis",
+    "morgen",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "morning",
+    "hello jarvis",
+    "hi jarvis",
+    "hey jarvis",
+    "godten morgen",  # observed STT mis-classification (Swedish-like)
+)
+
+# ---------------------------------------------------------------------------
+# Language-tolerant canonical briefing phrases.
+# Checked BEFORE language-specific pattern matching so that short briefing
+# triggers with STT language mis-detection or Whisper-mangled transcriptions
+# (e.g. "Tages-Briefing" heard as "target briefing" with lang=en) still
+# route to INTENT.MORNING_BRIEFING.
+# ---------------------------------------------------------------------------
+_CANONICAL_BRIEFING_PHRASES: tuple[str, ...] = (
+    # German canonical
+    "tages briefing",
+    "tagesbriefing",
+    "tages-briefing",
+    "morgen briefing",
+    "morgenbriefing",
+    "morgen-briefing",
+    "morgen-routine",
+    "morgen routine",
+    "morgenroutine",
+    "brief mich",
+    "brief mich bitte",
+    # English canonical
+    "morning briefing",
+    "daily briefing",
+    "morning routine",
+    "brief me",
+    "brief me please",
+    "give me my briefing",
+    "the briefing",
+    # Observed STT misclassifications (Whisper hears "Tages" as English-ish)
+    "target briefing",
+    "tasse briefing",
+    "tasches briefing",
+    "tag's briefing",
+    "tarches briefing",
+)
+
+
+def _is_canonical_greeting(text: str) -> bool:
+    """Match a canonical greeting phrase anywhere in the utterance via word-boundary regex.
+
+    Args:
+        text: Raw user text (any case, any trailing punctuation).
+
+    Returns:
+        True when a canonical greeting phrase is found at a word boundary.
+    """
+    norm = text.lower().strip().rstrip(".,!?;:")
+    return any(
+        re.search(r"\b" + re.escape(phrase) + r"\b", norm) is not None
+        for phrase in _CANONICAL_GREETING_PHRASES
+    )
+
+
+def _is_canonical_briefing(text: str) -> bool:
+    """Match a canonical briefing-trigger phrase anywhere in the utterance via word-boundary regex."""
+    norm = text.lower().strip().rstrip(".,!?;:")
+    return any(
+        re.search(r"\b" + re.escape(phrase) + r"\b", norm) is not None
+        for phrase in _CANONICAL_BRIEFING_PHRASES
+    )
+
+
 # App name aliases for PC control
 APP_ALIASES: dict[str, str] = {
     # English
@@ -594,6 +679,39 @@ class IntentParser:
                 language=language,
             )
 
+        # Language-tolerant fast paths: canonical phrases bypass language-specific
+        # regex patterns. STT sometimes mis-classifies short German utterances as
+        # English/Swedish — these catches cover those cases.
+        path_label = "language-pattern"
+
+        if _is_canonical_greeting(text_lower):
+            path_label = "greeting-fast"
+            logger.debug(
+                f"🌅 [BRIEFING-DIAG] IntentParser: text={text!r} language={language}"
+                f" → intent=greeting (path={path_label})"
+            )
+            return IntentResult(
+                intent=Intent.GREETING,
+                confidence=0.85,
+                params={},
+                original_text=text,
+                language=language,
+            )
+
+        if _is_canonical_briefing(text_lower):
+            path_label = "briefing-fast"
+            logger.debug(
+                f"🌅 [BRIEFING-DIAG] IntentParser: text={text!r} language={language}"
+                f" → intent=morning_briefing (path={path_label})"
+            )
+            return IntentResult(
+                intent=Intent.MORNING_BRIEFING,
+                confidence=0.90,
+                params={"manual": True},
+                original_text=text,
+                language=language,
+            )
+
         # Check each intent category
         best_intent = Intent.CHAT
         best_confidence = 0.0
@@ -635,7 +753,12 @@ class IntentParser:
         if best_confidence < 0.3:
             best_intent = Intent.CHAT
             best_confidence = 1.0 - best_confidence  # Higher confidence for chat
+            path_label = "chat-fallback"
 
+        logger.debug(
+            f"🌅 [BRIEFING-DIAG] IntentParser: text={text!r} language={language}"
+            f" → intent={best_intent.value} (path={path_label})"
+        )
         logger.debug(
             f"Intent: {best_intent.value} (conf={best_confidence:.2f}) "
             f"params={params}"

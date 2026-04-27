@@ -107,6 +107,8 @@ curl -s -X POST http://127.0.0.1:8766/api/jarvis/notify \
   2>/dev/null || true
 ```
 
+**Backend-host rule:** the notify URL must match the backend that actually drives the user's speakers/HUD. When the user works against a **remote backend** (e.g. the developer's Vite dev server is proxying to JARVIS on the Linux laptop over Tailscale, see `docs/ops/tailscale-setup.md`), the orchestrator MUST swap the curl URL to that backend's tailnet hostname (e.g. `http://paps-zenbook.tail77bd3b.ts.net:8766/api/jarvis/notify`) — otherwise the notification is queued on the wrong (or dead) local backend and the user never hears it. Default is loopback; check the active backend host before firing if uncertain.
+
 **Severity guide:**
 - `completion` — work finished, voice + HUD, **batched 10 s by `source`** (multiple completions in 10 s with same source merge into one utterance).
 - `urgent` — broken state needing immediate attention; voice + HUD with "Verzeihung, Sir — kurz: …" pre-roll.

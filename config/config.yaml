@@ -401,6 +401,16 @@ voice:
   # Phrase cache
   cache_directory: "data/voice_cache"
 
+narration:
+  enabled: true
+  update_voice: false
+  urgent_max_wait_seconds: 30
+  completion_batch_seconds: 10
+  per_source_rate_limit:
+    items: 6
+    window_seconds: 60
+  quiet_mode_default_minutes: 60
+
 notifications:
   wife:
     enabled: true

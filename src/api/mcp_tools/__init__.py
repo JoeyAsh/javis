@@ -11,6 +11,7 @@ Tool naming convention: flat snake_case with a namespace prefix, e.g.
 from api.mcp_tools import (  # noqa: F401
     github_tools,
     gitlab_tools,
+    narration_tools,
     pc_control_tools,
     smart_home_tools,
     spotify_tools,
@@ -20,6 +21,7 @@ from api.mcp_tools import (  # noqa: F401
 __all__ = [
     "github_tools",
     "gitlab_tools",
+    "narration_tools",
     "pc_control_tools",
     "smart_home_tools",
     "spotify_tools",

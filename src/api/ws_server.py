@@ -9,6 +9,7 @@ and Fish Audio TTS — then streams the MP3 response back to the frontend.
 import asyncio
 import base64
 import fnmatch
+import hmac
 import json
 import os
 import socket
@@ -3989,6 +3990,16 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     Returns:
         WebSocket response
     """
+    # Token-auth gate — must run BEFORE ws.prepare so the HTTP upgrade can be
+    # denied with a plain 401 instead of an already-established WS connection.
+    enabled, expected = _is_token_auth_enabled()
+    if enabled and not _is_loopback(request):
+        extracted = _extract_request_token(request)
+        if not extracted or not hmac.compare_digest(extracted, expected):
+            raise web.HTTPUnauthorized(
+                headers={"WWW-Authenticate": 'Bearer realm="jarvis"'}
+            )
+
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
@@ -4462,7 +4473,103 @@ def _is_loopback(request: web.Request) -> bool:
     if peername is None:
         return False
     host = peername[0] if isinstance(peername, (list, tuple)) else str(peername)
-    return host in {"127.0.0.1", "::1", "localhost"}
+    return host in {"127.0.0.1", "::1"}
+
+
+# ---------------------------------------------------------------------------
+# API token authentication helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_token_auth_enabled() -> tuple[bool, str]:
+    """Return (enabled, token) based on the JARVIS_API_TOKEN environment variable.
+
+    Reads ``os.environ`` directly (not the config layer) because the token must
+    be available before the full config stack is wired up and because it is an
+    operational secret, not a tuneable.  Returns ``(False, "")`` when the
+    variable is absent or whitespace-only.
+    """
+    raw_env = os.environ.get("JARVIS_API_TOKEN")
+    if raw_env is None:
+        return (False, "")
+    raw = raw_env.strip()
+    if not raw:
+        logger.warning(
+            "JARVIS_API_TOKEN is set but empty after strip — token auth disabled"
+        )
+        return (False, "")
+    if len(raw) < 32:
+        logger.warning(
+            "JARVIS_API_TOKEN is shorter than 32 bytes — consider regenerating for better entropy"
+        )
+    return (True, raw)
+
+
+def _extract_request_token(request: web.Request) -> str:
+    """Extract the bearer token from the request.
+
+    Checks the ``Authorization: Bearer <token>`` header first.  Falls through
+    to the ``?token=`` query parameter **only** when no ``Authorization`` header
+    is present at all.  Returns ``""`` when neither source provides a token.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header:
+        # Header is present (even if malformed) — do NOT fall through to ?token=
+        if auth_header.startswith("Bearer "):
+            header_token = auth_header[len("Bearer "):]
+            query_token = request.rel_url.query.get("token", "")
+            if query_token and query_token != header_token:
+                logger.debug(
+                    "Both Authorization header and ?token= query param present "
+                    "with differing values; header takes precedence (likely misconfiguration)"
+                )
+            return header_token
+        logger.debug("Authorization header present but not Bearer-prefixed — ignoring")
+        return ""
+    # No Authorization header — try query param (browser WS path)
+    return request.rel_url.query.get("token", "")
+
+
+@web.middleware
+async def auth_middleware(request: web.Request, handler: Any) -> web.Response:
+    """Reject non-loopback requests that lack a valid bearer token.
+
+    No-op when ``JARVIS_API_TOKEN`` is unset or empty.  Loopback requests
+    (``127.0.0.1`` / ``::1``) and ``OPTIONS`` preflights are always passed
+    through.  ``/health`` is unconditionally public.
+    """
+    enabled, expected = _is_token_auth_enabled()
+    if not enabled:
+        return await handler(request)
+    if request.method == "OPTIONS":
+        return await handler(request)
+    if _is_loopback(request):
+        return await handler(request)
+    if request.path == "/health":
+        return await handler(request)
+
+    extracted = _extract_request_token(request)
+    # hmac.compare_digest requires both operands to be the same type (str).
+    if not extracted or not hmac.compare_digest(extracted, expected):
+        return web.json_response(
+            {"error": "unauthorized"},
+            status=401,
+            headers={"WWW-Authenticate": 'Bearer realm="jarvis"'},
+        )
+    return await handler(request)
+
+
+async def config_token_handler(request: web.Request) -> web.Response:
+    """GET /api/config/token — return the active API token for loopback callers.
+
+    Returns ``{"token": ""}`` when ``JARVIS_API_TOKEN`` is unset.  Always
+    returns ``403`` for non-loopback callers regardless of auth state so the
+    token is never exposed over the network.
+    """
+    if not _is_loopback(request):
+        return web.Response(status=403, text="Forbidden: localhost only")
+    _, token = _is_token_auth_enabled()
+    return web.json_response({"token": token})
 
 
 async def voice_metrics_handler(request: web.Request) -> web.Response:
@@ -5028,11 +5135,25 @@ async def start_ws_server(
         if origin and _origin_allowed(origin, cors_origins):
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
 
         return response
 
-    http_app = web.Application(middlewares=[cors_middleware])
+    # Log token-auth status once at startup so operators know whether it's on.
+    _token_enabled, _ = _is_token_auth_enabled()
+    if _token_enabled:
+        logger.info(
+            "API token auth enabled — non-loopback requests require Bearer token"
+        )
+    else:
+        logger.info(
+            "API token auth disabled — all requests accepted "
+            "(set JARVIS_API_TOKEN to enable)"
+        )
+
+    # auth_middleware is registered AFTER cors_middleware so OPTIONS preflights
+    # are answered by cors_middleware before auth_middleware can block them.
+    http_app = web.Application(middlewares=[cors_middleware, auth_middleware])
     http_app.router.add_get("/health", health_handler)
     http_app.router.add_get("/voices", voices_handler)
     http_app.router.add_post("/notify/wife", notify_wife_handler)
@@ -5040,6 +5161,7 @@ async def start_ws_server(
     http_app.router.add_get("/oauth/spotify/callback", spotify_oauth_callback_handler)
     http_app.router.add_get("/api/config/repos", config_repos_get_handler)
     http_app.router.add_post("/api/config/repos", config_repos_post_handler)
+    http_app.router.add_get("/api/config/token", config_token_handler)
     http_app.router.add_get("/api/metrics/voice", voice_metrics_handler)
     http_app.router.add_get("/api/config/location", config_location_handler)
     http_app.router.add_get("/api/mcp/health", mcp_health_handler)

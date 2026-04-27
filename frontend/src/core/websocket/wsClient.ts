@@ -10,6 +10,8 @@
  * and use `wsClient` instead.
  */
 
+import { getApiToken } from '@core/api/tokenStore';
+
 export type WsReadyState = 'connecting' | 'open' | 'closed';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -147,12 +149,28 @@ class WsClientImpl implements WsClient {
     // Internal helpers
     // ---------------------------------------------------------------------------
 
+    /**
+     * Builds the full WebSocket URL with the API token appended as a query
+     * parameter when a token is configured. Uses the URL API to handle
+     * pre-existing query strings correctly and avoid double-encoding.
+     *
+     * `this.url` (the bare base URL) is never mutated — idempotency checks in
+     * `connect()` always compare against the raw input URL.
+     */
+    private buildWsUrl(baseUrl: string): string {
+        const token = getApiToken();
+        if (!token) return baseUrl;
+        const url = new URL(baseUrl, window.location.origin);
+        url.searchParams.set('token', token);
+        return url.toString();
+    }
+
     private openSocket(): void {
         if (!this.url) return;
         if (this.ws && this.ws.readyState <= WebSocket.OPEN) return;
 
         this.setReadyState('connecting');
-        const ws = new WebSocket(this.url);
+        const ws = new WebSocket(this.buildWsUrl(this.url));
         this.ws = ws;
 
         ws.onopen = () => {

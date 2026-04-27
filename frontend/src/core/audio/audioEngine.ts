@@ -9,6 +9,7 @@
 
 import { SFX_CONFIG, DUCK_VOLUME, DUCK_RAMP_MS } from './config';
 import type { SfxEvent } from './config';
+import type { ExternalDuckable, DuckingTarget, DuckingFactors } from './audioEngine.types';
 
 interface ActiveLoop {
     source: AudioBufferSourceNode;
@@ -26,6 +27,9 @@ export class AudioEngine {
 
     /** Currently playing loops. */
     private readonly activeLoops = new Map<SfxEvent, ActiveLoop>();
+
+    /** External duckable sources registered via registerExternalDuckable(). */
+    private readonly externalDuckables = new Map<string, ExternalDuckable>();
 
     private _isMuted = false;
     private _isDucked = false;
@@ -212,6 +216,71 @@ export class AudioEngine {
         this.loopGain.gain.cancelScheduledValues(now);
         this.loopGain.gain.setValueAtTime(this.loopGain.gain.value, now);
         this.loopGain.gain.linearRampToValueAtTime(target, now + rampSec);
+    }
+
+    /**
+     * Register an external audible source (e.g. Spotify SDK) to participate
+     * in unified conversation-state ducking.
+     * Returns an unsubscribe function — call it on cleanup.
+     */
+    registerExternalDuckable(source: ExternalDuckable): () => void {
+        this.externalDuckables.set(source.name, source);
+        return () => {
+            this.externalDuckables.delete(source.name);
+        };
+    }
+
+    /**
+     * Unified ducking orchestrator — fans out to internal SFX/chime gain AND
+     * all registered external duckables.
+     *
+     * `factors.sfx` / `factors.chime` map to the internal `loopGain` (the
+     * existing `setDucking` path). `factors.spotify` is forwarded to any
+     * registered ExternalDuckable with name === 'spotify'.
+     */
+    setDuckingState(
+        target: DuckingTarget,
+        factors: DuckingFactors,
+        rampMs: number,
+    ): void {
+        // Internal SFX / chime via the existing loopGain path.
+        // We use `factors.sfx` as the duck factor for the internal gain node.
+        if (target === 'duck') {
+            if (!this._isDucked) {
+                this._isDucked = true;
+                const now = this.ctx.currentTime;
+                const rampSec = rampMs / 1000;
+                this.loopGain.gain.cancelScheduledValues(now);
+                this.loopGain.gain.setValueAtTime(this.loopGain.gain.value, now);
+                this.loopGain.gain.linearRampToValueAtTime(factors.sfx, now + rampSec);
+            }
+        } else {
+            if (this._isDucked) {
+                this._isDucked = false;
+                const now = this.ctx.currentTime;
+                const rampSec = rampMs / 1000;
+                this.loopGain.gain.cancelScheduledValues(now);
+                this.loopGain.gain.setValueAtTime(this.loopGain.gain.value, now);
+                this.loopGain.gain.linearRampToValueAtTime(1, now + rampSec);
+            }
+        }
+
+        // Fan out to registered external duckables.
+        this.externalDuckables.forEach((source) => {
+            // Determine the factor for this named source.
+            const factor =
+                source.name === 'spotify'
+                    ? factors.spotify
+                    : source.name === 'chime'
+                      ? factors.chime
+                      : factors.sfx;
+
+            if (target === 'duck') {
+                void source.duck(factor, rampMs);
+            } else {
+                void source.restore(rampMs);
+            }
+        });
     }
 
     setMuted(muted: boolean): void {

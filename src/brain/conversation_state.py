@@ -7,6 +7,8 @@ Used by the NarrationQueue to decide when it is safe to emit background TTS.
 from __future__ import annotations
 
 import asyncio
+import time
+from collections.abc import Awaitable, Callable
 from enum import Enum
 
 from utils.logger import get_logger
@@ -41,6 +43,7 @@ class ConversationStateMachine:
         self,
         active_dialogue_timeout_s: float = _ACTIVE_DIALOGUE_TIMEOUT_S,
         tts_silence_buffer_s: float = _TTS_SILENCE_BUFFER_S,
+        on_transition: Callable[[ConversationState, float], Awaitable[None]] | None = None,
     ) -> None:
         """Initialise the state machine in the IDLE state.
 
@@ -49,10 +52,14 @@ class ConversationStateMachine:
                 to idle when no new user utterance arrives.
             tts_silence_buffer_s: Seconds of silence after TTS ends before
                 state reverts to idle.
+            on_transition: Optional async callback invoked on every state
+                transition with ``(new_state, epoch_seconds)``.  Idempotent
+                transitions (same state as current) never fire the callback.
         """
         self._state: ConversationState = ConversationState.IDLE
         self._active_dialogue_timeout_s = active_dialogue_timeout_s
         self._tts_silence_buffer_s = tts_silence_buffer_s
+        self._on_transition = on_transition
 
         # Event that fires whenever the machine enters IDLE — used by
         # wait_for_idle() and the NarrationQueue drainer.
@@ -145,6 +152,8 @@ class ConversationStateMachine:
             self._idle_event.set()
         else:
             self._idle_event.clear()
+        if self._on_transition is not None:
+            asyncio.ensure_future(self._on_transition(new_state, time.time()))
 
     def _cancel_timeout_tasks(self) -> None:
         for task in (self._dialogue_timeout_task, self._tts_silence_task):

@@ -92,6 +92,41 @@ When the orchestrator closes an issue on `JoeyAsh/javis` as completed (`gh issue
 
 When the orchestrator merges a PR that resolves issues (commit body contains `Closes #N`), GitHub auto-closes the issues but does NOT move board items. The orchestrator is still responsible for the board move via `jarvis-move-issue-status`.
 
+## Voice Narration via JARVIS Narration Queue
+
+The JARVIS backend exposes an HTTP endpoint that pushes voice notifications via the NarrationQueue. Use this so JARVIS speaks status updates instead of the user having to poll the chat for results from long-running background work.
+
+**Endpoint** (localhost only): `POST http://127.0.0.1:8766/api/jarvis/notify`
+
+**Curl pattern:**
+
+```bash
+curl -s -X POST http://127.0.0.1:8766/api/jarvis/notify \
+  -H 'Content-Type: application/json' \
+  -d '{"severity":"completion","title":"<short>","body":"<details>","source":"claude-code"}' \
+  2>/dev/null || true
+```
+
+**Severity guide:**
+- `completion` — work finished, voice + HUD, **batched 10 s by `source`** (multiple completions in 10 s with same source merge into one utterance).
+- `urgent` — broken state needing immediate attention; voice + HUD with "Verzeihung, Sir — kurz: …" pre-roll.
+- `info` — HUD only, no voice (e.g. background poll ticks).
+- `update` — HUD + soft chime; voice only when `narration.update_voice: true`.
+
+**When to fire (orchestrator default policy):**
+- User explicitly asks to be notified ("sag mir Bescheid wenn fertig", "melde dich wenn der Subagent zurück ist").
+- Long-running background subagent (>2 min) returns and the user is genuinely waiting.
+- Major workflow milestones the user wants reported (PR opened, merge complete, build/test green/red).
+
+**When NOT to fire:**
+- Trivial sub-second steps. Don't narrate every file edit.
+- The user is actively in the chat and will see the next response immediately.
+- The user has not asked to be told and the work was their direct request (they're already watching).
+
+**Stable source convention:** use `"claude-code"` for general orchestrator notifications; `"claude-code-<issue-num>"` if you need per-issue separation. Coalescing via the 10 s window means redundant completions collapse cleanly.
+
+**Failure handling:** wrap the curl in `2>/dev/null || true` so the orchestrator silently no-ops when the JARVIS backend isn't running. Never let a missing notification block the actual work.
+
 ## Skills
 
 Slash-invocable Skills in `.claude/skills/`. Orchestrator und Subagents nutzen sie statt duplizierter Inline-Commands. Aktuelle Skills:

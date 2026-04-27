@@ -16,6 +16,7 @@ import { useConversationMode, useMicStream } from '@features/conversation';
 import { useStreamDeviceInfoQuery } from '@features/device';
 import { useSettings } from '@features/settings';
 import { useAudioEngine, useTauriWindowSfx, SfxProvider } from '@core/audio';
+import { useDuckingOnConversation } from '@features/nowplaying';
 import { SettingsView } from '@features/settings';
 import { TopBar } from './TopBar';
 import { Dock } from './Dock';
@@ -44,6 +45,7 @@ export function AppShell(): ReactElement {
     } = useAudioEngine(orbState, connected, settingsHook.settings.heartbeatEnabled);
 
     useTauriWindowSfx({ playOneShot: sfxPlayOneShot });
+    useDuckingOnConversation();
 
     // ── Keyboard shortcut: Ctrl+. toggles idle ───────────────────────────────
     useEffect(() => {

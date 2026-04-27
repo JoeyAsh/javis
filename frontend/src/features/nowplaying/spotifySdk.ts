@@ -30,6 +30,9 @@ export interface SpotifySdkPlayerState {
 export interface SpotifyPlayerHandle {
     deviceId: string;
     setVolume: (value: number) => Promise<void>;
+    getVolume: () => number;
+    duck: (factor: number, rampMs: number) => Promise<void>;
+    restore: (rampMs: number) => Promise<void>;
     togglePlay: () => Promise<void>;
     nextTrack: () => Promise<void>;
     previousTrack: () => Promise<void>;
@@ -108,18 +111,97 @@ export function createPlayer(args: {
 
         let resolved = false;
 
+        // ---------------------------------------------------------------------------
+        // Volume tracking + cosine-ramp duck/restore helpers
+        // ---------------------------------------------------------------------------
+
+        /** Last volume value we set on the SDK (0..1). */
+        let _lastVolume = args.volume;
+        /** Volume captured before the first duck; null means not currently ducked. */
+        let _preDuckVolume: number | null = null;
+        /** Active ramp animation frame handle — cancel before starting a new ramp. */
+        let _rampRafId: number | null = null;
+
+        /**
+         * Animate `player.setVolume()` from `from` to `to` over `rampMs` using a
+         * cosine ease. Cancels any in-progress ramp first.
+         */
+        function cosineRamp(from: number, to: number, rampMs: number): Promise<void> {
+            if (_rampRafId !== null) {
+                cancelAnimationFrame(_rampRafId);
+                _rampRafId = null;
+            }
+
+            if (rampMs <= 0 || from === to) {
+                _lastVolume = to;
+                return player.setVolume(to);
+            }
+
+            return new Promise<void>((rampResolve) => {
+                const startTime = performance.now();
+
+                function tick(): void {
+                    const elapsed = performance.now() - startTime;
+                    const progress = Math.min(elapsed / rampMs, 1);
+                    // Cosine ease: 0 → 1, smooth start and end.
+                    const eased = (1 - Math.cos(progress * Math.PI)) / 2;
+                    const current = from + (to - from) * eased;
+
+                    _lastVolume = current;
+                    void player.setVolume(current);
+
+                    if (progress < 1) {
+                        _rampRafId = requestAnimationFrame(tick);
+                    } else {
+                        _rampRafId = null;
+                        rampResolve();
+                    }
+                }
+
+                _rampRafId = requestAnimationFrame(tick);
+            });
+        }
+
         player.addListener('ready', (event: SpotifyReadyEvent) => {
             if (resolved) return;
             resolved = true;
 
             const handle: SpotifyPlayerHandle = {
                 deviceId: event.device_id,
-                setVolume: (value) => player.setVolume(value),
+
+                setVolume: (value) => {
+                    _lastVolume = value;
+                    return player.setVolume(value);
+                },
+
+                getVolume: () => _lastVolume,
+
+                duck: async (factor, rampMs) => {
+                    // Idempotent: if already ducked, no-op.
+                    if (_preDuckVolume !== null) return;
+                    _preDuckVolume = _lastVolume;
+                    const target = _preDuckVolume * factor;
+                    await cosineRamp(_lastVolume, target, rampMs);
+                },
+
+                restore: async (rampMs) => {
+                    if (_preDuckVolume === null) return;
+                    const target = _preDuckVolume;
+                    _preDuckVolume = null;
+                    await cosineRamp(_lastVolume, target, rampMs);
+                },
+
                 togglePlay: () => player.togglePlay(),
                 nextTrack: () => player.nextTrack(),
                 previousTrack: () => player.previousTrack(),
                 seek: (positionMs) => player.seek(positionMs),
-                disconnect: () => player.disconnect(),
+                disconnect: () => {
+                    if (_rampRafId !== null) {
+                        cancelAnimationFrame(_rampRafId);
+                        _rampRafId = null;
+                    }
+                    player.disconnect();
+                },
                 onStateChange: (cb) => {
                     stateListeners.add(cb);
                     return () => { stateListeners.delete(cb); };

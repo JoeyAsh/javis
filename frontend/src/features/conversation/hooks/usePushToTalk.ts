@@ -115,11 +115,13 @@ export function usePushToTalk({ enabled }: UsePushToTalkOptions): UsePushToTalkR
             await audioCtxRef.current.resume();
         }
 
+        wsClient.send({ type: 'start_listening' });
         sendingRef.current = true;
     }, []);
 
     const stopCapture = useCallback(() => {
         sendingRef.current = false;
+        wsClient.send({ type: 'stop_listening' });
     }, []);
 
     const handlePressStart = useCallback(() => {

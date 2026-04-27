@@ -1559,8 +1559,13 @@ async def broadcast_activity_panel() -> None:
     """
     if _narration_queue is None:
         return
-    statuses = _narration_queue.get_source_statuses()
-    message = json.dumps({"type": "activity_panel", "payload": {"sources": statuses}})
+    message = json.dumps({
+        "type": "activity_panel",
+        "payload": {
+            "sources": _narration_queue.get_source_statuses(),
+            "history": _narration_queue.get_history(),
+        },
+    })
     await _broadcast(message)
 
 

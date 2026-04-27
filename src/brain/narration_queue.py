@@ -24,6 +24,7 @@ Phase 2 additions on top of the minimal Phase 1 queue:
 from __future__ import annotations
 
 import asyncio
+import collections
 import time
 import uuid
 from collections import deque
@@ -152,6 +153,9 @@ class NarrationQueue:
         # Per-source status tracking (for activity_panel WS broadcast)
         self._source_statuses: dict[str, SourceStatus] = {}
 
+        # History ring-buffer: newest-first, capped at 50 items.
+        self._history: collections.deque[NarrationItem] = collections.deque(maxlen=50)
+
     # -----------------------------------------------------------------------
     # Quiet mode
     # -----------------------------------------------------------------------
@@ -238,16 +242,29 @@ class NarrationQueue:
         asyncio.ensure_future(self._fire_mutation())
         return prior
 
-    def get_source_statuses(self) -> list[dict[str, Any]]:
-        """Return all known source statuses as a list of serialisable dicts."""
-        return [
-            {
-                "source": s.source,
+    def get_source_statuses(self) -> dict[str, dict[str, Any]]:
+        """Return all known source statuses, keyed by source name."""
+        return {
+            s.source: {
                 "status": s.status,
                 "message": s.message,
-                "updatedAt": datetime.fromtimestamp(s.updated_at, tz=timezone.utc).isoformat(),
+                "updated_at": datetime.fromtimestamp(s.updated_at, tz=timezone.utc).isoformat(),
             }
             for s in self._source_statuses.values()
+        }
+
+    def get_history(self) -> list[dict[str, Any]]:
+        """Return the narration history (newest first, max 50) as serialisable dicts."""
+        return [
+            {
+                "id": it.id,
+                "text": it.text,
+                "severity": it.severity,
+                "source": it.source,
+                "created_at": datetime.fromtimestamp(it.created_at, tz=timezone.utc).isoformat(),
+                "ttl_seconds": it.ttl_seconds if it.ttl_seconds > 0 else None,
+            }
+            for it in self._history
         ]
 
     # -----------------------------------------------------------------------
@@ -265,7 +282,7 @@ class NarrationQueue:
                 "text": it.text,
                 "severity": it.severity,
                 "source": it.source,
-                "createdAt": datetime.fromtimestamp(
+                "created_at": datetime.fromtimestamp(
                     it.created_at, tz=timezone.utc
                 ).isoformat(),
                 "channels": it.channels,
@@ -275,7 +292,7 @@ class NarrationQueue:
         qu = self.quiet_until
         return {
             "state": self._sm.state.value,
-            "quietUntil": qu.isoformat() if qu is not None else None,
+            "quiet_until": qu.isoformat() if qu is not None else None,
             "items": items,
         }
 
@@ -468,6 +485,7 @@ class NarrationQueue:
 
         # Completion batching — route into coalesce buffer, not main queue.
         if severity == "completion":
+            self._history.appendleft(item)
             self._accept_completion(item)
             logger.debug(
                 f"NarrationQueue: [{severity}] {item.id!r} → completion batch buffer"
@@ -477,6 +495,7 @@ class NarrationQueue:
             return item_id
 
         # Standard queue insertion.
+        self._history.appendleft(item)
         if severity == "urgent":
             self._queue.appendleft(item)
         else:

@@ -12,7 +12,7 @@
 #   1. Installs OpenClaw globally via npm
 #   2. Runs onboarding to create ~/.openclaw/ directory
 #   3. Optionally installs the daemon (systemd/launchd)
-#   4. Deploys JARVIS SOUL.md persona to OpenClaw workspace
+#   4. Hardens OpenClaw config (gateway.mode, default model, memory)
 
 set -e
 
@@ -76,56 +76,6 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 else
     echo "Skipping daemon installation."
     echo "You can install it later with: openclaw onboard --install-daemon"
-fi
-
-# Deploy JARVIS SOUL.md
-SOUL_SOURCE="$(dirname "$0")/../config/SOUL.md"
-SOUL_DEST="$HOME/.openclaw/workspace/SOUL.md"
-
-if [ -f "$SOUL_SOURCE" ]; then
-    mkdir -p "$HOME/.openclaw/workspace"
-
-    if [ -f "$SOUL_DEST" ]; then
-        echo "SOUL.md already exists at $SOUL_DEST"
-        read -p "Overwrite with JARVIS persona? [y/N] " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            cp "$SOUL_SOURCE" "$SOUL_DEST"
-            echo "JARVIS persona deployed to $SOUL_DEST"
-        fi
-    else
-        cp "$SOUL_SOURCE" "$SOUL_DEST"
-        echo "JARVIS persona deployed to $SOUL_DEST"
-    fi
-else
-    echo "WARNING: SOUL.md not found at $SOUL_SOURCE"
-    echo "JARVIS persona not deployed. Create config/SOUL.md and run this script again."
-fi
-
-# Deploy JARVIS CAPABILITIES.md — inventory of what the agent can do
-# right now, so meta questions ("was kannst du?") return accurate
-# answers instead of generic platitudes. Same overwrite-confirm flow.
-CAP_SOURCE="$(dirname "$0")/../config/CAPABILITIES.md"
-CAP_DEST="$HOME/.openclaw/workspace/CAPABILITIES.md"
-
-if [ -f "$CAP_SOURCE" ]; then
-    mkdir -p "$HOME/.openclaw/workspace"
-
-    if [ -f "$CAP_DEST" ]; then
-        echo "CAPABILITIES.md already exists at $CAP_DEST"
-        read -p "Overwrite with current JARVIS capability inventory? [y/N] " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            cp "$CAP_SOURCE" "$CAP_DEST"
-            echo "JARVIS capability inventory deployed to $CAP_DEST"
-        fi
-    else
-        cp "$CAP_SOURCE" "$CAP_DEST"
-        echo "JARVIS capability inventory deployed to $CAP_DEST"
-    fi
-else
-    echo "WARNING: CAPABILITIES.md not found at $CAP_SOURCE"
-    echo "Capability inventory not deployed. Create config/CAPABILITIES.md and re-run."
 fi
 
 # --------------------------------------------------------------------------

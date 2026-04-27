@@ -3219,6 +3219,48 @@ async def _handle_command(
     elif cmd_type == "spotify_device_announce":
         await _handle_spotify_device_announce(payload)
 
+    elif cmd_type == "start_listening":
+        # Force the connection into listening mode, bypassing wake-word detection.
+        # Used by the frontend's push-to-talk hook (issue #81).
+        conn_id = id(ws)
+        state = _connection_state.get(conn_id)
+        if state is None:
+            logger.warning("start_listening received but no connection state")
+            return
+        current_mode = state.get("mode", "idle")
+        # Allow PTT activation only when idle or in follow-up window.
+        # If we're already speaking / processing / listening, ignore — protects
+        # against double-press and respects ongoing turns.
+        if current_mode not in ("idle", "follow_up"):
+            logger.debug(f"start_listening ignored — current mode is {current_mode!r}")
+            return
+        state["mode"] = "listening"
+        state["audio_chunks"] = []
+        state["speech_started"] = False
+        state["silent_samples"] = 0
+        state["total_samples"] = 0
+        state["skip_remaining"] = 0
+        if _wake_word_detector is not None:
+            _wake_word_detector.reset()
+        if _state_machine is not None:
+            _state_machine.on_wake_word()  # treat PTT-start as a wake-word event for the state machine
+        await broadcast_state("listening")
+        logger.info(f"PTT: listening mode forced via start_listening command (was {current_mode!r})")
+
+    elif cmd_type == "stop_listening":
+        # PTT button released. If no speech was detected during the PTT session,
+        # return to idle. If speech HAS started, leave the existing silence-
+        # detector to finalise naturally (don't truncate mid-utterance).
+        conn_id = id(ws)
+        state = _connection_state.get(conn_id)
+        if state is None:
+            return
+        if state.get("mode") == "listening" and not state.get("speech_started", False):
+            state["mode"] = "idle"
+            await broadcast_state("idle")
+            logger.debug("PTT: stop_listening with no speech — returning to idle")
+        # else: speech started, let the existing silence-detect path finalise the turn.
+
     else:
         logger.warning(f"Unknown command type: {cmd_type}")
 

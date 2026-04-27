@@ -1,3 +1,9 @@
 node_modules
 dist
 public/sounds
+
+# Local environment overrides — never commit secrets or personal host names.
+# The documented template is .env.example (committed).
+.env
+.env.local
+.env*.local

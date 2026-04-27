@@ -133,6 +133,32 @@ shell. On the RPi:
 
 ---
 
+## Pointing a dev frontend at a remote backend
+
+When developing on a Windows machine (or any secondary device) while the JARVIS
+backend runs on the Linux laptop, both connected via the tailnet, you can tell
+`npm run dev` to proxy all backend traffic to the remote host instead of
+`127.0.0.1`. No changes to the source files are needed — the Vite dev-server
+reads three env vars at startup.
+
+Create (or edit) `frontend/.env.local` on the dev machine:
+
+```
+VITE_BACKEND_HOST=linux-laptop.tail-xxxxx.ts.net
+VITE_BACKEND_HTTP_PORT=8766
+VITE_BACKEND_WS_PORT=8765
+```
+
+Replace `tail-xxxxx` with your actual tailnet name (visible in `tailscale status`).
+
+CORS on the backend side does not need to be updated for this flow — the
+browser sees the request as coming from `http://localhost:5173`, which is
+already in the default `cors_origins`.
+
+Restart `npm run dev` after editing `.env.local` — Vite reads env at startup.
+
+---
+
 ## Troubleshooting
 
 - `tailscale status` shows the MagicDNS `DNSName` column for this machine.

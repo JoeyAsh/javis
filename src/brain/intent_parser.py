@@ -37,6 +37,8 @@ class Intent(Enum):
     SPOTIFY_SEARCH = "spotify_search"
     SPOTIFY_QUEUE = "spotify_queue"
     SPOTIFY_PLAY_CONTEXT = "spotify_play_context"
+    GREETING = "greeting"
+    MORNING_BRIEFING = "morning_briefing"
 
 
 @dataclass
@@ -471,6 +473,45 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\bspiele?\s+.+\s+(playlist|album)\b",
         ],
     },
+    # ------------------------------------------------------------------
+    # Greeting intents — morning and general greetings.
+    # Word-boundary anchored; optional comma + name suffix tolerated.
+    # ------------------------------------------------------------------
+    Intent.GREETING: {
+        "en": [
+            r"\bgood\s+morning\b",
+            r"\bmorning\s+jarvis\b",
+            r"\bhello\s+jarvis\b",
+            r"\bhi\s+jarvis\b",
+            r"\bhey\s+jarvis\b",
+        ],
+        "de": [
+            r"\bguten\s+morgen\b",
+            r"\bmorgen\s+jarvis\b",
+            r"\bhallo\s+jarvis\b",
+            r"\bhi\s+jarvis\b",
+            r"\bhey\s+jarvis\b",
+            r"\bservus\s+jarvis\b",
+            r"\bgrüß\s+dich\b",
+        ],
+    },
+    # ------------------------------------------------------------------
+    # Morning-briefing intent — explicit request for the daily briefing.
+    # ------------------------------------------------------------------
+    Intent.MORNING_BRIEFING: {
+        "en": [
+            r"\bmorning\s+briefing\b",
+            r"\bdaily\s+briefing\b",
+            r"\bbrief\s+me\b",
+            r"\bgive\s+me\s+my\s+briefing\b",
+        ],
+        "de": [
+            r"\btages\s*briefing\b",
+            r"\bmorgen\s*briefing\b",
+            r"\bbriefe?\s+mich\b",
+            r"\bmein\s+briefing\b",
+        ],
+    },
 }
 
 # App name aliases for PC control
@@ -560,6 +601,8 @@ class IntentParser:
 
         for intent in [
             Intent.SYSTEM,
+            Intent.MORNING_BRIEFING,
+            Intent.GREETING,
             Intent.PC_CONTROL,
             Intent.SMART_HOME,
             Intent.EMAIL_COMPOSE,
@@ -641,6 +684,8 @@ class IntentParser:
         _SPOTIFY_INTENT_BASE = 0.75
         _CALENDAR_INTENT_BASE = 0.75
         _DRIVE_INTENT_BASE = 0.75
+        _GREETING_INTENT_BASE = 0.85
+        _BRIEFING_INTENT_BASE = 0.85
         _SPOTIFY_INTENTS = (
             Intent.SPOTIFY_PLAY,
             Intent.SPOTIFY_PAUSE,
@@ -665,6 +710,10 @@ class IntentParser:
             confidence = min(1.0, _CALENDAR_INTENT_BASE + (match_count * 0.1))
         elif intent == Intent.DRIVE_SEARCH:
             confidence = min(1.0, _DRIVE_INTENT_BASE + (match_count * 0.1))
+        elif intent == Intent.GREETING:
+            confidence = min(1.0, _GREETING_INTENT_BASE + (match_count * 0.05))
+        elif intent == Intent.MORNING_BRIEFING:
+            confidence = min(1.0, _BRIEFING_INTENT_BASE + (match_count * 0.05))
         else:
             confidence = min(1.0, 0.4 + (match_count * 0.2))
 

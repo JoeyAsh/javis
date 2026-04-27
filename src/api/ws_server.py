@@ -462,6 +462,12 @@ async def broadcast_calendar_state(
     await _broadcast(message)
 
 
+async def broadcast_morning_briefing(payload: dict[str, Any]) -> None:
+    """Broadcast morning briefing payload to all connected HUD clients."""
+    message = json.dumps({"type": "morning_briefing", "payload": payload})
+    await _broadcast(message)
+
+
 async def broadcast_calendar_op_preview(payload: dict[str, Any]) -> None:
     """Broadcast a calendar operation preview to all connected clients.
 
@@ -4308,6 +4314,7 @@ async def start_ws_server(
         claude_client=claude_client,
         memory=None,
         tts_engine=None,
+        memory_store=_memory_store,
     )
 
     _intent_parser = get_intent_parser()

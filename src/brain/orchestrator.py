@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent
+from brain.agents.morning_briefing_agent import MorningBriefingAgent
 from brain.agents.search_agent import SearchAgent
 from brain.agents.system_agent import SystemAgent
 from brain.claude_client import ClaudeClient
@@ -82,6 +83,8 @@ _LOCAL_INTENTS: frozenset[Intent] = frozenset(
     {
         Intent.SYSTEM,
         Intent.WEB_SEARCH,
+        Intent.GREETING,
+        Intent.MORNING_BRIEFING,
     }
 )
 
@@ -99,6 +102,7 @@ class Orchestrator:
         claude_client: ClaudeClient,
         memory: Any = None,
         tts_engine: Any = None,
+        memory_store: Any = None,
     ) -> None:
         """Initialise the orchestrator.
 
@@ -111,10 +115,14 @@ class Orchestrator:
                 :class:`brain.memory.MemoryStore` from ``ws_server``).
             tts_engine: TTS engine handle passed through to ``SystemAgent``
                 for voice-change commands.
+            memory_store: Optional :class:`brain.memory.MemoryStore` instance
+                used by ``_handle_greeting`` to read/write the daily-briefing
+                played flag.
         """
         self.claude_client = claude_client
         self.memory = memory
         self.tts_engine = tts_engine
+        self._memory_store: Any = memory_store
 
         # Config — retained for backward compatibility, but the old
         # "orchestrator_model" / "skip_on_clear_intent" knobs no longer
@@ -149,6 +157,7 @@ class Orchestrator:
             "system": SystemAgent(
                 self.claude_client, memory=None, tts_engine=self.tts_engine
             ),
+            "morning_briefing": MorningBriefingAgent(),
         }
 
     def set_tts_engine(self, tts_engine: Any) -> None:
@@ -475,6 +484,81 @@ class Orchestrator:
 
         return None
 
+    async def _handle_greeting(
+        self,
+        text: str,
+        language: str,
+    ) -> AgentResult | None:
+        """Handle a GREETING intent: auto-trigger morning briefing once per day.
+
+        Returns an ``AgentResult`` when the briefing fires; returns ``None``
+        when the greeting should fall through to the normal chat path (outside
+        morning hours, or briefing already delivered today).
+
+        Args:
+            text: Original STT text.
+            language: Detected language (``"en"`` / ``"de"``).
+        """
+        import datetime as _dt
+        from zoneinfo import ZoneInfo
+
+        cfg = get_config()
+        tz_name: str = cfg.get("briefing.timezone", "Europe/Zurich")
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo("Europe/Zurich")
+
+        now_local = _dt.datetime.now(tz)
+        hour = now_local.hour
+
+        # Only auto-brief between 04:00 and 12:00 local time.
+        if not (4 <= hour < 12):
+            logger.debug(
+                f"GREETING outside morning window (hour={hour}); falling through to chat"
+            )
+            return None
+
+        date_key = now_local.strftime("%Y-%m-%d")
+        flag_key = f"morning_briefing_played_{date_key}"
+
+        # Check daily flag via MemoryStore.
+        if self._memory_store is not None:
+            try:
+                played = await self._memory_store.pref_get(flag_key)
+                if played == "true" or played is True:
+                    logger.debug(
+                        f"Morning briefing already played today ({date_key}); "
+                        "falling through to chat"
+                    )
+                    return None
+            except Exception as exc:
+                logger.warning(f"Could not read morning briefing flag from MemoryStore: {exc}")
+        else:
+            logger.warning(
+                "No MemoryStore attached to Orchestrator — "
+                "cannot check morning briefing daily flag; running briefing anyway"
+            )
+
+        # Dispatch to the morning_briefing agent.
+        agent = self._agents.get("morning_briefing")
+        if agent is None:
+            logger.warning("morning_briefing agent not registered; falling through")
+            return None
+
+        logger.info(f"Auto-triggering morning briefing for {date_key} (GREETING intent)")
+        result = await agent.run(text, {"manual": False}, language)
+
+        # Set the daily flag on success so the briefing only runs once.
+        if result.success and self._memory_store is not None:
+            try:
+                await self._memory_store.pref_set(flag_key, "true")
+                logger.debug(f"Set morning briefing played flag: {flag_key}")
+            except Exception as exc:
+                logger.warning(f"Could not set morning briefing flag: {exc}")
+
+        return result
+
     async def process(
         self,
         text: str,
@@ -494,6 +578,31 @@ class Orchestrator:
         Returns:
             ``AgentResult`` ready for the TTS/broadcast stage.
         """
+        # --- GREETING: may auto-trigger morning briefing ---------------
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.GREETING
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            result = await self._handle_greeting(text, language)
+            if result is not None:
+                return result
+            # Fall through to chat path for non-morning-hour greetings.
+
+        # --- MORNING_BRIEFING: manual trigger (always runs, flag not set) --
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.MORNING_BRIEFING
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            agent = self._agents.get("morning_briefing")
+            if agent is not None:
+                logger.info(
+                    "Local dispatch: morning_briefing (manual trigger, "
+                    f"conf={intent_result.confidence:.2f})"
+                )
+                return await agent.run(text, {"manual": True}, language)
+
         # --- Local UI / action commands -------------------------------
         if (
             intent_result is not None
@@ -564,6 +673,44 @@ class Orchestrator:
             :class:`~integrations.openclaw.ws_client.StreamChunk` objects.
         """
         from integrations.openclaw.ws_client import StreamChunk  # local import
+
+        # --- GREETING: may auto-trigger morning briefing (stream) ----------
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.GREETING
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            result = await self._handle_greeting(text, language)
+            if result is not None:
+                yield StreamChunk(
+                    type="final",
+                    run_id="local",
+                    new_text=result.spoken_response,
+                    full_text=result.spoken_response,
+                )
+                return
+            # Fall through to chat path if outside morning hours / already played.
+
+        # --- MORNING_BRIEFING: manual trigger (stream) ---------------------
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.MORNING_BRIEFING
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            agent = self._agents.get("morning_briefing")
+            if agent is not None:
+                logger.info(
+                    "Local dispatch (stream): morning_briefing (manual trigger, "
+                    f"conf={intent_result.confidence:.2f})"
+                )
+                result = await agent.run(text, {"manual": True}, language)
+                yield StreamChunk(
+                    type="final",
+                    run_id="local",
+                    new_text=result.spoken_response,
+                    full_text=result.spoken_response,
+                )
+                return
 
         # --- Local UI / action commands (no streaming, single result) ----
         if (
@@ -648,9 +795,13 @@ def _intent_to_agent_name(intent: Intent) -> str:
     PC_CONTROL, SMART_HOME, and all Spotify intents are not in _LOCAL_INTENTS;
     they fall through to the OpenClaw chat path which calls MCP tools
     (issue #76 for PC/home, issue #87 for Spotify).
+    GREETING is not mapped here — it is handled by ``_handle_greeting`` in the
+    orchestrator directly (may fall through to chat).
     """
     if intent == Intent.SYSTEM:
         return "system"
     if intent == Intent.WEB_SEARCH:
         return "search"
+    if intent == Intent.MORNING_BRIEFING:
+        return "morning_briefing"
     return "chat"

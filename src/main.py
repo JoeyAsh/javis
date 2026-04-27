@@ -60,6 +60,24 @@ async def _silent_tts(_text: str, _language: str) -> None:
     return None
 
 
+def _asyncio_exception_handler(
+    loop: asyncio.AbstractEventLoop, context: dict[str, Any]
+) -> None:
+    """Print late-shutdown asyncio exceptions to stderr without touching stdlib logging.
+
+    Avoids re-entering the loguru/Rich/InterceptHandler stack during interpreter
+    teardown when sys.meta_path is None.
+    """
+    msg = context.get("message", "asyncio exception")
+    exc = context.get("exception")
+    try:
+        sys.stderr.write(f"[asyncio] {msg}\n")
+        if exc is not None:
+            sys.stderr.write(f"  exception: {exc!r}\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def main() -> None:
     """Main entry point.
 
@@ -107,6 +125,7 @@ async def main() -> None:
         shutdown_event.set()
 
     loop = asyncio.get_event_loop()
+    loop.set_exception_handler(_asyncio_exception_handler)
     if sys.platform != "win32":
         loop.add_signal_handler(signal.SIGINT, _signal_handler)
         loop.add_signal_handler(signal.SIGTERM, _signal_handler)

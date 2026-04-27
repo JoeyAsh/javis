@@ -14,6 +14,7 @@ the broadcaster.
 """
 
 import asyncio
+import logging
 import sys
 import time
 from collections import deque
@@ -170,6 +171,52 @@ async def _drainer_task() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Stdlib → loguru bridge
+# ---------------------------------------------------------------------------
+
+
+class InterceptHandler(logging.Handler):
+    """Stdlib logging handler that re-emits records through loguru."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            try:
+                level: str | int = logger.level(record.levelname).name
+            except ValueError:
+                level = record.levelno
+            frame, depth = sys._getframe(6), 6
+            while frame and frame.f_code.co_filename == logging.__file__:
+                frame = frame.f_back
+                depth += 1
+            logger.opt(depth=depth, exception=record.exc_info).log(
+                level, record.getMessage()
+            )
+        except Exception:  # noqa: BLE001
+            # Shutdown-safe fallback — loguru may already be torn down.
+            try:
+                sys.stderr.write(
+                    f"[InterceptHandler fallback] {record.levelname}: {record.getMessage()}\n"
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def install_stdlib_intercept(level: int = logging.DEBUG) -> None:
+    """Replace stdlib root-logger handlers with InterceptHandler.
+
+    Idempotent — safe to call multiple times.  Existing InterceptHandler
+    instances are preserved; non-Intercept handlers (RichHandler, default
+    StreamHandler, etc.) are removed so all stdlib logging flows through
+    loguru.
+    """
+    root = logging.getLogger()
+    root.handlers = [h for h in root.handlers if isinstance(h, InterceptHandler)]
+    if not any(isinstance(h, InterceptHandler) for h in root.handlers):
+        root.addHandler(InterceptHandler())
+    root.setLevel(level)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -224,6 +271,8 @@ def setup_logger(
         )
 
     logger.info(f"Logger initialized with level={level}")
+    stdlib_level = getattr(logging, level.upper(), logging.INFO)
+    install_stdlib_intercept(level=stdlib_level)
 
 
 def get_logger(name: str | None = None) -> Any:
@@ -247,4 +296,6 @@ __all__ = [
     "logger",
     "register_ws_broadcast",
     "get_log_buffer",
+    "InterceptHandler",
+    "install_stdlib_intercept",
 ]

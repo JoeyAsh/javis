@@ -13,6 +13,7 @@ import json
 import os
 import re
 import socket
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,11 @@ logger = get_logger("device")
 _OPENCLAW_DEVICE_FILE = Path.home() / ".openclaw" / "identity" / "device.json"
 _MAX_SLUG_LEN = 40
 _SLUG_FALLBACK = "jarvis"
+
+# Cache for Tailscale hostname lookup — None means "not yet resolved",
+# empty string means "resolved but not found".
+_tailscale_hostname_cache: str | None = None
+_tailscale_hostname_resolved: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -82,13 +88,81 @@ def resolve_device_slug() -> str:
     return slug
 
 
+def resolve_tailscale_hostname() -> str | None:
+    """Detect this machine's Tailscale MagicDNS hostname via ``tailscale status --json``.
+
+    Tries ``TAILSCALE_HOSTNAME`` env var first (cheap path).  Falls back to
+    running the Tailscale CLI with a 2-second timeout and parsing
+    ``Self.DNSName`` from the JSON output.  Strips the trailing dot that
+    Tailscale appends (e.g. ``"laptop-paps.tailnet.ts.net."`` →
+    ``"laptop-paps.tailnet.ts.net"``).
+
+    The result is cached after the first call so subsequent invocations do not
+    re-spawn the subprocess.
+
+    Returns:
+        Tailscale hostname string, or ``None`` when Tailscale is not installed,
+        the daemon is not running, or detection fails for any reason.
+    """
+    global _tailscale_hostname_cache, _tailscale_hostname_resolved
+
+    if _tailscale_hostname_resolved:
+        return _tailscale_hostname_cache or None
+
+    _tailscale_hostname_resolved = True
+
+    # Fast path: explicit env var.
+    env_val = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
+    if env_val:
+        logger.info(f"Tailscale hostname from TAILSCALE_HOSTNAME env var: {env_val!r}")
+        _tailscale_hostname_cache = env_val
+        return env_val
+
+    # Subprocess path: parse `tailscale status --json`.
+    try:
+        result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            timeout=2.0,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.debug(
+                f"tailscale status --json returned code {result.returncode}; "
+                "Tailscale may not be running"
+            )
+            return None
+
+        data = json.loads(result.stdout)
+        dns_name: str = data.get("Self", {}).get("DNSName", "")
+        if dns_name:
+            # Strip trailing dot from FQDN.
+            hostname = dns_name.rstrip(".")
+            logger.info(f"Tailscale hostname auto-detected from CLI: {hostname!r}")
+            _tailscale_hostname_cache = hostname
+            return hostname
+
+        logger.debug("tailscale status --json: Self.DNSName is empty")
+    except FileNotFoundError:
+        logger.debug("tailscale CLI not found; skipping Tailscale hostname detection")
+    except subprocess.TimeoutExpired:
+        logger.debug("tailscale status --json timed out (>2 s); skipping")
+    except json.JSONDecodeError as exc:
+        logger.debug(f"Failed to parse tailscale status JSON: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"Unexpected error during Tailscale hostname detection: {exc}")
+
+    return None
+
+
 def resolve_advertise_host(mcp_config: dict[str, Any]) -> str:
     """Return the host to advertise in the MCP SSE URL.
 
     Resolution order:
       1. ``JARVIS_MCP_ADVERTISE_HOST`` env var.
       2. ``mcp_config['advertise_host']`` when set and not null.
-      3. ``mcp_config['bind_host']`` (default ``"127.0.0.1"``).
+      3. ``TAILSCALE_HOSTNAME`` env var or ``tailscale status --json`` (auto-detect).
+      4. ``mcp_config['bind_host']`` (default ``"127.0.0.1"``).
 
     Args:
         mcp_config: The ``mcp`` section from ``config.yaml``.
@@ -105,6 +179,11 @@ def resolve_advertise_host(mcp_config: dict[str, Any]) -> str:
     if config_host:
         logger.debug(f"MCP advertise host from config: {config_host!r}")
         return str(config_host)
+
+    tailscale_host = resolve_tailscale_hostname()
+    if tailscale_host:
+        logger.info(f"MCP advertise host from Tailscale auto-detect: {tailscale_host!r}")
+        return tailscale_host
 
     bind_host: str = mcp_config.get("bind_host", "127.0.0.1")
     logger.debug(f"MCP advertise host defaults to bind_host: {bind_host!r}")

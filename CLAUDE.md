@@ -113,15 +113,19 @@ curl -s -X POST http://127.0.0.1:8766/api/jarvis/notify \
 - `info` — HUD only, no voice (e.g. background poll ticks).
 - `update` — HUD + soft chime; voice only when `narration.update_voice: true`.
 
-**When to fire (orchestrator default policy):**
+**Default rule (hard): every user-facing status update from the orchestrator is paired with a `jarvis_notify`.** Whenever the orchestrator writes a status message to the user — work started on a task, work finished, blocker hit, decision needed, subagent returned, build/test green/red, PR opened, merge complete, branch synced — the same content also goes out via `jarvis_notify` so JARVIS speaks it. The user wants to *hear* the status, not only see it in the chat. The 10 s `completion` batching by `source` already deduplicates near-simultaneous fires, so the orchestrator does not hand-batch.
+
+**When to fire (concrete triggers):**
+- Any message to the user that is a status report (started / finished / blocked / decision-needed).
 - User explicitly asks to be notified ("sag mir Bescheid wenn fertig", "melde dich wenn der Subagent zurück ist").
-- Long-running background subagent (>2 min) returns and the user is genuinely waiting.
-- Major workflow milestones the user wants reported (PR opened, merge complete, build/test green/red).
+- Subagent returns (especially long-running background ones) and the user has been waiting on the result.
+- Major workflow milestones (PR opened, merge complete, build/test green/red, deployment finished).
 
 **When NOT to fire:**
-- Trivial sub-second steps. Don't narrate every file edit.
-- The user is actively in the chat and will see the next response immediately.
-- The user has not asked to be told and the work was their direct request (they're already watching).
+- **Batch / intermediate steps inside one larger operation** — fire only on the final completion or on a real change of state, not on every micro-progress line.
+- Direct conversational answers (questions, explanations, code walk-throughs) that are not status updates.
+- Pure passthrough of subagent output that the user is actively reading in the chat at the same moment.
+- Trivial tool-call narration (file read, single grep) — those aren't "status".
 
 **Stable source convention:** use `"claude-code"` for general orchestrator notifications; `"claude-code-<issue-num>"` if you need per-issue separation. Coalescing via the 10 s window means redundant completions collapse cleanly.
 

@@ -60,7 +60,24 @@ api:
   # Bind address for WS (:8765) and HTTP (:8766) servers.
   # Default is loopback — safe for a personal assistant with no auth layer.
   # Set to "0.0.0.0" only when you need LAN/WAN access AND have added auth.
+  # Env-switch alternative (chosen over a new config key to keep the surface
+  # minimal): set JARVIS_REMOTE_ACCESS=true in .env to flip from 127.0.0.1 to
+  # 0.0.0.0 at startup without touching this file.  Tailscale ACL is then the
+  # auth boundary.  An explicit value here ALWAYS overrides the env switch.
+  # Note: setting `host: "127.0.0.1"` here does NOT prevent `JARVIS_REMOTE_ACCESS=true`
+  # from flipping to 0.0.0.0 — the env switch wins when the config value is the
+  # default loopback.  If you need to enforce loopback regardless of env, ensure
+  # `JARVIS_REMOTE_ACCESS` is unset in the environment, or pin a non-default
+  # loopback alias such as `host: "127.0.0.2"` which will be used verbatim.
   host: "127.0.0.1"
+  # Allowed CORS origins for the HTTP server.  Each entry can be:
+  #   - A literal origin:            "http://localhost:5173"
+  #   - A wildcard (allow all):      "*"
+  #   - An fnmatch-style glob:       "https://*.tailnet.ts.net:5173"
+  # Wildcards supported (fnmatch): "https://*.tailnet.ts.net:5173" matches any
+  # tailnet subdomain on port 5173, e.g. "https://laptop-paps.tailnet.ts.net:5173".
+  # Patterns must include the port for non-default ports — fnmatch's `*` does
+  # not cross `:` boundaries by convention.
   cors_origins: ["http://localhost:5173"]
 
 logging:
@@ -86,8 +103,14 @@ mcp:
   # advertise_host: null means use bind_host for the SSE URL registered with
   # OpenClaw.  Set to a Tailscale IP or MagicDNS hostname (e.g.
   # "laptop-paps.tailnet.ts.net") when OpenClaw must reach this JARVIS instance
-  # over the tailnet from a different machine.  Can also be set via the
-  # JARVIS_MCP_ADVERTISE_HOST environment variable (takes precedence).
+  # over the tailnet from a different machine.
+  # Resolution order (highest priority first):
+  #   1. JARVIS_MCP_ADVERTISE_HOST env var — highest priority override.
+  #   2. This config key (advertise_host) when set and not null.
+  #   3. Auto-detect from TAILSCALE_HOSTNAME env var or `tailscale status --json`
+  #      (parses Self.DNSName; 2-second timeout; silent no-op if Tailscale is
+  #      not installed or the daemon is not running).
+  #   4. bind_host fallback.
   advertise_host: null
   # openclaw_headers: optional HTTP headers forwarded to the OpenClaw MCP
   # registry entry (openclaw mcp set <name> '{"url": "...", "headers": {...}}').

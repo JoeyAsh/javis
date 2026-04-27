@@ -8,7 +8,9 @@ and Fish Audio TTS — then streams the MP3 response back to the frontend.
 
 import asyncio
 import base64
+import fnmatch
 import json
+import os
 import socket
 import sys
 import time
@@ -4412,6 +4414,37 @@ async def config_repos_post_handler(request: web.Request) -> web.Response:
 
 
 # ---------------------------------------------------------------------------
+# CORS helpers
+# ---------------------------------------------------------------------------
+
+
+def _origin_allowed(origin: str, patterns: list[str]) -> bool:
+    """Return True when *origin* matches any entry in *patterns*.
+
+    Each pattern can be:
+    - A literal origin string (``"http://localhost:5173"``).
+    - A bare ``"*"`` to allow any origin.
+    - An ``fnmatch``-style glob (``"https://*.tailnet.ts.net"``), matched
+      case-sensitively via ``fnmatch.fnmatchcase``.
+
+    Args:
+        origin: The ``Origin`` header value from the HTTP request.
+        patterns: List of allowed-origin patterns from config.
+
+    Returns:
+        ``True`` if *origin* should be allowed, ``False`` otherwise.
+    """
+    for pattern in patterns:
+        if pattern == "*":
+            return True
+        if pattern == origin:
+            return True
+        if fnmatch.fnmatchcase(origin, pattern):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Server startup
 # ---------------------------------------------------------------------------
 
@@ -4646,11 +4679,31 @@ async def start_ws_server(
     # Server ports, host and CORS
     ws_port = config.get("ws_port", 8765)
     http_port = config.get("http_port", 8766)
-    # Default is loopback — JARVIS is a personal assistant; exposing to 0.0.0.0
-    # with no authentication is a security risk. Override in config.yaml only
-    # if you deliberately want LAN/WAN exposure and have added auth.
-    host = config.get("host", "127.0.0.1")
-    cors_origins = config.get("cors_origins", ["http://localhost:5173"])
+    # Determine effective bind host.  Resolution order:
+    #   1. Explicit value in config.yaml (anything other than the literal default
+    #      "127.0.0.1" counts as an explicit override) — wins unconditionally.
+    #   2. JARVIS_REMOTE_ACCESS env var: when truthy ("1", "true", "yes",
+    #      case-insensitive) AND config has the default loopback value, flip to
+    #      "0.0.0.0" so the backend listens on all interfaces (including the
+    #      Tailscale interface).  Tailscale ACL is then the auth boundary.
+    #      NOTE: we deliberately chose the env-switch path over a new config key
+    #      (api.remote_access_mode: tailscale) to keep the surface minimal.
+    #   3. Fallback: "127.0.0.1".
+    _config_host: str = config.get("host", "127.0.0.1")
+    _remote_access_raw: str = os.environ.get("JARVIS_REMOTE_ACCESS", "").strip().lower()
+    _remote_access_enabled: bool = _remote_access_raw in {"1", "true", "yes"}
+    if _config_host != "127.0.0.1":
+        host = _config_host
+        logger.info(f"API bind host: {host!r} (source: config)")
+    elif _remote_access_enabled:
+        host = "0.0.0.0"
+        logger.info(
+            f"API bind host: {host!r} (source: env-remote-access / JARVIS_REMOTE_ACCESS=true)"
+        )
+    else:
+        host = _config_host
+        logger.info(f"API bind host: {host!r} (source: default)")
+    cors_origins: list[str] = config.get("cors_origins", ["http://localhost:5173"])
 
     # WebSocket application
     ws_app = web.Application()
@@ -4666,7 +4719,7 @@ async def start_ws_server(
             response = await handler(request)
 
         origin = request.headers.get("Origin", "")
-        if origin in cors_origins or "*" in cors_origins:
+        if origin and _origin_allowed(origin, cors_origins):
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type"

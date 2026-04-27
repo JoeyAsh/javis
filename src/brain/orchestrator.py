@@ -15,12 +15,15 @@ session (``SOUL.md`` + session memory).
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     from brain.conversation_state import ConversationStateMachine
+    from brain.device_ledger import DeviceLedger
     from brain.narration_queue import NarrationQueue
     from integrations.openclaw.ws_client import StreamChunk
 
@@ -91,6 +94,7 @@ _LOCAL_INTENTS: frozenset[Intent] = frozenset(
         Intent.MORNING_BRIEFING,
         Intent.QUIET_MODE_ON,
         Intent.QUIET_MODE_OFF,
+        Intent.LEDGER_QUERY,
     }
 )
 
@@ -111,6 +115,7 @@ class Orchestrator:
         memory_store: Any = None,
         narration_queue: NarrationQueue | None = None,
         state_machine: ConversationStateMachine | None = None,
+        device_ledger: DeviceLedger | None = None,
     ) -> None:
         """Initialise the orchestrator.
 
@@ -132,6 +137,8 @@ class Orchestrator:
                 individually; when absent the legacy single-utterance path is used.
             state_machine: Optional :class:`brain.conversation_state.ConversationStateMachine`
                 shared with the NarrationQueue and the WS server.
+            device_ledger: Optional :class:`brain.device_ledger.DeviceLedger` for
+                LEDGER_QUERY fast-path handler.
         """
         self.claude_client = claude_client
         self.memory = memory
@@ -139,6 +146,7 @@ class Orchestrator:
         self._memory_store: Any = memory_store
         self._narration_queue: NarrationQueue | None = narration_queue
         self._state_machine: ConversationStateMachine | None = state_machine
+        self._device_ledger: DeviceLedger | None = device_ledger
 
         # Config — retained for backward compatibility, but the old
         # "orchestrator_model" / "skip_on_clear_intent" knobs no longer
@@ -501,6 +509,59 @@ class Orchestrator:
 
         return None
 
+    async def _handle_ledger_query(self, language: str) -> AgentResult:
+        """Handle a LEDGER_QUERY intent without any LLM or OpenClaw round-trip.
+
+        Queries DeviceLedger.count_since(today 00:00 local time) and returns
+        a templated narration string.
+
+        Args:
+            language: Detected language (``"en"`` / ``"de"``).
+
+        Returns:
+            AgentResult with a spoken templated summary.
+        """
+        try:
+            cfg = get_config()
+            tz_name: str = cfg.get("briefing.timezone", "Europe/Zurich")
+            try:
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                tz = ZoneInfo("Europe/Zurich")
+
+            now_local = datetime.datetime.now(tz)
+            today_midnight = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            since_iso = today_midnight.astimezone(datetime.timezone.utc).isoformat()
+
+            counts: dict[str, int] = {}
+            if self._device_ledger is not None:
+                counts = await self._device_ledger.count_since(since_iso)
+            else:
+                logger.warning("LEDGER_QUERY: DeviceLedger not attached to Orchestrator")
+
+            tts = counts.get("tts_emitted", 0)
+            ww = counts.get("wake_word", 0)
+            mcp = counts.get("mcp_call", 0)
+            vstart = counts.get("voice_turn_start", 0)
+
+            if language == "de":
+                text = (
+                    f"Sir, heute habe ich {ww} Wake-Words, {vstart} Sprach-Turns, "
+                    f"{tts} TTS-Ausgaben und {mcp} MCP-Aufrufe aufgezeichnet."
+                )
+            else:
+                text = (
+                    f"Sir, today I have logged {ww} wake words, {vstart} voice turns, "
+                    f"{tts} TTS emissions, and {mcp} MCP calls."
+                )
+        except Exception as exc:
+            logger.warning(f"LEDGER_QUERY handler error: {exc}")
+            text = "Sir, the ledger is unavailable at the moment." if language == "en" else (
+                "Sir, das Ledger ist gerade nicht verfügbar."
+            )
+
+        return AgentResult(spoken_response=text, success=True)
+
     async def _handle_greeting(
         self,
         text: str,
@@ -658,6 +719,18 @@ class Orchestrator:
                     parts_mb.append(chunk.new_text)
             return AgentResult(spoken_response="".join(parts_mb), success=True)
 
+        # --- LEDGER_QUERY: local fast-path (no LLM, no OpenClaw) --------
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.LEDGER_QUERY
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            logger.info(
+                "Local dispatch: ledger_query fast-path "
+                f"(conf={intent_result.confidence:.2f})"
+            )
+            return await self._handle_ledger_query(language)
+
         # --- Local UI / action commands -------------------------------
         if (
             intent_result is not None
@@ -763,6 +836,25 @@ class Orchestrator:
                 yield chunk
             return
 
+        # --- LEDGER_QUERY: local fast-path (stream) ----------------------
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.LEDGER_QUERY
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            logger.info(
+                "Local dispatch (stream): ledger_query fast-path "
+                f"(conf={intent_result.confidence:.2f})"
+            )
+            result_lq = await self._handle_ledger_query(language)
+            yield StreamChunk(
+                type="final",
+                run_id="local",
+                new_text=result_lq.spoken_response,
+                full_text=result_lq.spoken_response,
+            )
+            return
+
         # --- Local UI / action commands (no streaming, single result) ----
         if (
             intent_result is not None
@@ -849,6 +941,7 @@ def _intent_to_agent_name(intent: Intent) -> str:
     GREETING is not mapped here — it is handled by ``_handle_greeting`` in the
     orchestrator directly (may fall through to chat).
     QUIET_MODE_ON / QUIET_MODE_OFF route to the QuietModeAgent (#93 Phase 2).
+    LEDGER_QUERY is handled directly by the orchestrator — no agent needed.
     """
     if intent == Intent.SYSTEM:
         return "system"

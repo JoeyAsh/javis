@@ -41,6 +41,7 @@ class Intent(Enum):
     MORNING_BRIEFING = "morning_briefing"
     QUIET_MODE_ON = "quiet_mode_on"
     QUIET_MODE_OFF = "quiet_mode_off"
+    LEDGER_QUERY = "ledger_query"
 
 
 @dataclass
@@ -550,6 +551,21 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\bnormal\s+(modus|mode)\b",
         ],
     },
+    # ------------------------------------------------------------------
+    # Ledger-query intent — local fast-path, no LLM round-trip.
+    # ------------------------------------------------------------------
+    Intent.LEDGER_QUERY: {
+        "en": [
+            r"\bwhat\s+have\s+you\s+logged\s+today\b",
+            r"\bshow\s+me\s+the\s+ledger\s+today\b",
+            r"\bwhat\s+events\s+today\b",
+        ],
+        "de": [
+            r"\bwas\s+hast\s+du\s+heute\s+aufgezeichnet\b",
+            r"\bwas\s+wurde\s+heute\s+geloggt\b",
+            r"\bzeig\s+mir\s+das\s+ledger\b",
+        ],
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -844,6 +860,7 @@ class IntentParser:
             Intent.QUIET_MODE_ON,
             Intent.MORNING_BRIEFING,
             Intent.GREETING,
+            Intent.LEDGER_QUERY,
             Intent.PC_CONTROL,
             Intent.SMART_HOME,
             Intent.EMAIL_COMPOSE,
@@ -949,8 +966,11 @@ class IntentParser:
             Intent.CALENDAR_DELETE,
         )
         _QUIET_MODE_INTENT_BASE = 0.85
+        _LEDGER_QUERY_INTENT_BASE = 0.75
         if intent in (Intent.QUIET_MODE_ON, Intent.QUIET_MODE_OFF):
             confidence = min(1.0, _QUIET_MODE_INTENT_BASE + (match_count * 0.05))
+        elif intent == Intent.LEDGER_QUERY:
+            confidence = min(1.0, _LEDGER_QUERY_INTENT_BASE + (match_count * 0.1))
         elif intent in (Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE):
             confidence = min(1.0, _EMAIL_INTENT_BASE + (match_count * 0.1))
         elif intent in _SPOTIFY_INTENTS:

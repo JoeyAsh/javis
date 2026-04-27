@@ -88,7 +88,10 @@ api:
   # tailnet subdomain on port 5173, e.g. "https://laptop-paps.tailnet.ts.net:5173".
   # Patterns must include the port for non-default ports — fnmatch's `*` does
   # not cross `:` boundaries by convention.
-  cors_origins: ["http://localhost:5173"]
+  cors_origins:
+    - "http://localhost:5173"
+    - "http://*.tail77bd3b.ts.net:5173"
+    - "https://*.tail77bd3b.ts.net:5173"
 
 logging:
   level: "DEBUG"
@@ -137,7 +140,7 @@ openclaw:
   # For remote OpenClaw via Tailscale, use the gateway host's tailnet URL,
   # e.g. "http://100.84.x.y:18789". For local OpenClaw, use "http://127.0.0.1:18789".
   # Do NOT change this to a Tailscale URL here — update your own tailnet IP.
-  gateway_url: "http://192.168.1.121:18789"
+  gateway_url: "http://127.0.0.1:18789"
   gateway_port: 18789
   managed_daemon: false  # true = JARVIS starts/stops daemon; false = assume systemd
   health_check_interval_seconds: 30

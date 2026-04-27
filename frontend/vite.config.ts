@@ -58,6 +58,8 @@ export default defineConfig(({ mode }) => {
             ],
         },
         server: {
+            host: '0.0.0.0',
+            allowedHosts: ['.tail77bd3b.ts.net'],
             port: 5173,
             proxy: {
                 '/jarvis-ws': {

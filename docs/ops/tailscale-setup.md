@@ -1,8 +1,9 @@
 # Tailscale Remote Access Setup
 
 Connect multiple devices to a JARVIS backend running on one host without
-exposing any port to the public internet. Tailscale ACL is the authentication
-boundary — there is no API-level token check in JARVIS today.
+exposing any port to the public internet. Tailscale ACL is the primary
+authentication boundary; an optional bearer-token layer (`JARVIS_API_TOKEN`)
+provides defence-in-depth — see "Token authentication" below.
 
 ---
 
@@ -156,6 +157,70 @@ browser sees the request as coming from `http://localhost:5173`, which is
 already in the default `cors_origins`.
 
 Restart `npm run dev` after editing `.env.local` — Vite reads env at startup.
+
+---
+
+### Token authentication (optional, opt-in)
+
+Tailscale ACL is the primary network boundary. `JARVIS_API_TOKEN` adds a second
+factor: any device on the tailnet must also present a static bearer token with
+every request. Enable it when you want defence-in-depth beyond what the ACL
+alone provides.
+
+**When to enable** — recommended whenever remote tailnet devices can reach the
+backend and you want an extra guard against misconfigured ACL rules or a
+compromised device on the tailnet.
+
+**Generate a token:**
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+**Backend:** add the output to `.env` on the JARVIS host and restart the backend:
+```bash
+JARVIS_API_TOKEN=<your_64_hex_chars>
+```
+The startup log will emit:
+```
+API token auth enabled — non-loopback requests require Bearer token
+```
+
+**Frontend (Vite dev):** set the same value in `frontend/.env` (gitignored) and
+restart `npm run dev`:
+```
+VITE_JARVIS_TOKEN=<your_64_hex_chars>
+```
+
+**Frontend (deployed build / remote browser):** open DevTools console on the
+device and run once:
+```javascript
+localStorage.setItem("jarvis_api_token", "<your_64_hex_chars>");
+location.reload();
+```
+
+**OpenClaw:** non-loopback OpenClaw access to the MCP server (`:8767`) is
+currently NOT supported with token auth. The MCP server binds to loopback
+(`127.0.0.1`) by design. If OpenClaw runs on a different host and needs to reach
+JARVIS MCP, use an SSH tunnel instead of exposing the port:
+```bash
+ssh -L 8767:127.0.0.1:8767 user@jarvis-host
+```
+Auto-injection of the bearer header into the OpenClaw MCP registry entry is a
+planned follow-up.
+
+**Rotation:** generate a new token, update `JARVIS_API_TOKEN` in `.env` on the
+backend, update `VITE_JARVIS_TOKEN` in `frontend/.env` (or run the
+`localStorage.setItem(...)` snippet in DevTools on every remote browser), then
+restart the backend. All active sessions will receive 401s until they are
+reloaded with the new token.
+
+**Loopback exemption:** local development with `JARVIS_API_TOKEN` unset works
+exactly as today. Even with the token set, requests from `127.0.0.1` or `::1`
+are unconditionally exempted — local dev never needs the token.
+
+**`/health` is always public:** the `/health` endpoint returns
+`{"status": "ok"}` without requiring a token, even when token auth is enabled.
+This endpoint is used by deploy probes and the Vite dev-server upstream check.
 
 ---
 

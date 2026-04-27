@@ -564,11 +564,14 @@ _CANONICAL_GREETING_PHRASES: tuple[str, ...] = (
     "guten abend",
     "guten",
     "morgen jarvis",
-    "morgen",
+    # NOTE: bare "morgen" (German "tomorrow") intentionally excluded — it false-matches
+    # calendar phrases like "Was steht morgen an?" or "plane ein Meeting morgen".
+    # The GREETING pattern \bguten\s+morgen\b and "morgen jarvis" cover legitimate greetings.
     "good morning",
     "good afternoon",
     "good evening",
-    "morning",
+    # NOTE: bare "morning" intentionally excluded — "morning jarvis" covers the greeting case.
+    # Standalone "morning" is too common in calendar/scheduling utterances.
     "hello jarvis",
     "hi jarvis",
     "hey jarvis",

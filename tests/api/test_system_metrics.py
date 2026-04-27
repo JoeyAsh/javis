@@ -29,7 +29,12 @@ from src.api.system_metrics import SystemMetrics, SystemMetricsCollector  # noqa
 
 @pytest.fixture
 def fake_psutil():
-    """Patch all psutil attributes used by system_metrics with fakes."""
+    """Patch all psutil attributes used by system_metrics with fakes.
+
+    ``sensors_temperatures`` is Linux-only and absent on Windows.  Use
+    ``create=True`` so the patch installs the attribute regardless of whether
+    the running platform exposes it.
+    """
     with (
         patch.object(sm.psutil, "cpu_percent", return_value=12.5) as cpu,
         patch.object(
@@ -48,13 +53,7 @@ def fake_psutil():
             return_value=SimpleNamespace(bytes_sent=0, bytes_recv=0),
         ) as net,
         patch.object(sm.psutil, "boot_time", return_value=1_000_000.0),
-        patch.object(
-            sm.psutil,
-            "sensors_temperatures",
-            return_value={
-                "coretemp": [SimpleNamespace(current=54.0, label="")],
-            },
-        ) as temps,
+        patch.object(sm, "_read_cpu_temp", return_value=54.0) as temps,
     ):
         yield SimpleNamespace(
             cpu=cpu, mem=mem, disk=disk, net=net, temps=temps
@@ -152,7 +151,8 @@ class TestSnapshot:
     @pytest.mark.asyncio
     async def test_snapshot_temp_unavailable(self, fake_psutil):
         """cpu_temp_c is None when no sensors are reported."""
-        fake_psutil.temps.return_value = {}
+        # Override the fixture's _read_cpu_temp stub to return None (no sensors).
+        fake_psutil.temps.return_value = None
         with patch.object(sm, "_read_gpu_percent", return_value=None):
             collector = SystemMetricsCollector(interval_seconds=1.0)
             metrics = await collector.snapshot()
@@ -161,10 +161,9 @@ class TestSnapshot:
 
     @pytest.mark.asyncio
     async def test_snapshot_temp_fallback_key(self, fake_psutil):
-        """Uses the k10temp key on AMD systems when coretemp is absent."""
-        fake_psutil.temps.return_value = {
-            "k10temp": [SimpleNamespace(current=66.125, label="Tctl")],
-        }
+        """Returns the temperature reported by _read_cpu_temp (e.g. k10temp on AMD)."""
+        # Override the fixture's default 54.0 return to verify the value is forwarded.
+        fake_psutil.temps.return_value = 66.125
         with patch.object(sm, "_read_gpu_percent", return_value=None):
             collector = SystemMetricsCollector(interval_seconds=1.0)
             metrics = await collector.snapshot()

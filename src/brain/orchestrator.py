@@ -19,10 +19,11 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from integrations.openclaw.ws_client import StreamChunk
+
 if TYPE_CHECKING:
     from brain.conversation_state import ConversationStateMachine
     from brain.narration_queue import NarrationQueue
-    from integrations.openclaw.ws_client import StreamChunk
 
 from brain.agents.base import AgentResult, BaseAgent
 from brain.agents.chat_agent import ChatAgent

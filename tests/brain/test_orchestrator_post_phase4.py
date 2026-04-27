@@ -41,7 +41,7 @@ def _make_orchestrator() -> Orchestrator:
 
     with patch("brain.orchestrator.SystemAgent"), patch("brain.orchestrator.ChatAgent"), patch(
         "brain.orchestrator.SearchAgent"
-    ):
+    ), patch("brain.orchestrator.QuietModeAgent"):
         orch = Orchestrator(claude_client=claude_mock)
 
     return orch
@@ -86,10 +86,25 @@ def test_web_search_still_in_local_intents():
     assert Intent.WEB_SEARCH in _LOCAL_INTENTS
 
 
-def test_local_intents_exactly_system_and_web_search():
-    """_LOCAL_INTENTS contains exactly {SYSTEM, WEB_SEARCH} and nothing else."""
-    assert _LOCAL_INTENTS == frozenset({Intent.SYSTEM, Intent.WEB_SEARCH}), (
-        f"Unexpected _LOCAL_INTENTS contents: {_LOCAL_INTENTS}"
+def test_local_intents_includes_canonical_set():
+    """_LOCAL_INTENTS contains at least {SYSTEM, WEB_SEARCH, GREETING, MORNING_BRIEFING,
+    QUIET_MODE_ON, QUIET_MODE_OFF} — the minimum set required for local dispatch.
+
+    Replaces the old exact-equality check: later phases widened _LOCAL_INTENTS
+    beyond {SYSTEM, WEB_SEARCH} (greeting fast-path in #88, quiet mode in #93).
+    """
+    required = frozenset(
+        {
+            Intent.SYSTEM,
+            Intent.WEB_SEARCH,
+            Intent.GREETING,
+            Intent.MORNING_BRIEFING,
+            Intent.QUIET_MODE_ON,
+            Intent.QUIET_MODE_OFF,
+        }
+    )
+    assert required <= _LOCAL_INTENTS, (
+        f"_LOCAL_INTENTS is missing required members: {required - _LOCAL_INTENTS}"
     )
 
 
@@ -132,11 +147,16 @@ def test_orchestrator_agents_contains_system_key():
     assert "system" in orch._agents
 
 
-def test_orchestrator_agents_has_exactly_three_keys():
-    """Orchestrator._agents has exactly {chat, search, system} after Phase 4."""
+def test_orchestrator_agents_has_expected_keys():
+    """Orchestrator._agents contains at least {chat, search, system, quiet_mode}.
+
+    Replaces the old exact-count check: #93 Phase 2 added 'quiet_mode' agent
+    so the dict now has four entries rather than three.
+    """
     orch = _make_orchestrator()
-    assert set(orch._agents.keys()) == {"chat", "search", "system"}, (
-        f"Unexpected _agents keys: {set(orch._agents.keys())}"
+    required_keys = {"chat", "search", "system", "quiet_mode"}
+    assert required_keys <= set(orch._agents.keys()), (
+        f"_agents is missing keys: {required_keys - set(orch._agents.keys())}"
     )
 
 

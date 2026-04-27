@@ -144,9 +144,15 @@ class TestIntentParser:
     # Chat Tests - English
     @pytest.mark.asyncio
     async def test_chat_hello_en(self, intent_parser):
-        """Test 'hello jarvis' is classified as CHAT."""
+        """Test 'hello jarvis' is classified as GREETING (canonical greeting fast-path).
+
+        Post-#88: 'hello jarvis' is in _CANONICAL_GREETING_PHRASES so the
+        intent parser routes it to GREETING, not CHAT.  GREETING triggers the
+        morning-briefing auto-dispatch on first call of the day; subsequent
+        calls fall through to the chat/OpenClaw path.
+        """
         result = await intent_parser.classify_intent("hello jarvis", "en")
-        assert result.intent == Intent.CHAT
+        assert result.intent == Intent.GREETING
 
     @pytest.mark.asyncio
     async def test_chat_time_en(self, intent_parser):

@@ -595,6 +595,22 @@ class NarrationQueue:
         return ["hud"]
 
     # -----------------------------------------------------------------------
+    # Urgent pre-roll helper
+    # -----------------------------------------------------------------------
+
+    def _wrap_urgent_for_tts(self, item: NarrationItem) -> str:
+        """Prepend the urgent pre-roll prefix per spec.
+
+        TTS-only — callers must never mutate ``item.text``.
+        HUD and broadcast payloads always use the original ``item.text``.
+        # TODO(#93-P3): per-item language tag for EN preamble
+        """
+        state = self._sm.state
+        if state in (ConversationState.SPEAKING, ConversationState.ACTIVE_DIALOGUE):
+            return f"{_PREROLL_URGENT_DIALOGUE}{item.text}"
+        return f"{_PREROLL_URGENT_QUIET}{item.text}"
+
+    # -----------------------------------------------------------------------
     # Drainer
     # -----------------------------------------------------------------------
 
@@ -650,13 +666,6 @@ class NarrationQueue:
                             f"Urgent item {item.id!r} waited {self._urgent_max_wait:.0f}s "
                             "for idle — emitting with polite pre-roll"
                         )
-                        # Apply the more polite long pre-roll for dialogue interruption.
-                        item.text = _PREROLL_URGENT_DIALOGUE + item.text
-                    # If we are in quiet mode now, use the soft pre-roll.
-                    elif self.is_quiet:
-                        item.text = _PREROLL_URGENT_QUIET_MODE + item.text
-                    else:
-                        item.text = _PREROLL_URGENT_QUIET + item.text
                 else:
                     # info/update/completion wait indefinitely.
                     # If TTL expires while waiting, the item will be dropped on
@@ -688,8 +697,12 @@ class NarrationQueue:
                     continue
 
                 logger.debug(f"NarrationQueue emitting [{item.severity}] {item.id!r}")
+                # TTS gets the wrapped text for urgent items; HUD keeps item.text clean.
+                tts_text = (
+                    self._wrap_urgent_for_tts(item) if item.severity == "urgent" else item.text
+                )
                 try:
-                    await self._tts_emit(item.text)
+                    await self._tts_emit(tts_text)
                 except Exception as exc:
                     logger.warning(f"NarrationQueue tts_emit failed for {item.id!r}: {exc}")
 

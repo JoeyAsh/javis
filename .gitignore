@@ -82,6 +82,9 @@ data/
 data/backups/
 !data/.gitkeep
 
+# JARVIS runtime state (DeviceLedger SQLite, etc.)
+state/
+
 # Controller app
 controller/node_modules/
 controller/src-tauri/target/

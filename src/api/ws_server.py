@@ -29,7 +29,7 @@ from api.mcp_server import (
 )
 from utils.device import resolve_device_slug
 from api.system_metrics import SystemMetrics, SystemMetricsCollector
-from audio.fish_tts import FishTTSClient, FishTTSError, strip_markdown_for_tts
+from audio.fish_tts import FishTTSClient, FishTTSError
 from audio.stream_splitter import StreamSplitter
 from audio.stt import SpeechToText, create_stt_engine
 from audio.wake_word import WakeWordDetector, create_wake_word_detector
@@ -40,7 +40,8 @@ from brain.intent_parser import Intent, IntentParser, get_intent_parser
 from brain.narration_queue import NarrationQueue
 from brain.quick_ack import QuickAckGenerator
 from brain.orchestrator import Orchestrator
-from brain.salutation import get_salutation
+from brain.device_ledger import DeviceLedger, DeviceEvent
+from brain.voice_composer import VoiceComposer
 from integrations.openclaw import OpenClawClient
 from integrations.spotify import SpotifyClient
 from utils.logger import get_logger
@@ -99,6 +100,11 @@ _conversation_mode: ConversationMode | None = None
 _state_machine: ConversationStateMachine | None = None
 _narration_queue: NarrationQueue | None = None
 _narration_drainer_task: asyncio.Task[None] | None = None
+
+# Brain Phase 1 — VoiceComposer + DeviceLedger (#105).
+_voice_composer: VoiceComposer | None = None
+_device_ledger: DeviceLedger | None = None
+_brain_inspector_task: asyncio.Task[None] | None = None
 
 # Persona config snapshot — read once at startup so the sleep-phrase closing
 # line can pick a salutation without re-reading config per turn.
@@ -251,11 +257,19 @@ _quick_ack_enabled: bool = True
 async def broadcast_state(state: str) -> None:
     """Broadcast state change to all connected clients.
 
+    Also appends an ``orb_state`` event to the device ledger when one is
+    initialised.  The ledger write is fire-and-forget and never raises.
+
     Args:
         state: Current orb state (idle, listening, thinking, speaking)
     """
     message = json.dumps({"type": "status", "state": state})
     await _broadcast(message)
+    if _device_ledger is not None:
+        # fire-and-forget; append never raises
+        asyncio.ensure_future(
+            _device_ledger.append("orb_state", "system", {"state": state})
+        )
 
 
 async def broadcast_audio(
@@ -285,6 +299,80 @@ async def broadcast_barge_in() -> None:
     """
     message = json.dumps({"type": "barge_in"})
     await _broadcast(message)
+
+
+async def broadcast_brain_inspector() -> None:
+    """Broadcast a brain_inspector payload to all connected HUD clients.
+
+    Payload includes VoiceComposer status, last 10 ledger events, and
+    per-kind event counts for the last 24 hours.  No-op when no clients
+    are connected.
+    """
+    global _voice_composer, _device_ledger
+
+    if not _connected_clients:
+        return
+
+    import datetime as _dt
+
+    try:
+        # VoiceComposer status.
+        vc_status = _voice_composer.status_snapshot() if _voice_composer else {
+            "last_compose_ts": None,
+            "last_salutation": None,
+        }
+
+        # Ledger data.
+        ledger_recent: list[dict[str, Any]] = []
+        ledger_count_24h: dict[str, int] = {}
+
+        if _device_ledger is not None:
+            now_utc = _dt.datetime.now(_dt.timezone.utc)
+            since_24h = (now_utc - _dt.timedelta(hours=24)).isoformat()
+
+            recent_events = await _device_ledger.recent(limit=10)
+            ledger_recent = [_event_to_dict(e) for e in recent_events]
+
+            ledger_count_24h = await _device_ledger.count_since(since_24h)
+
+        payload = {
+            "voice_composer_status": vc_status,
+            "ledger_recent": ledger_recent,
+            "ledger_count_24h": ledger_count_24h,
+        }
+        message = json.dumps({"type": "brain_inspector", "payload": payload})
+        await _broadcast(message)
+    except Exception as exc:
+        logger.warning(f"broadcast_brain_inspector failed: {exc}")
+
+
+def _event_to_dict(event: DeviceEvent) -> dict[str, Any]:
+    """Serialise a DeviceEvent to a JSON-compatible dict."""
+    return {
+        "id": event.id,
+        "correlation_id": event.correlation_id,
+        "kind": event.kind,
+        "source": event.source,
+        "ts": event.ts,
+        "payload": event.payload,
+    }
+
+
+async def _brain_inspector_loop(interval_seconds: float) -> None:
+    """Periodically broadcast brain_inspector payloads.
+
+    Args:
+        interval_seconds: Seconds between broadcasts.
+    """
+    logger.info(f"Brain inspector broadcast loop started (interval={interval_seconds:.0f}s)")
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            await broadcast_brain_inspector()
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning(f"_brain_inspector_loop error: {exc}")
 
 
 async def broadcast_transcript(role: str, text: str) -> None:
@@ -503,23 +591,40 @@ async def _emit_synthetic_utterance(text: str, language: str = "de") -> None:
     if _state_machine is not None:
         _state_machine.on_tts_start()
     try:
-        from audio.fish_tts import FishTTSError, strip_markdown_for_tts  # noqa: PLC0415
         from audio.stream_splitter import StreamSplitter  # noqa: PLC0415
 
+        composer = _voice_composer
         splitter = StreamSplitter(min_chars=20, max_wait_ms=400)
 
         async def _single_token():
             yield text
 
         async for sentence in splitter.process(_single_token()):
-            tts_text = strip_markdown_for_tts(sentence)
+            if composer is not None:
+                result = composer.compose(sentence, language=language)
+                tts_text = result.text
+            else:
+                tts_text = sentence
             if not tts_text.strip():
                 continue
             try:
+                tts_start = time.monotonic()
                 audio_bytes = await _fish_tts.synthesize(tts_text)
+                tts_duration_ms = int((time.monotonic() - tts_start) * 1000)
                 audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                 await broadcast_state("speaking")
                 await broadcast_audio(audio_b64, sentence)
+                if _device_ledger is not None:
+                    await _device_ledger.append(
+                        "tts_emitted",
+                        "voice",
+                        {
+                            "char_count": len(tts_text),
+                            "duration_ms": tts_duration_ms,
+                            "voice_id": getattr(_fish_tts, "_voice_id", None),
+                            "source_label": "synthetic_utterance",
+                        },
+                    )
             except FishTTSError as exc:
                 logger.warning(f"_emit_synthetic_utterance TTS error: {exc}")
 
@@ -2741,11 +2846,21 @@ async def _run_voice_pipeline_body(
         await broadcast_state("idle")
         return
 
-    # --- Per-turn timing instrumentation ---
+    # --- Per-turn timing instrumentation + correlation ID ---
     import uuid as _uuid  # noqa: PLC0415
 
     _turn_id = _uuid.uuid4().hex[:12]
+    _correlation_id = _uuid.uuid4().hex
     _t_audio_end = time.time() * 1000  # epoch ms
+
+    # Ledger: voice_turn_start
+    if _device_ledger is not None:
+        await _device_ledger.append(
+            "voice_turn_start",
+            "voice",
+            {"turn_id": _turn_id},
+            correlation_id=_correlation_id,
+        )
 
     # --- Transcribe ---
     await broadcast_state("thinking")
@@ -2807,7 +2922,7 @@ async def _run_voice_pipeline_body(
         _phrase_cache_stats["sleep_match_hits"] = (
             _phrase_cache_stats.get("sleep_match_hits", 0) + 1
         )
-        salutation = get_salutation(_persona_config) if _persona_config else "Sir"
+        salutation = _voice_composer.get_salutation() if _voice_composer else "Sir"
         closing = _conversation_mode.closing_phrase(result.language, salutation)
         logger.info(f"Sleep phrase detected — closing with: {closing!r}")
 
@@ -2820,11 +2935,26 @@ async def _run_voice_pipeline_body(
 
         if _fish_tts is not None and closing:
             try:
-                audio_bytes = await _fish_tts.synthesize(
-                    strip_markdown_for_tts(closing)
+                tts_closing = (
+                    _voice_composer.compose(closing, language=result.language).text
+                    if _voice_composer else closing
                 )
+                tts_start = time.monotonic()
+                audio_bytes = await _fish_tts.synthesize(tts_closing)
+                tts_duration_ms = int((time.monotonic() - tts_start) * 1000)
                 audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                 await broadcast_audio(audio_b64, closing)
+                if _device_ledger is not None:
+                    await _device_ledger.append(
+                        "tts_emitted",
+                        "voice",
+                        {
+                            "char_count": len(tts_closing),
+                            "duration_ms": tts_duration_ms,
+                            "voice_id": getattr(_fish_tts, "_voice_id", None),
+                            "source_label": "sleep_close",
+                        },
+                    )
             except FishTTSError as exc:
                 logger.error(f"Fish TTS error during sleep close: {exc}")
 
@@ -2988,7 +3118,11 @@ async def _run_voice_pipeline_body(
 
     try:
         async for sentence in splitter.process(_token_stream()):
-            tts_text = strip_markdown_for_tts(sentence)
+            if _voice_composer is not None:
+                _compose_result = _voice_composer.compose(sentence, language=result.language or "de")
+                tts_text = _compose_result.text
+            else:
+                tts_text = sentence
             if not tts_text.strip():
                 continue
 
@@ -3004,7 +3138,9 @@ async def _run_voice_pipeline_body(
 
             try:
                 # Item 4: pass prosody_hint so Fish Audio adjusts speed.
+                tts_start = time.monotonic()
                 audio_bytes = await _fish_tts.synthesize(tts_text, prosody_hint=_prosody_hint)
+                tts_duration_ms = int((time.monotonic() - tts_start) * 1000)
                 audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
                 if not first_audio_sent:
@@ -3023,6 +3159,19 @@ async def _run_voice_pipeline_body(
                         conn_state["mode"] = "speaking"
 
                 await broadcast_audio(audio_b64, sentence)
+                # Ledger: tts_emitted
+                if _device_ledger is not None:
+                    await _device_ledger.append(
+                        "tts_emitted",
+                        "voice",
+                        {
+                            "char_count": len(tts_text),
+                            "duration_ms": tts_duration_ms,
+                            "voice_id": getattr(_fish_tts, "_voice_id", None),
+                            "source_label": "voice_pipeline",
+                        },
+                        correlation_id=_correlation_id,
+                    )
                 # Set echo grace window so the barge-in detector ignores any
                 # microphone bleed of this TTS chunk (no AEC during playback).
                 if conn_state is not None:
@@ -3050,12 +3199,28 @@ async def _run_voice_pipeline_body(
         full_response_text = "Entschuldigung, es gab einen Fehler."
         if not first_audio_sent:
             try:
-                audio_bytes = await _fish_tts.synthesize(
-                    strip_markdown_for_tts(full_response_text)
+                _fb_tts_text = (
+                    _voice_composer.compose(full_response_text, language=result.language or "de").text
+                    if _voice_composer else full_response_text
                 )
+                tts_start = time.monotonic()
+                audio_bytes = await _fish_tts.synthesize(_fb_tts_text)
+                tts_duration_ms = int((time.monotonic() - tts_start) * 1000)
                 audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                 await broadcast_state("speaking")
                 await broadcast_audio(audio_b64, full_response_text)
+                if _device_ledger is not None:
+                    await _device_ledger.append(
+                        "tts_emitted",
+                        "voice",
+                        {
+                            "char_count": len(_fb_tts_text),
+                            "duration_ms": tts_duration_ms,
+                            "voice_id": getattr(_fish_tts, "_voice_id", None),
+                            "source_label": "fallback_error",
+                        },
+                        correlation_id=_correlation_id,
+                    )
             except FishTTSError as exc:
                 logger.error(f"Fish TTS fallback error: {exc}")
 
@@ -3105,6 +3270,15 @@ async def _run_voice_pipeline_body(
         )
     except Exception as _tt_exc:  # noqa: BLE001
         logger.debug(f"turn_timing broadcast failed: {_tt_exc}")
+
+    # Ledger: voice_turn_end
+    if _device_ledger is not None:
+        await _device_ledger.append(
+            "voice_turn_end",
+            "voice",
+            {"turn_id": _turn_id},
+            correlation_id=_correlation_id,
+        )
 
     # --- Arm follow-up window (or go straight to idle) ------------------
     # After a successful turn, keep the mic open for a short window so the
@@ -3244,6 +3418,10 @@ async def _process_audio_for_client(
 
                 # Notify frontend to clear audio queue + stop current clip.
                 await broadcast_barge_in()
+                if _device_ledger is not None:
+                    asyncio.ensure_future(
+                        _device_ledger.append("barge_in", "voice", {})
+                    )
 
                 # Transition straight into listening so the user's utterance
                 # is captured without a new wake word.
@@ -3278,6 +3456,10 @@ async def _process_audio_for_client(
             _wake_word_detector.reset()
             if _state_machine is not None:
                 _state_machine.on_wake_word()
+            if _device_ledger is not None:
+                asyncio.ensure_future(
+                    _device_ledger.append("wake_word", "voice", {"source": "browser_audio"})
+                )
             await broadcast_state("listening")
 
     elif mode in ("listening", "follow_up"):
@@ -3458,8 +3640,77 @@ async def _handle_command(
             logger.debug("PTT: stop_listening with no speech — returning to idle")
         # else: speech started, let the existing silence-detect path finalise the turn.
 
+    elif cmd_type == "panel_open":
+        panel_id = payload.get("panel_id", "unknown")
+        logger.debug(f"panel_open received: {panel_id!r}")
+        if _device_ledger is not None:
+            await _device_ledger.append("panel_open", "hud", {"panel_id": panel_id})
+
+    elif cmd_type == "panel_close":
+        panel_id = payload.get("panel_id", "unknown")
+        logger.debug(f"panel_close received: {panel_id!r}")
+        if _device_ledger is not None:
+            await _device_ledger.append("panel_close", "hud", {"panel_id": panel_id})
+
+    elif cmd_type == "ledger_query":
+        # Frontend-requested ledger query — reply with a filtered brain_inspector payload.
+        await _handle_ledger_query_ws(payload, ws)
+
     else:
         logger.warning(f"Unknown command type: {cmd_type}")
+
+
+async def _handle_ledger_query_ws(
+    payload: dict[str, Any],
+    ws: web.WebSocketResponse,
+) -> None:
+    """Handle a ``ledger_query`` WS message from the frontend.
+
+    Queries the ledger with the provided filter and replies with a
+    ``brain_inspector`` message containing matching events.
+
+    Args:
+        payload: ``{"since": ISO, "until": ISO|null, "kinds": string[]}``.
+        ws: Requesting client connection — reply is sent to this client only.
+    """
+    import datetime as _dt
+
+    if _device_ledger is None:
+        return
+
+    try:
+        since: str = payload.get("since", "")
+        until: str | None = payload.get("until") or None
+        kinds: list[str] = payload.get("kinds") or []
+
+        if not since:
+            # Default to last 24h.
+            now_utc = _dt.datetime.now(_dt.timezone.utc)
+            since = (now_utc - _dt.timedelta(hours=24)).isoformat()
+
+        events = await _device_ledger.query(
+            since=since,
+            until=until,
+            kinds=kinds if kinds else None,
+            limit=50,
+        )
+
+        vc_status = _voice_composer.status_snapshot() if _voice_composer else {
+            "last_compose_ts": None,
+            "last_salutation": None,
+        }
+        payload_out = {
+            "voice_composer_status": vc_status,
+            "ledger_recent": [_event_to_dict(e) for e in events],
+            "ledger_count_24h": {},
+        }
+        message = json.dumps({"type": "brain_inspector", "payload": payload_out})
+        try:
+            await ws.send_str(message)
+        except Exception as exc:
+            logger.debug(f"ledger_query WS reply failed: {exc}")
+    except Exception as exc:
+        logger.warning(f"_handle_ledger_query_ws error: {exc}")
 
 
 async def _handle_spotify_cmd(payload: dict[str, Any]) -> None:
@@ -3626,7 +3877,7 @@ async def _play_online_greeting() -> None:
             return
 
         # --- Resolve salutation and language --------------------------------
-        salutation = get_salutation(_persona_config) if _persona_config else "Sir"
+        salutation = _voice_composer.get_salutation() if _voice_composer else "Sir"
         persona_section = _og_cfg.get_section("persona") or {}
         language = str(persona_section.get("default_language", "en"))
         # Fall back to config-level language key used elsewhere in the codebase.
@@ -4161,8 +4412,13 @@ async def notify_wife_handler(request: web.Request) -> web.Response:
         )
 
     try:
-        tts_text = strip_markdown_for_tts(utterance)
+        tts_text = (
+            _voice_composer.compose(utterance, language="de").text
+            if _voice_composer else utterance
+        )
+        tts_start = time.monotonic()
         audio_bytes = await _fish_tts.synthesize(tts_text)
+        tts_duration_ms = int((time.monotonic() - tts_start) * 1000)
     except FishTTSError as exc:
         logger.error(f"notify_wife: FishTTSError — {exc}, utterance_id={utterance_id}")
         return web.json_response(
@@ -4172,6 +4428,17 @@ async def notify_wife_handler(request: web.Request) -> web.Response:
     # --- Broadcast to WebSocket clients ---------------------------------------
     audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
     await broadcast_audio(audio_b64, utterance, channel="notification")
+    if _device_ledger is not None:
+        await _device_ledger.append(
+            "tts_emitted",
+            "system",
+            {
+                "char_count": len(tts_text),
+                "duration_ms": tts_duration_ms,
+                "voice_id": getattr(_fish_tts, "_voice_id", None),
+                "source_label": "notify_wife",
+            },
+        )
     logger.info(f"notify_wife: broadcast complete, utterance_id={utterance_id}")
 
     return web.json_response({"accepted": True, "utterance_id": utterance_id}, status=200)
@@ -4481,6 +4748,7 @@ async def start_ws_server(
     global _calendar_poller_task, _cache_stats_log_task
     global _greeting_played, _last_unread_count, _last_calendar_count
     global _state_machine, _narration_queue, _narration_drainer_task
+    global _voice_composer, _device_ledger, _brain_inspector_task
 
     # Reset per-boot greeting flag so tests / re-initialisation get a fresh
     # greeting each time start_ws_server is called.
@@ -4663,6 +4931,35 @@ async def start_ws_server(
     _narration_queue.start()
     _narration_drainer_task = None  # task handle is owned by NarrationQueue.start()
 
+    # Brain Phase 1 — VoiceComposer + DeviceLedger (#105).
+    logger.info("Initialising VoiceComposer...")
+    vc_cfg = cfg.get_section("voice_composer") or {}
+    _voice_composer = VoiceComposer(config=vc_cfg)
+
+    logger.info("Initialising DeviceLedger...")
+    ledger_cfg = cfg.get_section("device_ledger") or {}
+    _device_ledger = DeviceLedger(db_path=ledger_cfg.get("db_path"))
+    try:
+        await _device_ledger.init()
+    except Exception as _dl_exc:  # noqa: BLE001
+        logger.error(f"DeviceLedger init failed — ledger disabled: {_dl_exc}")
+        _device_ledger = None
+
+    # Wire the MCP ledger hook so every tool call gets a mcp_call entry.
+    if _device_ledger is not None:
+        from api.mcp_server import set_ledger_hook as _set_ledger_hook  # noqa: PLC0415
+
+        async def _mcp_ledger_hook(tool_name: str, args: dict, success: bool) -> None:
+            """Append a mcp_call entry to the device ledger."""
+            if _device_ledger is not None:
+                await _device_ledger.append(
+                    "mcp_call",
+                    "system",
+                    {"tool": tool_name, "args": args, "success": success},
+                )
+
+        _set_ledger_hook(_mcp_ledger_hook)
+
     _orchestrator = Orchestrator(
         claude_client=claude_client,
         memory=None,
@@ -4670,11 +4967,20 @@ async def start_ws_server(
         memory_store=_memory_store,
         narration_queue=_narration_queue,
         state_machine=_state_machine,
+        device_ledger=_device_ledger,
     )
 
     _intent_parser = get_intent_parser()
 
     logger.info("Voice pipeline components ready")
+
+    # Brain inspector periodic broadcast task.
+    _bi_interval = float(ledger_cfg.get("broadcast_interval_seconds", 30))
+    _brain_inspector_task = asyncio.create_task(
+        _brain_inspector_loop(_bi_interval),
+        name="brain-inspector",
+    )
+    logger.info(f"Brain inspector broadcast task started (interval={_bi_interval:.0f}s)")
 
     # Server ports, host and CORS
     ws_port = config.get("ws_port", 8765)
@@ -5008,6 +5314,13 @@ async def start_ws_server(
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
         _gitlab_poller_task = None
+        if _brain_inspector_task is not None and not _brain_inspector_task.done():
+            _brain_inspector_task.cancel()
+            try:
+                await _brain_inspector_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        _brain_inspector_task = None
 
         # Cancel any in-flight pipeline tasks before closing clients so
         # aiohttp handler coroutines aren't blocked waiting on them.

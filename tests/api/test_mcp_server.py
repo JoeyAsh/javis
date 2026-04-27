@@ -173,21 +173,47 @@ def test_register_tool_multiple_tools_all_appear_in_list() -> None:
 
 @pytest.mark.asyncio
 async def test_register_tool_after_start_calls_server_add_tool() -> None:
-    """register_tool after start_mcp_server also calls _server.add_tool."""
-    import api.mcp_server as mod
-    from api.mcp_server import register_tool
+    """register_tool after start_mcp_server calls _server.add_tool with the instrumented wrapper.
 
-    # Inject a mock server to simulate the "already started" state
+    Phase 1 (Brain) wraps every tool in an ``_instrumented`` async closure so that
+    every dispatch fires the DeviceLedger ``mcp_call`` hook (AC #8).  FastMCP receives
+    the wrapper, not the original function — so we assert:
+    1. ``add_tool`` was called exactly once.
+    2. The first positional argument is a callable (the instrumented wrapper).
+    3. The ``name`` and ``description`` keyword arguments are correct.
+    4. The wrapper actually delegates to the original function (pass-through check).
+    """
+    import api.mcp_server as mod
+    from api.mcp_server import register_tool, set_ledger_hook
+
+    # Inject a mock server to simulate the "already started" state.
     mock_server = MagicMock()
     mod._server = mock_server
 
+    invoked: list[str] = []
+
     @register_tool(name="late_tool", description="registered late", schema={"x": 1})
     async def late_fn() -> None:
-        pass
+        invoked.append("called")
 
-    mock_server.add_tool.assert_called_once_with(
-        late_fn, name="late_tool", description="registered late"
-    )
+    # 1. add_tool was called exactly once.
+    mock_server.add_tool.assert_called_once()
+
+    call_args = mock_server.add_tool.call_args
+    wrapper_arg = call_args.args[0] if call_args.args else call_args[0][0]
+
+    # 2. The argument passed to add_tool is a callable (the instrumented wrapper).
+    assert callable(wrapper_arg), "add_tool must receive a callable wrapper"
+
+    # 3. Keyword arguments carry the correct name and description.
+    assert call_args.kwargs.get("name") == "late_tool"
+    assert call_args.kwargs.get("description") == "registered late"
+
+    # 4. The wrapper delegates to the original function when invoked.
+    #    Disable the ledger hook so the wrapper doesn't try to await a missing hook.
+    set_ledger_hook(None)
+    await wrapper_arg()
+    assert invoked == ["called"], "Instrumented wrapper must invoke the original fn"
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,8 @@ export type PanelId =
     | 'selffix'
     | 'gitlab'
     | 'log'
-    | 'activity';
+    | 'activity'
+    | 'ledger';
 
 export type PanelMode = 'compact' | 'expanded';
 

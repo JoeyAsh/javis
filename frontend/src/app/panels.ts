@@ -20,6 +20,7 @@ import { SelfFixPanel } from '@features/selffix';
 import { GitLabPanel } from '@features/gitlab';
 import { LogPanel } from '@features/log';
 import { ActivityPanel } from '@features/activity';
+import { LedgerInspector } from '@features/brain';
 // ── Shared panel props ────────────────────────────────────────────────────────
 
 export interface PanelSharedProps {
@@ -118,6 +119,13 @@ export const PANELS: ReadonlyArray<PanelSpec> = [
         icon: '◉',
         homeSlot: 'R2',
         Component: ActivityPanel as ComponentType<PanelSharedProps>,
+    },
+    {
+        id: 'ledger',
+        title: 'Ledger',
+        icon: '▤',
+        homeSlot: 'B3',
+        Component: LedgerInspector as ComponentType<PanelSharedProps>,
     },
 ];
 

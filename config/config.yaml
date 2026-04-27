@@ -3,6 +3,16 @@ jarvis:
   wake_word: "hey jarvis"
   language: "auto"
 
+voice_composer:
+  max_sentence_words: 50
+  long_sentence_mode: "split"   # "split" | "truncate"
+  salutation_policy: "sir_only"
+
+device_ledger:
+  db_path: "state/device_ledger.db"
+  broadcast_interval_seconds: 30
+  wal_mode: true
+
 location:
   latitude: 48.7758
   longitude: 9.1829

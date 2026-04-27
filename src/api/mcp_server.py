@@ -66,6 +66,23 @@ _tool_registry: dict[str, dict[str, Any]] = {}
 _device_slug: str = "jarvis"
 _device_sse_url: str = ""
 
+# Optional ledger hook — set by ws_server after DeviceLedger is initialised.
+# Callable[[str, dict, bool], Awaitable[None]] — (tool_name, args_summary, success).
+_ledger_hook: Any = None
+
+
+def set_ledger_hook(hook: Any) -> None:
+    """Register a ledger hook called on every MCP tool dispatch.
+
+    Called from ws_server after DeviceLedger is ready.  The hook must be
+    an async callable accepting (tool_name: str, args: dict, success: bool).
+
+    Args:
+        hook: Async callable or None to disable.
+    """
+    global _ledger_hook
+    _ledger_hook = hook
+
 
 # ---------------------------------------------------------------------------
 # Public decorator
@@ -109,18 +126,41 @@ def register_tool(
             logger.warning(
                 f"register_tool: name {name!r} is already registered — overwriting previous entry"
             )
+
+        async def _instrumented(**kwargs: Any) -> Any:
+            """Wrap the tool call with a non-raising ledger append."""
+            success = True
+            try:
+                result = await fn(**kwargs)
+                return result
+            except Exception:
+                success = False
+                raise
+            finally:
+                if _ledger_hook is not None:
+                    try:
+                        # Summarise args to avoid logging secrets.
+                        args_summary = {k: str(v)[:80] for k, v in kwargs.items()}
+                        await _ledger_hook(name, args_summary, success)
+                    except Exception as _lh_exc:
+                        logger.debug(f"Ledger hook failed for tool {name!r}: {_lh_exc}")
+
+        # Preserve function metadata for FastMCP introspection.
+        import functools  # noqa: PLC0415
+        functools.update_wrapper(_instrumented, fn)
+
         entry: dict[str, Any] = {
             "name": name,
             "description": description,
             "schema": schema,
-            "fn": fn,
+            "fn": _instrumented,
         }
         _tool_registry[name] = entry
         logger.debug(f"MCP tool registered in registry: {name!r}")
 
         # If the server is already running, add the tool live.
         if _server is not None:
-            _server.add_tool(fn, name=name, description=description)
+            _server.add_tool(_instrumented, name=name, description=description)
             logger.debug(f"MCP tool wired into live FastMCP instance: {name!r}")
 
         return fn

@@ -3,7 +3,11 @@
 All subprocess calls are mocked — no real CLI is spawned.
 
 Covers:
-- register_mcp_server: correct argv, returns True on returncode 0
+- register_mcp_server: correct stdio-bridge argv shape (command/args, NOT url/headers)
+- register_mcp_server: bridge command is sys.executable; args[0] is absolute path to
+  jarvis_mcp_bridge.py (not -m jarvis_mcp_bridge)
+- register_mcp_server: headers are passed via --headers JSON arg to bridge
+- register_mcp_server: returns True on returncode 0
 - register_mcp_server: returns False on non-zero returncode (graceful)
 - register_mcp_server: returns False when CLI not found (_resolve_cli_argv → None)
 - register_mcp_server: tolerates FileNotFoundError from create_subprocess_exec
@@ -20,6 +24,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -57,25 +63,19 @@ def _make_mock_proc(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"
 
 
 # ---------------------------------------------------------------------------
-# register_mcp_server — happy path
+# register_mcp_server — stdio-bridge shape (core invariant for this fix)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_register_mcp_server_returns_true_on_success(client: OpenClawClient) -> None:
-    """register_mcp_server returns True when subprocess exits with returncode 0."""
-    mock_proc = _make_mock_proc(returncode=0)
+async def test_register_mcp_server_uses_stdio_shape(client: OpenClawClient) -> None:
+    """register_mcp_server sends command/args shape, NOT url/headers.
 
-    with patch("integrations.openclaw.client._resolve_cli_argv", return_value=["openclaw"]):
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
-            result = await client.register_mcp_server("http://127.0.0.1:8767/sse", "jarvis")
-
-    assert result is True
-
-
-@pytest.mark.asyncio
-async def test_register_mcp_server_spawns_correct_argv(client: OpenClawClient) -> None:
-    """register_mcp_server calls openclaw mcp set <name> <json>."""
+    The OpenClaw acpx plugin only accepts stdio-transport servers.  The JSON
+    payload written to ``openclaw mcp set`` must have ``command`` and ``args``
+    keys, never ``url``.  This test is the regression guard for the acpx schema
+    incompatibility fixed in branch fix/openclaw-mcp-schema-acpx.
+    """
     mock_proc = _make_mock_proc(returncode=0)
     captured: list[Any] = []
 
@@ -87,14 +87,144 @@ async def test_register_mcp_server_spawns_correct_argv(client: OpenClawClient) -
         with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
             await client.register_mcp_server("http://127.0.0.1:8767/sse", "jarvis")
 
-    assert captured[0] == "openclaw"
-    assert "mcp" in captured
-    assert "set" in captured
-    assert "jarvis" in captured
-    # The JSON payload must include the url key
+    # The last positional arg is the JSON payload passed to ``openclaw mcp set``.
     json_payload = captured[-1]
     parsed = json.loads(json_payload)
-    assert parsed == {"url": "http://127.0.0.1:8767/sse"}
+
+    # Must have command and args — the stdio shape that acpx accepts.
+    assert "command" in parsed, "Payload must contain 'command' (stdio shape)"
+    assert "args" in parsed, "Payload must contain 'args' (stdio shape)"
+
+    # Must NOT contain url/headers at the top level — that is the rejected HTTP shape.
+    assert "url" not in parsed, "Payload must NOT contain 'url' (acpx rejects HTTP shape)"
+    assert "headers" not in parsed, (
+        "Headers must be encoded inside bridge args, not at the payload top level"
+    )
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_bridge_uses_sys_executable(client: OpenClawClient) -> None:
+    """register_mcp_server uses sys.executable as the bridge command."""
+    mock_proc = _make_mock_proc(returncode=0)
+    captured: list[Any] = []
+
+    async def fake_exec(*args: Any, **kwargs: Any) -> Any:
+        captured.extend(args)
+        return mock_proc
+
+    with patch("integrations.openclaw.client._resolve_cli_argv", return_value=["openclaw"]):
+        with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+            await client.register_mcp_server("http://127.0.0.1:8767/sse", "jarvis")
+
+    json_payload = captured[-1]
+    parsed = json.loads(json_payload)
+    assert parsed["command"] == sys.executable
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_bridge_args_include_script_path_and_url(
+    client: OpenClawClient,
+) -> None:
+    """register_mcp_server bridge args[0] is an absolute path to jarvis_mcp_bridge.py.
+
+    The bridge is invoked via its absolute path rather than ``-m jarvis_mcp_bridge``
+    so that OpenClaw/acpx can spawn it without ``PYTHONPATH=src`` being set.
+    """
+    from integrations.openclaw.client import _BRIDGE_PY
+
+    sse_url = "http://127.0.0.1:8767/sse"
+    mock_proc = _make_mock_proc(returncode=0)
+    captured: list[Any] = []
+
+    async def fake_exec(*args: Any, **kwargs: Any) -> Any:
+        captured.extend(args)
+        return mock_proc
+
+    with patch("integrations.openclaw.client._resolve_cli_argv", return_value=["openclaw"]):
+        with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+            await client.register_mcp_server(sse_url, "jarvis")
+
+    json_payload = captured[-1]
+    parsed = json.loads(json_payload)
+    args: list[str] = parsed["args"]
+
+    # args[0] must be the absolute path to the bridge script (not "-m").
+    assert args[0] == _BRIDGE_PY, f"Bridge args[0] must be the absolute path; got {args[0]!r}"
+    assert Path(args[0]).is_absolute(), "Bridge script path must be absolute"
+    assert args[0].endswith("jarvis_mcp_bridge.py"), "Bridge script must end with jarvis_mcp_bridge.py"
+    assert Path(args[0]).is_file(), f"Bridge script must exist on disk: {args[0]}"
+
+    # -m must NOT appear — using it requires PYTHONPATH which acpx does not set.
+    assert "-m" not in args, "Bridge args must NOT use -m (requires PYTHONPATH)"
+
+    assert "--url" in args, "Bridge args must contain --url flag"
+    url_idx = args.index("--url")
+    assert args[url_idx + 1] == sse_url, "Bridge args must pass the SSE URL after --url"
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_headers_in_bridge_args(client: OpenClawClient) -> None:
+    """register_mcp_server encodes headers as --headers JSON inside the bridge args."""
+    sse_url = "http://127.0.0.1:8767/sse"
+    hdrs = {"Authorization": "Bearer secret"}
+    mock_proc = _make_mock_proc(returncode=0)
+    captured: list[Any] = []
+
+    async def fake_exec(*args: Any, **kwargs: Any) -> Any:
+        captured.extend(args)
+        return mock_proc
+
+    with patch("integrations.openclaw.client._resolve_cli_argv", return_value=["openclaw"]):
+        with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+            await client.register_mcp_server(sse_url, "jarvis", headers=hdrs)
+
+    json_payload = captured[-1]
+    parsed = json.loads(json_payload)
+    args: list[str] = parsed["args"]
+
+    assert "--headers" in args, "Bridge args must contain --headers when headers are supplied"
+    h_idx = args.index("--headers")
+    decoded_headers = json.loads(args[h_idx + 1])
+    assert decoded_headers == hdrs
+
+    # Headers must NOT leak to the top-level payload key.
+    assert "headers" not in parsed
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_no_headers_arg_when_empty(client: OpenClawClient) -> None:
+    """register_mcp_server omits --headers from bridge args when no headers are given."""
+    mock_proc = _make_mock_proc(returncode=0)
+    captured: list[Any] = []
+
+    async def fake_exec(*args: Any, **kwargs: Any) -> Any:
+        captured.extend(args)
+        return mock_proc
+
+    with patch("integrations.openclaw.client._resolve_cli_argv", return_value=["openclaw"]):
+        with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+            await client.register_mcp_server("http://127.0.0.1:8767/sse", "jarvis", headers=None)
+
+    json_payload = captured[-1]
+    parsed = json.loads(json_payload)
+    assert "--headers" not in parsed["args"]
+
+
+# ---------------------------------------------------------------------------
+# register_mcp_server — happy path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_server_returns_true_on_success(client: OpenClawClient) -> None:
+    """register_mcp_server returns True when subprocess exits with returncode 0."""
+    mock_proc = _make_mock_proc(returncode=0)
+
+    with patch("integrations.openclaw.client._resolve_cli_argv", return_value=["openclaw"]):
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await client.register_mcp_server("http://127.0.0.1:8767/sse", "jarvis")
+
+    assert result is True
 
 
 @pytest.mark.asyncio

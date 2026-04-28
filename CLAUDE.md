@@ -135,6 +135,16 @@ If `JARVIS_API_TOKEN` is set on the active backend, the orchestrator MUST add `-
 
 **Failure handling:** wrap the curl in `2>/dev/null || true` so the orchestrator silently no-ops when the JARVIS backend isn't running. Never let a missing notification block the actual work.
 
+## Git push from the sandboxed bash tool
+
+On Windows the Git-for-Windows installer sets `--system credential.helper = manager` (Git Credential Manager). In the Claude Code bash sandbox, GCM tries to open an interactive UI that has no stdin/UI surface — the `git push` then hangs silently with `git-credential-manager get` blocking forever, no error, empty stdout. Symptom: `git push` returns "Command running in background", output file stays empty, `git ls-remote origin <branch>` shows the branch never made it to GitHub.
+
+**Permanent fix (already applied on this machine):** `gh auth setup-git` writes `--global` `credential.https://github.com.helper = !"<path>\gh.exe" auth git-credential`, which overrides GCM only for `github.com` URLs and uses `gh`'s keyring token instead. Verify with `git config --global --get-all credential."https://github.com".helper` — should show two lines (an empty resetter then the gh helper). For other hosts (gitlab, internal corp git) GCM stays active.
+
+**One-shot escape hatch** if the global config is ever wiped or the fix isn't on a fresh machine: `git push https://x-access-token:$(gh auth token)@github.com/<owner>/<repo>.git <branch>:<branch>`. Bypasses the credential helper entirely by embedding the token in the URL. Safe because the URL never gets persisted (it's not stored as a remote).
+
+**If you see a push hang:** check `Get-CimInstance Win32_Process -Filter "Name='git-credential-manager.exe'"` (PowerShell) — if zombie GCM processes are pending, they're the smoking gun. Kill them, run `gh auth setup-git`, retry.
+
 ## Skills
 
 Slash-invocable Skills in `.claude/skills/`. Orchestrator und Subagents nutzen sie statt duplizierter Inline-Commands. Aktuelle Skills:

@@ -926,18 +926,27 @@ class OpenClawClient:
     ) -> bool:
         """Register a JARVIS MCP server definition with the OpenClaw CLI registry.
 
-        Shells out to ``openclaw mcp set <name> '{"url": "<url>", ...}'`` which
-        saves the server definition into OpenClaw's config so the agent runtime
-        can discover and invoke the tools.  Failure is non-fatal — JARVIS
-        continues even when the CLI is absent or the gateway is offline.
+        Shells out to ``openclaw mcp set <name> '<json>'`` which saves the server
+        definition into OpenClaw's config so the agent runtime can discover and
+        invoke the tools.  Failure is non-fatal — JARVIS continues even when the
+        CLI is absent or the gateway is offline.
+
+        OpenClaw's acpx plugin (the Claude agent runtime) only accepts **stdio**-
+        transport server entries (``command/args/env`` shape).  To satisfy that
+        constraint without dropping the SSE server (which may have other consumers),
+        we register a *stdio bridge* shim: acpx launches it as a subprocess and the
+        bridge proxies JSON-RPC bidirectionally to JARVIS's SSE server.
+
+        The bridge module lives at ``src/jarvis_mcp_bridge.py`` and is invoked as:
+
+            ``<sys.executable> -m jarvis_mcp_bridge --url <sse_url> [--headers <json>]``
 
         Args:
             url: Full SSE endpoint URL (e.g. ``http://127.0.0.1:8767/sse``).
             name: Server name as it will appear in ``openclaw mcp list``.
                   Must be explicit — no default (each device uses its own slug).
-            headers: Optional HTTP headers to pass to the OpenClaw MCP registry
-                entry (e.g. ``{"Authorization": "Bearer token"}``).  Merged into
-                the JSON body when non-empty.
+            headers: Optional HTTP headers forwarded to the SSE server by the bridge
+                (e.g. ``{"Authorization": "Bearer token"}``).
 
         Returns:
             ``True`` if the command succeeded, ``False`` otherwise.
@@ -949,10 +958,13 @@ class OpenClawClient:
             )
             return False
 
-        body: dict[str, Any] = {"url": url}
+        # Build the bridge command.  sys.executable is the Python interpreter that
+        # is currently running JARVIS — guaranteed to have the mcp SDK installed.
+        bridge_args: list[str] = [sys.executable, "-m", "jarvis_mcp_bridge", "--url", url]
         if headers:
-            body["headers"] = headers
+            bridge_args += ["--headers", json.dumps(headers)]
 
+        body: dict[str, Any] = {"command": bridge_args[0], "args": bridge_args[1:]}
         server_json = json.dumps(body)
         cmd = [*argv_base, "mcp", "set", name, server_json]
         logger.debug(f"register_mcp_server: spawn {cmd!r}")
@@ -970,7 +982,8 @@ class OpenClawClient:
             )
             if proc.returncode == 0:
                 logger.info(
-                    f"MCP server '{name}' registered with OpenClaw (url={url!r})"
+                    f"MCP server '{name}' registered with OpenClaw "
+                    f"(stdio bridge → {url!r})"
                 )
                 return True
             err = stderr.decode().strip() or f"exit code {proc.returncode}"

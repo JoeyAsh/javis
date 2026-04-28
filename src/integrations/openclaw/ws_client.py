@@ -288,6 +288,9 @@ class OpenClawWSClient:
         # run_id → cumulative full_text seen so far (used to compute new_text).
         self._prev_texts: dict[str, str] = {}
 
+        # req_id → Future for non-streaming RPC calls (wiki.*, etc.).
+        self._pending_rpc: dict[str, asyncio.Future[dict[str, Any]]] = {}
+
         # Session IDs we are currently subscribed to (resubscribe on reconnect).
         self._subscribed_sessions: set[str] = set()
 
@@ -351,6 +354,13 @@ class OpenClawWSClient:
             )
         self._pending_runs.clear()
         self._prev_texts.clear()
+
+        # Reject all pending non-streaming RPC futures.
+        for req_id, fut in list(self._pending_rpc.items()):
+            if not fut.done():
+                fut.set_exception(RuntimeError("connection_closed"))
+        self._pending_rpc.clear()
+
         logger.info("OpenClaw WS client closed")
 
     async def query_agent_stream(
@@ -440,6 +450,48 @@ class OpenClawWSClient:
         finally:
             self._pending_runs.pop(run_id, None)
             self._prev_texts.pop(run_id, None)
+
+    async def call_rpc(self, method: str, params: dict[str, Any]) -> Any:
+        """Send a non-streaming gateway RPC call and await the response payload.
+
+        Suitable for ``wiki.*`` and other request/response gateway methods that
+        return a single response frame rather than a stream of ``chat`` events.
+
+        Uses the same shared WS connection as :meth:`query_agent_stream`.
+        Concurrent callers are multiplexed via per-request asyncio Futures.
+
+        Args:
+            method: Gateway RPC method name (e.g. ``"wiki.search"``).
+            params: RPC parameter dict.
+
+        Returns:
+            The ``payload`` field from the gateway response frame.
+
+        Raises:
+            RuntimeError: When not connected and reconnect fails.
+            RuntimeError: When the gateway returns ``ok=False``.
+        """
+        if not self._connected:
+            await self.connect()
+
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future[dict[str, Any]] = loop.create_future()
+        frame_json, req_id = _make_request(method, params)
+        self._pending_rpc[req_id] = future
+
+        try:
+            await self._send(frame_json)
+            logger.debug(f"RPC sent method={method!r} req_id={req_id}")
+            resp = await future
+        finally:
+            self._pending_rpc.pop(req_id, None)
+
+        ok = resp.get("ok", False)
+        if not ok:
+            err = resp.get("error") or resp.get("payload") or resp
+            raise RuntimeError(f"Gateway RPC {method!r} failed: {err}")
+
+        return resp.get("payload")
 
     async def abort(self, session_id: str, run_id: str) -> None:
         """Send a ``chat.abort`` RPC to cancel a running turn.
@@ -634,6 +686,13 @@ class OpenClawWSClient:
                 )
             self._pending_runs.clear()
             self._prev_texts.clear()
+
+            # Reject all pending non-streaming RPC futures so callers don't hang.
+            for _req_id, _fut in list(self._pending_rpc.items()):
+                if not _fut.done():
+                    _fut.set_exception(RuntimeError("connection_lost"))
+            self._pending_rpc.clear()
+
             asyncio.create_task(self._reconnect_loop(), name="openclaw-ws-reconnect")
 
     async def _dispatch(self, msg: dict[str, Any]) -> None:
@@ -642,6 +701,15 @@ class OpenClawWSClient:
 
         # Heartbeat — ignore.
         if event == "tick":
+            return
+
+        # Non-streaming RPC responses carry a top-level ``id`` that matches
+        # the request frame sent by :meth:`call_rpc`. Resolve the Future.
+        msg_id: str | None = msg.get("id")
+        if msg_id and msg_id in self._pending_rpc:
+            future = self._pending_rpc.pop(msg_id)
+            if not future.done():
+                future.set_result(msg)
             return
 
         if event != "chat":

@@ -15,6 +15,7 @@ session (``SOUL.md`` + session memory).
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
@@ -87,6 +88,7 @@ class OrchestratorDecision:
 # Spotify intents (SEARCH, QUEUE, PLAY_CONTEXT, and all transport intents)
 # fall through to OpenClaw, which calls the spotify_* MCP tools (issue #87).
 # QUIET_MODE_ON / QUIET_MODE_OFF are handled locally by QuietModeAgent (#93).
+# WIKI_LOOKUP is handled locally when vault fast-path is enabled (#106).
 _LOCAL_INTENTS: frozenset[Intent] = frozenset(
     {
         Intent.SYSTEM,
@@ -96,6 +98,7 @@ _LOCAL_INTENTS: frozenset[Intent] = frozenset(
         Intent.QUIET_MODE_ON,
         Intent.QUIET_MODE_OFF,
         Intent.LEDGER_QUERY,
+        Intent.WIKI_LOOKUP,
     }
 )
 
@@ -117,6 +120,7 @@ class Orchestrator:
         narration_queue: NarrationQueue | None = None,
         state_machine: ConversationStateMachine | None = None,
         device_ledger: DeviceLedger | None = None,
+        wiki_client: Any = None,
     ) -> None:
         """Initialise the orchestrator.
 
@@ -140,6 +144,8 @@ class Orchestrator:
                 shared with the NarrationQueue and the WS server.
             device_ledger: Optional :class:`brain.device_ledger.DeviceLedger` for
                 LEDGER_QUERY fast-path handler.
+            wiki_client: Optional :class:`integrations.openclaw.wiki_client.WikiClient`
+                for WIKI_LOOKUP fast-path handler (#106).
         """
         self.claude_client = claude_client
         self.memory = memory
@@ -148,6 +154,7 @@ class Orchestrator:
         self._narration_queue: NarrationQueue | None = narration_queue
         self._state_machine: ConversationStateMachine | None = state_machine
         self._device_ledger: DeviceLedger | None = device_ledger
+        self._wiki_client: Any = wiki_client  # WikiClient | None
 
         # Config — retained for backward compatibility, but the old
         # "orchestrator_model" / "skip_on_clear_intent" knobs no longer
@@ -563,6 +570,107 @@ class Orchestrator:
 
         return AgentResult(spoken_response=text, success=True)
 
+    async def _handle_wiki_lookup(
+        self,
+        intent_result: IntentResult,
+        language: str,
+    ) -> AgentResult | None:
+        """Handle a WIKI_LOOKUP intent via the vault fast-path.
+
+        Returns ``None`` to fall through to the OpenClaw slow-path when:
+        - fast-path is disabled in config,
+        - WikiClient is not attached,
+        - vault is empty / unavailable,
+        - no hit meets the minimum score threshold.
+
+        Args:
+            intent_result: Classified intent containing ``params["topic"]``.
+            language: Detected language (``"en"`` / ``"de"``).
+
+        Returns:
+            :class:`AgentResult` with a templated spoken response, or ``None``
+            to fall through to the OpenClaw agent.
+        """
+        from integrations.openclaw.wiki_client import WikiClientUnavailableError  # noqa: PLC0415
+
+        cfg = get_config()
+        vault_cfg = cfg.get_section("vault") or {}
+
+        if not vault_cfg.get("fast_path_enabled", True):
+            logger.debug("WIKI_LOOKUP: fast-path disabled in config — falling through")
+            return None
+
+        if self._wiki_client is None:
+            logger.debug("WIKI_LOOKUP: no WikiClient attached — falling through")
+            return None
+
+        topic: str = intent_result.params.get("topic", "").strip()
+        if not topic:
+            logger.debug("WIKI_LOOKUP: empty topic extracted — falling through")
+            return None
+
+        min_score: float = float(vault_cfg.get("fast_path_min_score", 0.75))
+
+        try:
+            hits = await asyncio.wait_for(
+                self._wiki_client.search(topic, k=6),
+                timeout=5.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("WIKI_LOOKUP: search timed out — falling through")
+            return None
+        except WikiClientUnavailableError as exc:
+            logger.warning(f"WIKI_LOOKUP: wiki unavailable — falling through: {exc}")
+            return None
+        except Exception as exc:
+            logger.warning(f"WIKI_LOOKUP: unexpected error — falling through: {exc}")
+            return None
+
+        qualifying = [h for h in hits if h.score >= min_score]
+        if not qualifying:
+            logger.debug(
+                f"WIKI_LOOKUP: no hits above threshold {min_score:.2f} for topic={topic!r}"
+                " — falling through"
+            )
+            return None
+
+        # Format top 1-3 hits into a narration template.
+        top = qualifying[:3]
+        if language == "de":
+            if len(top) == 1:
+                text = (
+                    f"Über {topic} habe ich folgendes gefunden: {top[0].title}. "
+                    f"{top[0].excerpt[:200]}" if top[0].excerpt else
+                    f"Über {topic} habe ich eine Notiz mit dem Titel {top[0].title!r}."
+                )
+            else:
+                titles = ", ".join(h.title for h in top)
+                text = (
+                    f"Über {topic} habe ich {len(top)} Einträge gefunden: {titles}. "
+                    f"Hier der wichtigste: {top[0].excerpt[:200]}" if top[0].excerpt else
+                    f"Über {topic} habe ich unter anderem: {titles}."
+                )
+        else:
+            if len(top) == 1:
+                text = (
+                    f"About {topic}, I found the following: {top[0].title}. "
+                    f"{top[0].excerpt[:200]}" if top[0].excerpt else
+                    f"About {topic}, I have a note titled {top[0].title!r}."
+                )
+            else:
+                titles = ", ".join(h.title for h in top)
+                text = (
+                    f"About {topic}, I found {len(top)} entries: {titles}. "
+                    f"Top result: {top[0].excerpt[:200]}" if top[0].excerpt else
+                    f"About {topic}, I found entries including: {titles}."
+                )
+
+        logger.info(
+            f"WIKI_LOOKUP fast-path: topic={topic!r} hits={len(qualifying)} "
+            f"top_score={top[0].score:.3f}"
+        )
+        return AgentResult(spoken_response=text, success=True)
+
     async def _handle_greeting(
         self,
         text: str,
@@ -732,6 +840,21 @@ class Orchestrator:
             )
             return await self._handle_ledger_query(language)
 
+        # --- WIKI_LOOKUP: fast-path vault search (no LLM, no OpenClaw) ---
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.WIKI_LOOKUP
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            logger.info(
+                "Local dispatch: wiki_lookup fast-path "
+                f"(conf={intent_result.confidence:.2f})"
+            )
+            result_wl = await self._handle_wiki_lookup(intent_result, language)
+            if result_wl is not None:
+                return result_wl
+            logger.info("WIKI_LOOKUP fast-path miss — falling through to OpenClaw")
+
         # --- Local UI / action commands -------------------------------
         if (
             intent_result is not None
@@ -855,6 +978,28 @@ class Orchestrator:
                 full_text=result_lq.spoken_response,
             )
             return
+
+        # --- WIKI_LOOKUP: fast-path vault search (no LLM, no OpenClaw) --
+        if (
+            intent_result is not None
+            and intent_result.intent == Intent.WIKI_LOOKUP
+            and intent_result.confidence >= _LOCAL_INTENT_CONFIDENCE
+        ):
+            logger.info(
+                "Local dispatch (stream): wiki_lookup fast-path "
+                f"(conf={intent_result.confidence:.2f})"
+            )
+            result_wl = await self._handle_wiki_lookup(intent_result, language)
+            if result_wl is not None:
+                yield StreamChunk(
+                    type="final",
+                    run_id="local",
+                    new_text=result_wl.spoken_response,
+                    full_text=result_wl.spoken_response,
+                )
+                return
+            # Fall through to OpenClaw slow-path when fast-path returns None.
+            logger.info("WIKI_LOOKUP fast-path miss — falling through to OpenClaw")
 
         # --- Local UI / action commands (no streaming, single result) ----
         if (

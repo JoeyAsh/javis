@@ -42,6 +42,7 @@ class Intent(Enum):
     QUIET_MODE_ON = "quiet_mode_on"
     QUIET_MODE_OFF = "quiet_mode_off"
     LEDGER_QUERY = "ledger_query"
+    WIKI_LOOKUP = "wiki_lookup"
 
 
 @dataclass
@@ -566,6 +567,26 @@ INTENT_KEYWORDS: dict[Intent, dict[str, list[str]]] = {
             r"\bzeig\s+mir\s+das\s+ledger\b",
         ],
     },
+    # ------------------------------------------------------------------
+    # Wiki-lookup intent — fast-path vault search, no LLM round-trip.
+    # Triggered by "was weißt du über X" / "what do you know about X".
+    # The topic is extracted by :meth:`IntentParser._extract_wiki_params`.
+    # ------------------------------------------------------------------
+    Intent.WIKI_LOOKUP: {
+        "de": [
+            r"\bwas\s+weißt\s+du\s+(über|zu)\b",
+            r"\bwas\s+weiß\s+du\s+(über|zu)\b",
+            r"\bwas\s+hast\s+du\s+(über|zu)\b",
+            r"\bkennst\s+du\s+(etwas\s+)?(über|zu)\b",
+            r"\bzeig\s+(mir\s+)?was\s+du\s+(über|zu)\s+.+\s+weißt\b",
+        ],
+        "en": [
+            r"\bwhat\s+do\s+you\s+know\s+about\b",
+            r"\bwhat\s+have\s+you\s+learned\s+about\b",
+            r"\bdo\s+you\s+know\s+(anything|something)\s+about\b",
+            r"\btell\s+me\s+what\s+you\s+know\s+about\b",
+        ],
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -864,6 +885,7 @@ class IntentParser:
             Intent.MORNING_BRIEFING,
             Intent.GREETING,
             Intent.LEDGER_QUERY,
+            Intent.WIKI_LOOKUP,
             Intent.PC_CONTROL,
             Intent.SMART_HOME,
             Intent.EMAIL_COMPOSE,
@@ -970,8 +992,11 @@ class IntentParser:
         )
         _QUIET_MODE_INTENT_BASE = 0.85
         _LEDGER_QUERY_INTENT_BASE = 0.75
+        _WIKI_LOOKUP_INTENT_BASE = 0.80
         if intent in (Intent.QUIET_MODE_ON, Intent.QUIET_MODE_OFF):
             confidence = min(1.0, _QUIET_MODE_INTENT_BASE + (match_count * 0.05))
+        elif intent == Intent.WIKI_LOOKUP:
+            confidence = min(1.0, _WIKI_LOOKUP_INTENT_BASE + (match_count * 0.05))
         elif intent == Intent.LEDGER_QUERY:
             confidence = min(1.0, _LEDGER_QUERY_INTENT_BASE + (match_count * 0.1))
         elif intent in (Intent.EMAIL_READ, Intent.EMAIL_SEARCH, Intent.EMAIL_COMPOSE):
@@ -1019,6 +1044,8 @@ class IntentParser:
             Intent.SPOTIFY_PLAY_CONTEXT,
         ):
             params = self._extract_spotify_params(text, intent)
+        elif intent == Intent.WIKI_LOOKUP:
+            params = self._extract_wiki_params(text)
 
         return confidence, params
 
@@ -1347,6 +1374,40 @@ class IntentParser:
             ).strip()
 
         params["query"] = query.strip()
+        return params
+
+    def _extract_wiki_params(self, text: str) -> dict[str, Any]:
+        """Extract the topic from a wiki-lookup utterance.
+
+        Strips known trigger prefixes so ``params["topic"]`` contains only the
+        subject the user is asking about (e.g. "meine Schwester").
+
+        Args:
+            text: Lowercase user text.
+
+        Returns:
+            Dict with ``topic`` key containing the extracted topic string.
+        """
+        params: dict[str, Any] = {}
+
+        # Ordered from most to least specific so the greedy re.sub picks the
+        # longest matching prefix first.
+        strip_patterns = [
+            r"^was\s+weißt\s+du\s+(über|zu)\s+",
+            r"^was\s+weiß\s+du\s+(über|zu)\s+",
+            r"^was\s+hast\s+du\s+(über|zu)\s+",
+            r"^kennst\s+du\s+(etwas\s+)?(über|zu)\s+",
+            r"^zeig\s+mir\s+was\s+du\s+(über|zu)\s+(.+?)\s+weißt$",
+            r"^what\s+do\s+you\s+know\s+about\s+",
+            r"^what\s+have\s+you\s+learned\s+about\s+",
+            r"^do\s+you\s+know\s+(anything|something)\s+about\s+",
+            r"^tell\s+me\s+what\s+you\s+know\s+about\s+",
+        ]
+        topic = text.strip().rstrip("?!.,;:")
+        for pat in strip_patterns:
+            topic = re.sub(pat, "", topic, flags=re.IGNORECASE).strip()
+
+        params["topic"] = topic.strip().rstrip("?!.,;:")
         return params
 
     def _extract_system_params(self, text: str) -> dict[str, Any]:

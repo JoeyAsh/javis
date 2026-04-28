@@ -3,6 +3,13 @@ jarvis:
   wake_word: "hey jarvis"
   language: "auto"
 
+vault:
+  enabled: true
+  path: "~/Obsidian/jarvis-vault"   # overridable via JARVIS_VAULT_PATH env var
+  rpc_namespace: "wiki"             # OpenClaw RPC namespace prefix
+  fast_path_enabled: true           # fast-path wiki lookup intent (no LLM)
+  fast_path_min_score: 0.75         # min relevance score for fast-path hit
+
 voice_composer:
   max_sentence_words: 50
   long_sentence_mode: "split"   # "split" | "truncate"

@@ -43,6 +43,7 @@ from brain.orchestrator import Orchestrator
 from brain.device_ledger import DeviceLedger, DeviceEvent
 from brain.voice_composer import VoiceComposer
 from integrations.openclaw import OpenClawClient
+from integrations.openclaw.wiki_client import WikiClient, WikiClientUnavailableError
 from integrations.spotify import SpotifyClient
 from utils.logger import get_logger
 
@@ -105,6 +106,11 @@ _narration_drainer_task: asyncio.Task[None] | None = None
 _voice_composer: VoiceComposer | None = None
 _device_ledger: DeviceLedger | None = None
 _brain_inspector_task: asyncio.Task[None] | None = None
+
+# Brain Phase 2 — WikiClient + last wiki search state (#106).
+_wiki_client: WikiClient | None = None
+# Shape: {"query": str, "hit_count": int, "ts": str (ISO-8601)} | None
+_last_wiki_search: dict[str, Any] | None = None
 
 # Persona config snapshot — read once at startup so the sleep-phrase closing
 # line can pick a salutation without re-reading config per turn.
@@ -304,11 +310,12 @@ async def broadcast_barge_in() -> None:
 async def broadcast_brain_inspector() -> None:
     """Broadcast a brain_inspector payload to all connected HUD clients.
 
-    Payload includes VoiceComposer status, last 10 ledger events, and
-    per-kind event counts for the last 24 hours.  No-op when no clients
-    are connected.
+    Payload includes VoiceComposer status, last 10 ledger events,
+    per-kind event counts for the last 24 hours, vault_status from the
+    WikiClient, and last_wiki_search state.  No-op when no clients are
+    connected.
     """
-    global _voice_composer, _device_ledger
+    global _voice_composer, _device_ledger, _wiki_client, _last_wiki_search
 
     if not _connected_clients:
         return
@@ -335,10 +342,29 @@ async def broadcast_brain_inspector() -> None:
 
             ledger_count_24h = await _device_ledger.count_since(since_24h)
 
+        # Vault status — poll WikiClient with a 5 s guard; None on failure.
+        vault_status_payload: dict[str, Any] | None = None
+        if _wiki_client is not None:
+            try:
+                ws = await asyncio.wait_for(_wiki_client.status(), timeout=5.0)
+                vault_status_payload = {
+                    "initialised": ws.initialised,
+                    "note_count": ws.note_count,
+                    "last_dream_cycle_at": ws.last_dream_cycle_at,
+                }
+            except asyncio.TimeoutError:
+                logger.warning("broadcast_brain_inspector: wiki.status timed out")
+            except WikiClientUnavailableError as _wce:
+                logger.debug(f"broadcast_brain_inspector: wiki unavailable: {_wce}")
+            except Exception as _we:
+                logger.warning(f"broadcast_brain_inspector: wiki.status error: {_we}")
+
         payload = {
             "voice_composer_status": vc_status,
             "ledger_recent": ledger_recent,
             "ledger_count_24h": ledger_count_24h,
+            "vault_status": vault_status_payload,
+            "last_wiki_search": _last_wiki_search,
         }
         message = json.dumps({"type": "brain_inspector", "payload": payload})
         await _broadcast(message)
@@ -365,6 +391,12 @@ async def _brain_inspector_loop(interval_seconds: float) -> None:
         interval_seconds: Seconds between broadcasts.
     """
     logger.info(f"Brain inspector broadcast loop started (interval={interval_seconds:.0f}s)")
+    # Initial broadcast so consumers don't see stale/empty state for up to
+    # `interval_seconds` after backend restart.
+    try:
+        await broadcast_brain_inspector()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"_brain_inspector_loop initial broadcast failed: {exc}")
     while True:
         try:
             await asyncio.sleep(interval_seconds)
@@ -1832,6 +1864,120 @@ async def jarvis_quiet_handler(request: web.Request) -> web.Response:
         f"HTTP /api/jarvis/quiet: enabled={enabled} quiet_until={quiet_until_iso}"
     )
     return web.json_response({"quiet_until": quiet_until_iso})
+
+
+async def wiki_search_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/brain/wiki/search?q=…&k=… — search the vault.
+
+    Returns ``{"hits": [WikiHit dicts]}``.
+    Responds 400 when query param ``q`` is missing, 503 when the WikiClient
+    is unavailable.
+    """
+    global _wiki_client, _last_wiki_search
+
+    q: str = request.rel_url.query.get("q", "").strip()
+    if not q:
+        return web.json_response({"error": "'q' query parameter is required"}, status=400)
+
+    k_raw = request.rel_url.query.get("k", "6")
+    try:
+        k = max(1, min(20, int(k_raw)))
+    except ValueError:
+        k = 6
+
+    if _wiki_client is None:
+        return web.json_response({"error": "WikiClient not initialised"}, status=503)
+
+    try:
+        hits = await _wiki_client.search(q, k=k)
+    except WikiClientUnavailableError as exc:
+        logger.warning(f"GET /api/brain/wiki/search: unavailable: {exc}")
+        return web.json_response({"error": "knowledge base unavailable"}, status=503)
+
+    hit_dicts = [
+        {
+            "id": h.id,
+            "title": h.title,
+            "score": h.score,
+            "excerpt": h.excerpt,
+            "updated_at": h.updated_at,
+        }
+        for h in hits
+    ]
+
+    # Record last search for brain_inspector broadcast.
+    _last_wiki_search = {
+        "query": q,
+        "hit_count": len(hits),
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+
+    logger.debug(f"GET /api/brain/wiki/search: q={q!r} hits={len(hits)}")
+    return web.json_response({"hits": hit_dicts})
+
+
+async def wiki_note_handler(request: web.Request) -> web.Response:
+    """Handle GET /api/brain/wiki/note/{note_id} — fetch a single vault note.
+
+    Returns the :class:`WikiNote` as JSON on 200.
+    Responds 404 when the RPC reports the note is not found, 503 on transport
+    failure.
+    """
+    note_id: str = request.match_info.get("note_id", "")
+    if not note_id:
+        return web.json_response({"error": "note_id is required"}, status=400)
+
+    if _wiki_client is None:
+        return web.json_response({"error": "WikiClient not initialised"}, status=503)
+
+    try:
+        note = await _wiki_client.get(note_id)
+    except WikiClientUnavailableError as exc:
+        exc_str = str(exc)
+        # The RPC error message includes "not found" when the note is absent.
+        if "not found" in exc_str.lower():
+            return web.json_response({"error": "note not found"}, status=404)
+        logger.warning(f"GET /api/brain/wiki/note/{note_id}: unavailable: {exc}")
+        return web.json_response({"error": "knowledge base unavailable"}, status=503)
+
+    logger.debug(f"GET /api/brain/wiki/note/{note_id}: ok title={note.title!r}")
+    return web.json_response(
+        {
+            "id": note.id,
+            "title": note.title,
+            "body_md": note.body_md,
+            "backlinks": note.backlinks,
+            "updated_at": note.updated_at,
+        }
+    )
+
+
+async def wiki_obsidian_open_handler(request: web.Request) -> web.Response:
+    """Handle POST /api/brain/wiki/obsidian-open — open a note in Obsidian.
+
+    Accepts ``{"note_id": str}``.  Returns ``{"ok": true}`` on success or
+    503 on failure.
+    """
+    if _wiki_client is None:
+        return web.json_response({"error": "WikiClient not initialised"}, status=503)
+
+    try:
+        data: dict[str, Any] = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+
+    note_id: str = data.get("note_id", "").strip()
+    if not note_id:
+        return web.json_response({"error": "'note_id' is required"}, status=400)
+
+    try:
+        await _wiki_client.obsidian_open(note_id)
+    except WikiClientUnavailableError as exc:
+        logger.warning(f"POST /api/brain/wiki/obsidian-open: unavailable: {exc}")
+        return web.json_response({"error": str(exc)}, status=503)
+
+    logger.debug(f"POST /api/brain/wiki/obsidian-open: note_id={note_id!r}")
+    return web.json_response({"ok": True})
 
 
 async def _broadcast(message: str) -> None:
@@ -4748,7 +4894,7 @@ async def start_ws_server(
     global _calendar_poller_task, _cache_stats_log_task
     global _greeting_played, _last_unread_count, _last_calendar_count
     global _state_machine, _narration_queue, _narration_drainer_task
-    global _voice_composer, _device_ledger, _brain_inspector_task
+    global _voice_composer, _device_ledger, _brain_inspector_task, _wiki_client
 
     # Reset per-boot greeting flag so tests / re-initialisation get a fresh
     # greeting each time start_ws_server is called.
@@ -4960,6 +5106,27 @@ async def start_ws_server(
 
         _set_ledger_hook(_mcp_ledger_hook)
 
+    # Brain Phase 2 — WikiClient (#106).
+    vault_cfg = cfg.get_section("vault") or {}
+    if vault_cfg.get("enabled", True) and _openclaw_client is not None:
+        logger.info("Initialising WikiClient (memory-wiki bridge)...")
+        from integrations.openclaw.ws_client import OpenClawWSClient as _WSClientType  # noqa: PLC0415
+
+        # Access the persistent WS client from the OpenClawClient singleton.
+        _oc_ws_client = getattr(_openclaw_client, "ws_client", None)
+        if _oc_ws_client is not None and isinstance(_oc_ws_client, _WSClientType):
+            _wiki_client = WikiClient(_oc_ws_client)
+            logger.info("WikiClient initialised (reusing openclaw WS connection)")
+        else:
+            logger.warning(
+                "WikiClient: could not obtain OpenClawWSClient from OpenClawClient — "
+                "wiki features disabled. Ensure openclaw.streaming_enabled=true."
+            )
+    else:
+        logger.info(
+            "WikiClient skipped (vault.enabled=false or OpenClaw unavailable)"
+        )
+
     _orchestrator = Orchestrator(
         claude_client=claude_client,
         memory=None,
@@ -4968,6 +5135,7 @@ async def start_ws_server(
         narration_queue=_narration_queue,
         state_machine=_state_machine,
         device_ledger=_device_ledger,
+        wiki_client=_wiki_client,
     )
 
     _intent_parser = get_intent_parser()
@@ -5063,6 +5231,10 @@ async def start_ws_server(
     http_app.router.add_post("/api/jarvis/notify", jarvis_notify_handler)
     http_app.router.add_post("/api/jarvis/status", jarvis_status_handler)
     http_app.router.add_post("/api/jarvis/quiet", jarvis_quiet_handler)
+    # Brain Phase 2 — Wiki endpoints (#106)
+    http_app.router.add_get("/api/brain/wiki/search", wiki_search_handler)
+    http_app.router.add_get("/api/brain/wiki/note/{note_id}", wiki_note_handler)
+    http_app.router.add_post("/api/brain/wiki/obsidian-open", wiki_obsidian_open_handler)
 
     # Start WebSocket server
     ws_runner = web.AppRunner(ws_app)

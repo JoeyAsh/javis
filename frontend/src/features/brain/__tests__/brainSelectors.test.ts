@@ -13,6 +13,7 @@ import {
     selectKindFilter,
     selectSinceFilter,
 } from '../brainSelectors';
+import type { RootState } from '@app';
 import type { BrainState } from '../brainSlice';
 import type { DeviceEvent, LedgerKind } from '../types';
 
@@ -35,7 +36,7 @@ function makeEvent(
     };
 }
 
-function makeState(overrides: Partial<BrainState> = {}): { brain: BrainState } {
+function makeState(overrides: Partial<BrainState> = {}): RootState {
     const base: BrainState = {
         voiceComposerStatus: { last_compose_ts: null, last_salutation: null },
         recent: [],
@@ -43,7 +44,7 @@ function makeState(overrides: Partial<BrainState> = {}): { brain: BrainState } {
         filter: { kinds: [], sinceMs: null },
         lastInspectorTs: null,
     };
-    return { brain: { ...base, ...overrides } };
+    return { brain: { ...base, ...overrides } } as unknown as RootState;
 }
 
 // ---------------------------------------------------------------------------

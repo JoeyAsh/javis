@@ -171,6 +171,21 @@ class ConfigLoader:
         if gateway_url := os.environ.get("OPENCLAW_GATEWAY_URL"):
             self._config.setdefault("openclaw", {})["gateway_url"] = gateway_url
 
+        # Override vault path from env (JARVIS_VAULT_PATH takes precedence over YAML).
+        if vault_path := os.environ.get("JARVIS_VAULT_PATH"):
+            self._config.setdefault("vault", {})["path"] = vault_path
+
+        # Expand ~ in vault.path after all env overrides are applied so that
+        # both the YAML default and the env-var override are normalised.
+        vault_section = self._config.get("vault")
+        if isinstance(vault_section, dict):
+            raw_path: str = vault_section.get("path", "")
+            if raw_path:
+                try:
+                    vault_section["path"] = os.path.expanduser(raw_path)
+                except Exception:
+                    pass  # leave raw_path as-is; startup will surface the error
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value by dot-notation key.
 

@@ -35,17 +35,17 @@ export interface VoiceComposerStatus {
 
 export type LedgerKindCounts = Partial<Record<LedgerKind, number>>;
 
-export interface BrainInspectorPayload {
-    voice_composer_status: VoiceComposerStatus;
-    /** Last 10 events from backend. */
-    ledger_recent: DeviceEvent[];
-    ledger_count_24h: LedgerKindCounts;
-}
-
 export interface LedgerQueryRequest {
     /** ISO 8601. */
     since: string;
     until: string | null;
     /** Empty array means all kinds. */
     kinds: LedgerKind[];
+}
+
+export interface BrainInspectorPayload {
+    voice_composer_status: VoiceComposerStatus;
+    /** Last 10 events from backend. */
+    ledger_recent: DeviceEvent[];
+    ledger_count_24h: LedgerKindCounts;
 }

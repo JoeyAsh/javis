@@ -3,7 +3,11 @@ export { LedgerInspector } from './components/LedgerInspector';
 export type { LedgerInspectorProps } from './components/LedgerInspector';
 export { useBrain } from './hooks/useBrain';
 export type { UseBrainReturn } from './hooks/useBrain.types';
-export { brainApi, useStreamBrainInspectorQuery, sendLedgerQuery } from './brainApi';
+export {
+    brainApi,
+    useStreamBrainInspectorQuery,
+    sendLedgerQuery,
+} from './brainApi';
 export { brainInspectorReceived, setKindFilter, setSinceFilter } from './brainSlice';
 export type { BrainState } from './brainSlice';
 export {

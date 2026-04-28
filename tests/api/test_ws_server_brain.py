@@ -252,6 +252,85 @@ class TestBrainInspectorBroadcast:
         # broadcast_brain_inspector should have been called at least once.
         assert len(broadcast_calls) >= 1
 
+    @pytest.mark.asyncio
+    async def test_brain_inspector_loop_broadcasts_immediately_before_first_sleep(self):
+        """_brain_inspector_loop fires broadcast_brain_inspector once before the first sleep.
+
+        Ordering assertion: the initial call happens before any asyncio.sleep, so
+        cancelling the task *before* the interval elapses should still record exactly
+        one broadcast.
+        """
+        broadcast_mock = AsyncMock()
+        sleep_mock = AsyncMock(side_effect=asyncio.CancelledError)
+
+        with (
+            patch.object(mod, "broadcast_brain_inspector", broadcast_mock),
+            patch("api.ws_server.asyncio.sleep", sleep_mock),
+        ):
+            task = asyncio.create_task(mod._brain_inspector_loop(0.05))
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        # The initial broadcast must have happened before any sleep was awaited.
+        broadcast_mock.assert_awaited_once()
+        # sleep was called exactly once (the loop's first iteration sleep, which
+        # immediately raised CancelledError ending the loop).
+        sleep_mock.assert_awaited_once_with(0.05)
+
+    @pytest.mark.asyncio
+    async def test_brain_inspector_loop_cancellation_does_not_rebroadcast(self):
+        """After CancelledError the loop exits without an extra broadcast call."""
+        call_count = 0
+
+        async def _counting_broadcast() -> None:
+            nonlocal call_count
+            call_count += 1
+
+        interval = 0.05
+
+        with patch.object(mod, "broadcast_brain_inspector", _counting_broadcast):
+            task = asyncio.create_task(mod._brain_inspector_loop(interval))
+            # Let the initial broadcast fire, then cancel before the first interval.
+            await asyncio.sleep(0.01)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        # Only the initial broadcast should have fired (interval not yet elapsed).
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_brain_inspector_loop_initial_broadcast_failure_does_not_crash_loop(self):
+        """A transient error in the initial broadcast must not prevent the loop from running."""
+        calls: list[str] = []
+        first_call = True
+
+        async def _flaky_broadcast() -> None:
+            nonlocal first_call
+            if first_call:
+                first_call = False
+                raise RuntimeError("transient startup failure")
+            calls.append("ok")
+
+        interval = 0.05
+
+        with patch.object(mod, "broadcast_brain_inspector", _flaky_broadcast):
+            task = asyncio.create_task(mod._brain_inspector_loop(interval))
+            # Wait for more than one interval so the loop's normal cycle runs.
+            await asyncio.sleep(interval * 2.5)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        # Loop continued and broadcast succeeded on the regular cycle.
+        assert len(calls) >= 1
+
 
 # ---------------------------------------------------------------------------
 # AC #7 — tts_emitted row includes correct char_count.

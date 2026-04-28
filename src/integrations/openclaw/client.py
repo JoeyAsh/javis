@@ -19,6 +19,7 @@ import os
 import shutil
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
 import httpx
@@ -30,6 +31,13 @@ if TYPE_CHECKING:
     from integrations.openclaw.ws_client import OpenClawWSClient, StreamChunk
 
 logger = get_logger("openclaw_client")
+
+# Absolute path to the stdio-bridge script.  Resolves at import time so a
+# future file move surfaces immediately as an AssertionError rather than a
+# silent subprocess crash.  client.py lives at src/integrations/openclaw/;
+# the bridge is at src/jarvis_mcp_bridge.py — two parent hops up.
+_BRIDGE_PY: str = (Path(__file__).resolve().parents[2] / "jarvis_mcp_bridge.py").as_posix()
+assert Path(_BRIDGE_PY).is_file(), f"jarvis_mcp_bridge.py not found at {_BRIDGE_PY}"
 
 _CLI_PATH_CACHE: str | None = None
 
@@ -939,7 +947,11 @@ class OpenClawClient:
 
         The bridge module lives at ``src/jarvis_mcp_bridge.py`` and is invoked as:
 
-            ``<sys.executable> -m jarvis_mcp_bridge --url <sse_url> [--headers <json>]``
+            ``<sys.executable> /abs/path/to/jarvis_mcp_bridge.py --url <sse_url> [--headers <json>]``
+
+        The absolute path is used (rather than ``-m jarvis_mcp_bridge``) so the
+        subprocess does not require ``PYTHONPATH=src`` — OpenClaw / acpx spawns
+        the process in a clean environment that does not inherit JARVIS's sys.path.
 
         Args:
             url: Full SSE endpoint URL (e.g. ``http://127.0.0.1:8767/sse``).
@@ -960,11 +972,15 @@ class OpenClawClient:
 
         # Build the bridge command.  sys.executable is the Python interpreter that
         # is currently running JARVIS — guaranteed to have the mcp SDK installed.
-        bridge_args: list[str] = [sys.executable, "-m", "jarvis_mcp_bridge", "--url", url]
+        # Use the absolute script path (_BRIDGE_PY) instead of -m jarvis_mcp_bridge
+        # so the subprocess does not require PYTHONPATH=src to be set by the caller
+        # (OpenClaw / acpx spawns the process without inheriting JARVIS's env).
+        body: dict[str, Any] = {
+            "command": sys.executable,
+            "args": [_BRIDGE_PY, "--url", url],
+        }
         if headers:
-            bridge_args += ["--headers", json.dumps(headers)]
-
-        body: dict[str, Any] = {"command": bridge_args[0], "args": bridge_args[1:]}
+            body["args"].extend(["--headers", json.dumps(headers)])
         server_json = json.dumps(body)
         cmd = [*argv_base, "mcp", "set", name, server_json]
         logger.debug(f"register_mcp_server: spawn {cmd!r}")

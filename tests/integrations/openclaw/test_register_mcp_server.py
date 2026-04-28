@@ -4,7 +4,8 @@ All subprocess calls are mocked — no real CLI is spawned.
 
 Covers:
 - register_mcp_server: correct stdio-bridge argv shape (command/args, NOT url/headers)
-- register_mcp_server: bridge args contain sys.executable + -m jarvis_mcp_bridge --url
+- register_mcp_server: bridge command is sys.executable; args[0] is absolute path to
+  jarvis_mcp_bridge.py (not -m jarvis_mcp_bridge)
 - register_mcp_server: headers are passed via --headers JSON arg to bridge
 - register_mcp_server: returns True on returncode 0
 - register_mcp_server: returns False on non-zero returncode (graceful)
@@ -24,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -120,10 +122,16 @@ async def test_register_mcp_server_bridge_uses_sys_executable(client: OpenClawCl
 
 
 @pytest.mark.asyncio
-async def test_register_mcp_server_bridge_args_include_module_and_url(
+async def test_register_mcp_server_bridge_args_include_script_path_and_url(
     client: OpenClawClient,
 ) -> None:
-    """register_mcp_server bridge args include -m jarvis_mcp_bridge and the SSE URL."""
+    """register_mcp_server bridge args[0] is an absolute path to jarvis_mcp_bridge.py.
+
+    The bridge is invoked via its absolute path rather than ``-m jarvis_mcp_bridge``
+    so that OpenClaw/acpx can spawn it without ``PYTHONPATH=src`` being set.
+    """
+    from integrations.openclaw.client import _BRIDGE_PY
+
     sse_url = "http://127.0.0.1:8767/sse"
     mock_proc = _make_mock_proc(returncode=0)
     captured: list[Any] = []
@@ -140,8 +148,15 @@ async def test_register_mcp_server_bridge_args_include_module_and_url(
     parsed = json.loads(json_payload)
     args: list[str] = parsed["args"]
 
-    assert "-m" in args, "Bridge args must contain -m flag"
-    assert "jarvis_mcp_bridge" in args, "Bridge args must contain module name"
+    # args[0] must be the absolute path to the bridge script (not "-m").
+    assert args[0] == _BRIDGE_PY, f"Bridge args[0] must be the absolute path; got {args[0]!r}"
+    assert Path(args[0]).is_absolute(), "Bridge script path must be absolute"
+    assert args[0].endswith("jarvis_mcp_bridge.py"), "Bridge script must end with jarvis_mcp_bridge.py"
+    assert Path(args[0]).is_file(), f"Bridge script must exist on disk: {args[0]}"
+
+    # -m must NOT appear — using it requires PYTHONPATH which acpx does not set.
+    assert "-m" not in args, "Bridge args must NOT use -m (requires PYTHONPATH)"
+
     assert "--url" in args, "Bridge args must contain --url flag"
     url_idx = args.index("--url")
     assert args[url_idx + 1] == sse_url, "Bridge args must pass the SSE URL after --url"

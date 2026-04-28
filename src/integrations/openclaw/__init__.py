@@ -35,6 +35,13 @@ from integrations.openclaw.client import (
     OpenClawNotInstalledError,
     SessionInfo,
 )
+from integrations.openclaw.wiki_client import (
+    WikiClient,
+    WikiClientUnavailableError,
+    WikiHit,
+    WikiNote,
+    WikiStatus,
+)
 from integrations.openclaw.ws_client import OpenClawWSClient, StreamChunk
 
 __all__ = [
@@ -45,4 +52,9 @@ __all__ = [
     "SessionInfo",
     "OpenClawConnectionError",
     "OpenClawNotInstalledError",
+    "WikiClient",
+    "WikiClientUnavailableError",
+    "WikiHit",
+    "WikiNote",
+    "WikiStatus",
 ]

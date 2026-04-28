@@ -1,6 +1,11 @@
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from '@app';
-import type { DeviceEvent, VoiceComposerStatus, LedgerKind, LedgerKindCounts } from './types';
+import type {
+    DeviceEvent,
+    VoiceComposerStatus,
+    LedgerKind,
+    LedgerKindCounts,
+} from './types';
 
 const selectBrainSlice = (state: RootState) => state.brain;
 

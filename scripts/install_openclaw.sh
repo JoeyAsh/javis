@@ -98,11 +98,13 @@ DESIRED_MODEL="claude-cli/claude-opus-4-7"
 echo "  - agents.defaults.model = $DESIRED_MODEL"
 openclaw config set agents.defaults.model "$DESIRED_MODEL" >/dev/null
 
-# 3. Disable semantic memory search (needs an embedding provider we don't
-#    configure here). Doctor otherwise prints noisy "no embedding provider
-#    ready" warnings on every run.
-echo "  - agents.defaults.memorySearch.enabled = false"
-openclaw config set agents.defaults.memorySearch.enabled false >/dev/null
+# 3. Enable semantic memory search via memory-core (sqlite-vec + local model).
+#    memory-core provides privacy-friendly local embeddings without requiring an
+#    external API key. The plugin must be present in the openclaw extensions dir.
+#    Set the backend so the agent can perform semantic recall over stored notes.
+echo "  - agents.defaults.memorySearch.enabled = true (via memory-core)"
+openclaw config set agents.defaults.memorySearch.enabled true >/dev/null
+openclaw config set agents.defaults.memorySearch.backend '"memory-core"' >/dev/null
 
 # Restart the gateway so the new config takes effect immediately (no-op
 # if the daemon wasn't running).
@@ -110,6 +112,29 @@ if systemctl --user is-active --quiet openclaw-gateway.service 2>/dev/null; then
     echo "  - restarting openclaw-gateway.service"
     systemctl --user restart openclaw-gateway.service || true
 fi
+
+# --------------------------------------------------------------------------
+# memory-wiki plugin activation (user-run steps — NOT executed by this script)
+# --------------------------------------------------------------------------
+# To enable the memory-wiki plugin (vault search, KnowledgePanel, voice fast-path),
+# run the following commands manually AFTER restarting the openclaw gateway:
+#
+# user-runs:
+#   openclaw config set plugins.entries.memory-wiki.config.vaultMode '"bridge"'
+#   openclaw config set plugins.entries.memory-wiki.config.vault.path '"~/Obsidian/jarvis-vault"'
+#   openclaw config set plugins.entries.memory-wiki.config.vault.renderMode '"obsidian"'
+#   openclaw config set plugins.entries.memory-wiki.config.obsidian.enabled true
+#   openclaw config set plugins.entries.memory-wiki.config.bridge.enabled true
+#
+# Then restart the gateway:
+#   openclaw daemon restart   # or: systemctl --user restart openclaw-gateway.service
+#
+# After activation, run the vault init script:
+#   ./scripts/init_jarvis_vault.sh
+#
+# The above commands are intentionally NOT run here so this script stays
+# idempotent and non-destructive on machines where the plugin is not installed.
+# --------------------------------------------------------------------------
 
 # Run diagnostics
 echo ""
@@ -123,8 +148,10 @@ echo "Next steps:"
 echo "  1. Configure API keys in ~/.openclaw/openclaw.json or ~/.env"
 echo "  2. Start the daemon: openclaw daemon start"
 echo "  3. Verify health: openclaw doctor"
-echo "  4. Generate the voice-cache MP3s (quick-ack fillers, acks, etc.) —"
+echo "  4. (Optional) Enable memory-wiki vault — see the commented block above"
+echo "     in this script for the exact config commands to run by hand."
+echo "  5. Generate the voice-cache MP3s (quick-ack fillers, acks, etc.) —"
 echo "     one-shot, requires FISH_API_KEY + FISH_VOICE_ID in .env:"
 echo "       PYTHONPATH=src .venv/bin/python scripts/generate_voice_cache.py"
-echo "  5. Start JARVIS: PYTHONPATH=src uvicorn main:app --host 0.0.0.0 --port 8000"
+echo "  6. Start JARVIS: PYTHONPATH=src python -m main"
 echo ""

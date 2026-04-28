@@ -16,7 +16,7 @@ import {
     _mockWsClientImpl,
     installMockWsClient,
 } from '@test/mockWsClient';
-import { MOCK_DEVICE_EVENTS, MOCK_BRAIN_STATE } from '../mock';
+import { MOCK_BRAIN_STATE } from '../mock';
 import { LedgerInspector } from '../components/LedgerInspector/LedgerInspector';
 import brainReducer, { brainInspectorReceived } from '../brainSlice';
 import type { BrainInspectorPayload, DeviceEvent, LedgerKind } from '../types';
@@ -90,7 +90,7 @@ describe('LedgerInspector', () => {
         });
 
         // Inject a new unique event with a payload key unique enough to locate it.
-        // We use a payload message string that does not appear in MOCK_DEVICE_EVENTS.
+        // We use a payload message string that does not appear in MOCK_BRAIN_STATE.recent.
         const newEvent = makeExtraEvent(9999);
         const payload = makeBrainPayload([newEvent]);
 
